@@ -32,7 +32,8 @@ var GIDS = {
   videoSection: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1630459149',
   shopByTrade: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1407344995',
   promoBanners: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2007099777',
-  faqs: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=807514654'
+  faqs: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=807514654',
+  sectionOrder: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1373796339'
 };
 var STORE = window.location.origin;
 var STORE_TOKEN = window.BC_STOREFRONT_TOKEN || '';
@@ -129,7 +130,10 @@ function parseIds(raw){
 
 // ==================== CACHED FETCH ====================
 async function fetchCSV(key,url){
-  var cacheH=getSetting('cache_duration_hours',1);
+  if(!url)return [];
+  // Short cache (5 min) for section order so reorders show up fast.
+  // Long cache (1 hour, configurable) for everything else.
+  var cacheH=(key==='sectionOrder')?(5/60):getSetting('cache_duration_hours',1);
   if(cacheH>0){
     try{
       var raw=localStorage.getItem('fp_csv_'+key);
@@ -722,27 +726,119 @@ window.fpTradeFilter=function(i){
 };
 
 // ==================== PROMO BANNERS ====================
-function insertPromoBanners(){
-  if(!getSetting('show_promo_banners',true))return;
-  var rows=SECTION_DATA.promoBanners||[];
-  rows.forEach(function(b){
-    if(!trueish(b['Active']))return;
-    var img=b['Image URL'];var link=b['Link URL']||'#';var after=b['Show After Section']||'';
-    if(!img||!after)return;
-    // Find a section with matching title
-    var heads=document.querySelectorAll('.fp-section-title');
-    for(var i=0;i<heads.length;i++){
-      if(heads[i].textContent.toLowerCase().indexOf(after.toLowerCase())!==-1){
-        var sec=heads[i].closest('.fp-section');
-        if(sec&&sec.nextSibling){
-          var a=document.createElement('a');a.className='fp-promo-banner';a.href=link;
-          a.innerHTML='<img src="'+esc(img)+'" alt="'+esc(b['Banner Name']||'')+'" loading="lazy">';
-          sec.parentNode.insertBefore(a,sec.nextSibling);
-        }
-        break;
-      }
-    }
+// ==================== SECTION ORDER ====================
+// Maps Section IDs (from the Section Order sheet) to actual DOM element IDs.
+// FAQs and sticky cart bar are LOCKED at the bottom — not reorderable.
+var SECTION_ID_TO_DOM = {
+  flyerTabs:'fp-flyer-tabs-wrap',
+  dealOfDay:'fp-sec-dod',
+  recentlyViewed:'fp-sec-recent',
+  countdown:'fp-sec-countdown',
+  flashSales:'fp-sec-flashSales',
+  priceDrop:'fp-sec-priceDrop',
+  bogo:'fp-sec-bogo',
+  hotDeals:'fp-sec-hotDeals',
+  under99:'fp-sec-under99',
+  clearance:'fp-sec-clearance',
+  freeKit:'fp-sec-freeKit',
+  freeBattery:'fp-sec-freeBattery',
+  atlasExclusive:'fp-sec-atlasExclusive',
+  lastChance:'fp-sec-lastChance',
+  newArrivals:'fp-sec-newArrivals',
+  shopByBrand:'fp-sec-shopByBrand-wrap',
+  trendingProducts:'fp-sec-trendingProducts',
+  trendingDeals:'fp-sec-trendingDeals',
+  newFeatured:'fp-sec-newFeatured',
+  topSearched:'fp-sec-topSearched',
+  bundles:'fp-sec-bundles',
+  shopByTrade:'fp-sec-trades',
+  staffPicks:'fp-sec-staff',
+  videoSection:'fp-sec-videos',
+  coupons:'fp-sec-coupons',
+  endingSoon:'fp-sec-ending'
+};
+
+function applySectionOrder(){
+  var rows=SECTION_DATA.sectionOrder||[];
+  if(!rows.length){console.log('[Atlas Flyers] No Section Order data — using default DOM order');return;}
+
+  // Parse rows into entries with order
+  var entries=rows.map(function(r){
+    var id=(r['Section ID']||r['sectionId']||r['section_id']||'').trim();
+    var name=(r['Display Name']||r['displayName']||r['name']||'').trim();
+    var order=parseFloat(r['Order']||r['order']||0);
+    var active=(r['Active']||r['active']||'yes').toString().toLowerCase();
+    return {id:id,name:name,order:isNaN(order)?9999:order,active:active!=='no'&&active!=='false'};
+  }).filter(function(e){return e.id;});
+  entries.sort(function(a,b){return a.order-b.order;});
+
+  // Find the page container and the locked footer sections (FAQs + cart bar)
+  var page=document.querySelector('.flyers-page');
+  if(!page)return;
+  var faqsSection=document.getElementById('fp-sec-faqs');
+  var cartBar=document.querySelector('.fp-cart-bar');
+  var pad=page.querySelector('.fp-pad');
+
+  // Detach all reorderable sections (everything except FAQs + cart bar + pad)
+  var fragment=document.createDocumentFragment();
+
+  // Lookup promo banners by Banner ID
+  var bannerRows=SECTION_DATA.promoBanners||[];
+  var bannerById={};
+  bannerRows.forEach(function(b){
+    var bid=(b['Banner ID']||b['bannerId']||b['id']||'').trim();
+    if(bid)bannerById[bid.toLowerCase()]=b;
   });
+
+  // First, hide ALL sections (we'll show only those listed in Section Order)
+  Object.values(SECTION_ID_TO_DOM).forEach(function(domId){
+    var el=document.getElementById(domId);
+    if(el)el.classList.add('fp-hidden');
+  });
+  // Remove any existing promo banner DOM nodes (will recreate from order)
+  document.querySelectorAll('.fp-promo-banner').forEach(function(b){b.remove();});
+
+  // Build the new order
+  entries.forEach(function(e){
+    if(!e.active)return;
+
+    // Banner row: "banner:banner-id"
+    if(e.id.toLowerCase().indexOf('banner:')===0){
+      var bid=e.id.substring(7).toLowerCase().trim();
+      var b=bannerById[bid];
+      if(!b)return;
+      if(!trueish(b['Active']))return;
+      var img=b['Image URL']||b['imageUrl']||'';
+      if(!img)return;
+      var link=b['Link URL']||b['linkUrl']||'#';
+      var alt=b['Alt Text']||b['altText']||b['Banner Name']||e.name||'';
+      var a=document.createElement('a');
+      a.className='fp-promo-banner';
+      a.href=link;
+      a.innerHTML='<img src="'+esc(img)+'" alt="'+esc(alt)+'" loading="lazy">';
+      fragment.appendChild(a);
+      return;
+    }
+
+    // Regular section row
+    var domId=SECTION_ID_TO_DOM[e.id];
+    if(!domId)return;
+    var el=document.getElementById(domId);
+    if(!el)return;
+    el.classList.remove('fp-hidden');
+    fragment.appendChild(el);
+  });
+
+  // Now place fragment BEFORE the FAQs section (which stays locked at bottom)
+  if(faqsSection){
+    page.insertBefore(fragment,faqsSection);
+  }else if(pad){
+    page.insertBefore(fragment,pad);
+  }else{
+    page.appendChild(fragment);
+  }
+
+  console.log('[Atlas Flyers] Section order applied: '+entries.filter(function(e){return e.active;}).length+' active sections');
 }
 
 // ==================== RECENTLY VIEWED ====================
@@ -958,7 +1054,7 @@ async function init(){
   setupScrollSave();
 
   // 2) Fetch all other CSVs in parallel
-  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','clearance','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','newArrivals','lastChance','videoSection','shopByTrade','promoBanners','faqs'];
+  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','clearance','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','newArrivals','lastChance','videoSection','shopByTrade','promoBanners','faqs','sectionOrder'];
   var promises=keys.map(function(k){return fetchCSV(k,GIDS[k]);});
   var results=await Promise.all(promises);
   keys.forEach(function(k,i){SECTION_DATA[k]=results[i]||[];});
@@ -989,7 +1085,7 @@ async function init(){
   renderCoupons();
   renderVideos();
   renderTrades();
-  insertPromoBanners();
+  applySectionOrder();
 
   // 5) Render product-heavy sections (above-fold first, lazy rest)
   await Promise.all([
