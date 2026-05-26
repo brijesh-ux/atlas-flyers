@@ -244,8 +244,13 @@ function richCard(p,m){
   var brandTc=m.btc||(b&&b.accentText)||'#ffffff';
   var tag=m.tag||'DEAL';
   var tcls=m.tcls||'fp-t-hot';
+  var heartHtml=showHeart?'<button class="fp-rich-heart'+(inWish?' active':'')+'" data-pid="'+p.entityId+'" data-tooltip="'+(inWish?'Remove from Wishlist':'Add to Wishlist')+'" onclick="fpToggleWish(event,'+p.entityId+',this)">♥</button>':'';
+  // Visitor count + heart go in same row. If visitor count off, heart still appears (right-aligned, no text on left).
+  var visitorRowHtml='';
+  if(showVisitors||showHeart){
+    visitorRowHtml='<div class="fp-rich-visitors">'+(showVisitors?'<span>👀 '+visitorCount()+' viewing now</span>':'<span></span>')+heartHtml+'</div>';
+  }
   return '<div class="fp-rich" data-bk="'+esc((b&&b.key)||'')+'">'+
-    (showHeart?'<button class="fp-rich-heart'+(inWish?' active':'')+'" data-pid="'+p.entityId+'" onclick="fpToggleWish(event,'+p.entityId+',this)">♥</button>':'')+
     '<div class="fp-rich-top">'+
       (brandLabel?'<span class="fp-rich-brand" style="background:'+brandBg+';color:'+brandTc+'">'+esc(brandLabel)+'</span>':'<span></span>')+
       '<span class="fp-rich-tag '+tcls+'">'+esc(tag)+'</span>'+
@@ -254,7 +259,7 @@ function richCard(p,m){
     '<a class="fp-rich-name" href="'+esc(p.path||'#')+'" onclick="fpTrackRecent('+p.entityId+')">'+esc(cn)+'</a>'+
     '<div class="fp-rich-sku">SKU# '+esc(p.sku||p.entityId)+'</div>'+
     (m.st==='order'?'<div class="fp-rich-stock fp-rich-stock-ord">✓ Available to Order</div>':'<div class="fp-rich-stock">✓ In Stock</div>')+
-    (showVisitors?'<div class="fp-rich-visitors">👀 '+visitorCount()+' viewing now</div>':'')+
+    visitorRowHtml+
     '<div class="fp-rich-prices">'+(hasDiscount?'<div class="fp-rich-sale">$'+currentPrice.toFixed(2)+'</div><div class="fp-rich-off">↓ '+savePct+'% Off</div><div class="fp-rich-was">$'+wasPrice.toFixed(2)+'</div>':'<div class="fp-rich-reg">'+(pr?'$'+pr.toFixed(2):'See price')+'</div>')+'</div>'+
     (m.code?'<div class="fp-rich-code"><span class="fp-rich-code-lbl">Code:</span><span class="fp-rich-code-val">'+esc(m.code)+'</span></div>':'')+
     '<button class="fp-rich-add" id="'+bid+'" onclick="fpAdd('+p.entityId+','+(hasDiscount?currentPrice:pr)+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">+ Add to Cart</button>'+
@@ -885,8 +890,8 @@ async function renderRecent(){
 // ==================== WISHLIST ====================
 window.fpToggleWish=function(ev,pid,el){
   ev.preventDefault();ev.stopPropagation();
-  if(WISHLIST[pid]){delete WISHLIST[pid];el.classList.remove('active');toast('Removed from wishlist');}
-  else{WISHLIST[pid]=Date.now();el.classList.add('active');toast('Added to wishlist');}
+  if(WISHLIST[pid]){delete WISHLIST[pid];el.classList.remove('active');el.dataset.tooltip='Add to Wishlist';toast('Removed from wishlist');}
+  else{WISHLIST[pid]=Date.now();el.classList.add('active');el.dataset.tooltip='Remove from Wishlist';toast('Added to wishlist');}
   try{localStorage.setItem('fp_wishlist',JSON.stringify(WISHLIST));}catch(e){}
 };
 
