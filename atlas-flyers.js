@@ -173,7 +173,7 @@ async function fetchProducts(ids){
   for(var c=0;c<chunks.length;c++){
     var chunk=chunks[c];
     var fields=chunk.map(function(id,i){
-      return 'p'+i+':product(entityId:'+id+'){name entityId sku prices{price{value}salePrice{value}}defaultImage{url(width:400)}path description}';
+      return 'p'+i+':product(entityId:'+id+'){name entityId sku prices{price{value}salePrice{value}retailPrice{value}}defaultImage{url(width:400)}path description}';
     }).join(' ');
     var query='{site{'+fields+'}}';
     try{
@@ -213,8 +213,20 @@ function richCard(p,m){
   if(!p)return'<div class="fp-rich"><div style="padding:30px 10px;text-align:center;color:#bbb;font-size:11px">Product unavailable</div></div>';
   var pr=p.prices&&p.prices.price?p.prices.price.value:null;
   var sl=p.prices&&p.prices.salePrice?p.prices.salePrice.value:null;
-  var os=sl&&sl<pr;
-  var sp=os?Math.round((1-sl/pr)*100):0;
+  var rp=p.prices&&p.prices.retailPrice?p.prices.retailPrice.value:null;
+  // Pricing modes:
+  //   "sale"   = Sale Price set and lower than Default Price (current=sl, was=pr)
+  //   "msrp"   = MSRP/retail set higher than Default Price (current=pr, was=rp)
+  //   "normal" = no discount, just show price
+  var priceMode='normal',currentPrice=pr,wasPrice=null,savePct=0,saveAmt=0;
+  if(sl&&pr&&sl<pr){
+    priceMode='sale';currentPrice=sl;wasPrice=pr;
+    savePct=Math.round((1-sl/pr)*100);saveAmt=pr-sl;
+  }else if(rp&&pr&&rp>pr){
+    priceMode='msrp';currentPrice=pr;wasPrice=rp;
+    savePct=Math.round((1-pr/rp)*100);saveAmt=rp-pr;
+  }
+  var hasDiscount=(priceMode!=='normal');
   var img=p.defaultImage?p.defaultImage.url:null;
   var bid='fpa-'+p.entityId+'-'+Math.random().toString(36).substr(2,4);
   var cn=cleanName(p.name,p.sku);
@@ -243,9 +255,9 @@ function richCard(p,m){
     '<div class="fp-rich-sku">SKU# '+esc(p.sku||p.entityId)+'</div>'+
     (m.st==='order'?'<div class="fp-rich-stock fp-rich-stock-ord">✓ Available to Order</div>':'<div class="fp-rich-stock">✓ In Stock</div>')+
     (showVisitors?'<div class="fp-rich-visitors">👀 '+visitorCount()+' viewing now</div>':'')+
-    '<div class="fp-rich-prices">'+(os?'<div class="fp-rich-sale">$'+sl.toFixed(2)+'</div><div class="fp-rich-off">↓ '+sp+'% Off</div><div class="fp-rich-was">Was $'+pr.toFixed(2)+'</div>':'<div class="fp-rich-reg">'+(pr?'$'+pr.toFixed(2):'See price')+'</div>')+'</div>'+
+    '<div class="fp-rich-prices">'+(hasDiscount?'<div class="fp-rich-sale">$'+currentPrice.toFixed(2)+'</div><div class="fp-rich-off">↓ '+savePct+'% Off</div><div class="fp-rich-was">$'+wasPrice.toFixed(2)+'</div>':'<div class="fp-rich-reg">'+(pr?'$'+pr.toFixed(2):'See price')+'</div>')+'</div>'+
     (m.code?'<div class="fp-rich-code"><span class="fp-rich-code-lbl">Code:</span><span class="fp-rich-code-val">'+esc(m.code)+'</span></div>':'')+
-    '<button class="fp-rich-add" id="'+bid+'" onclick="fpAdd('+p.entityId+','+(os?sl:pr)+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">+ Add to Cart</button>'+
+    '<button class="fp-rich-add" id="'+bid+'" onclick="fpAdd('+p.entityId+','+(hasDiscount?currentPrice:pr)+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">+ Add to Cart</button>'+
   '</div>';
 }
 
@@ -890,16 +902,19 @@ window.fpQuickView=async function(pid){
   var p=PRODUCT_CACHE[pid];if(!p){c.innerHTML='<p style="padding:20px">Product not available.</p>';return;}
   var pr=p.prices&&p.prices.price?p.prices.price.value:null;
   var sl=p.prices&&p.prices.salePrice?p.prices.salePrice.value:null;
-  var os=sl&&sl<pr;
+  var rp=p.prices&&p.prices.retailPrice?p.prices.retailPrice.value:null;
+  var qvCurrent=pr,qvWas=null,qvPct=0,qvHasDiscount=false;
+  if(sl&&pr&&sl<pr){qvCurrent=sl;qvWas=pr;qvPct=Math.round((1-sl/pr)*100);qvHasDiscount=true;}
+  else if(rp&&pr&&rp>pr){qvCurrent=pr;qvWas=rp;qvPct=Math.round((1-pr/rp)*100);qvHasDiscount=true;}
   var img=p.defaultImage?p.defaultImage.url:'';
   var desc=p.description?p.description.replace(/<[^>]+>/g,'').substring(0,300):'';
   c.innerHTML='<div class="fp-modal-img">'+(img?'<img src="'+img+'" alt="'+esc(p.name)+'">':'🔧')+'</div>'+
     '<div class="fp-modal-brand">SKU '+esc(p.sku||p.entityId)+'</div>'+
     '<div class="fp-modal-name">'+esc(cleanName(p.name,p.sku))+'</div>'+
-    '<div class="fp-modal-prices"><div class="fp-modal-sale">$'+(os?sl.toFixed(2):pr?pr.toFixed(2):'?')+'</div>'+(os?'<div class="fp-modal-was">$'+pr.toFixed(2)+'</div><div class="fp-modal-off">'+Math.round((1-sl/pr)*100)+'% Off</div>':'')+'</div>'+
+    '<div class="fp-modal-prices"><div class="fp-modal-sale">$'+(qvCurrent?qvCurrent.toFixed(2):'?')+'</div>'+(qvHasDiscount?'<div class="fp-modal-was">$'+qvWas.toFixed(2)+'</div><div class="fp-modal-off">'+qvPct+'% Off</div>':'')+'</div>'+
     (desc?'<p style="font-size:13px;color:#555;line-height:1.5;margin-bottom:10px">'+esc(desc)+'...</p>':'')+
     '<div class="fp-modal-qty"><button class="fp-modal-qty-btn" onclick="fpQtyChg(-1)">−</button><div class="fp-modal-qty-val" id="fp-qty">1</div><button class="fp-modal-qty-btn" onclick="fpQtyChg(1)">+</button></div>'+
-    '<button class="fp-modal-add" id="fp-modal-add" onclick="fpModalAdd('+pid+','+(os?sl:pr)+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">Add to Cart</button>'+
+    '<button class="fp-modal-add" id="fp-modal-add" onclick="fpModalAdd('+pid+','+qvCurrent+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">Add to Cart</button>'+
     '<a class="fp-modal-view" href="'+esc(p.path||'#')+'">View full product details →</a>';
 };
 window.fpCloseModal=function(){$('fp-modal').classList.remove('open');document.body.style.overflow='';};
