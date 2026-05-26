@@ -87,6 +87,21 @@ function getSetting(k,def){var v=SETTINGS[k];if(v===undefined||v==='')return def
 function trueish(v){return v===true||v==='yes'||String(v).toLowerCase()==='true';}
 function getBrand(key){if(!key)return null;var k=String(key).toLowerCase().trim();return BRAND_STYLES[k]||null;}
 
+// Extract brand from BC product object. Returns brand style if matched in BRAND_STYLES, else a generic fallback.
+function getBrandFromProduct(p){
+  if(!p||!p.brand||!p.brand.name)return null;
+  // Try matching by path slug (e.g., "/metabo-hpt/" -> "metabohpt" or "metabo-hpt")
+  var path=(p.brand.path||'').replace(/^\/|\/$/g,'').toLowerCase();
+  var keyNoHyphens=path.replace(/-/g,'');
+  if(BRAND_STYLES[keyNoHyphens])return BRAND_STYLES[keyNoHyphens];
+  if(BRAND_STYLES[path])return BRAND_STYLES[path];
+  // Try matching by brand name (lowercase, no spaces/hyphens)
+  var nameKey=p.brand.name.toLowerCase().replace(/[\s\-]+/g,'');
+  if(BRAND_STYLES[nameKey])return BRAND_STYLES[nameKey];
+  // Fallback: unknown brand, return generic style with the real name
+  return {key:'',name:p.brand.name,accentBg:'#ffffff',accentText:'#0f0f0f',logoUrl:'',brandIconUrl:''};
+}
+
 // ==================== CSV PARSER ====================
 function parseCSV(text){
   var lines=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').trim().split('\n');
@@ -173,7 +188,7 @@ async function fetchProducts(ids){
   for(var c=0;c<chunks.length;c++){
     var chunk=chunks[c];
     var fields=chunk.map(function(id,i){
-      return 'p'+i+':product(entityId:'+id+'){name entityId sku prices{price{value}salePrice{value}retailPrice{value}}defaultImage{url(width:400)}path description}';
+      return 'p'+i+':product(entityId:'+id+'){name entityId sku brand{name path} prices{price{value}salePrice{value}retailPrice{value}}defaultImage{url(width:400)}path description}';
     }).join(' ');
     var query='{site{'+fields+'}}';
     try{
@@ -238,10 +253,17 @@ function richCard(p,m){
   var showVisitors=globalVisitors&&sectionVisitors;
   var showHeart=getSetting('enable_wishlist_heart',true);
   var quickView=getSetting('enable_quick_view',true);
-  var b=m.brand||null;
+  // Brand resolution priority:
+  //   1) Sheet Brand ID column matched in Brand Styles (m.brand)
+  //   2) BC product's own brand matched in Brand Styles
+  //   3) BC product's brand with white-bg fallback
+  var b=m.brand||getBrandFromProduct(p)||null;
+  // For unknown-brand fallback (white bg), add a subtle border so the badge is visible
+  var isUnknownBrand=b&&!b.key;
   var brandLabel=m.bl||(b&&b.name)||'';
   var brandBg=m.bbg||(b&&b.accentBg)||'#1a1a1a';
   var brandTc=m.btc||(b&&b.accentText)||'#ffffff';
+  var brandBorder=isUnknownBrand?';border:1px solid #ddd':'';
   var tag=m.tag||'DEAL';
   var tcls=m.tcls||'fp-t-hot';
   var heartHtml=showHeart?'<button class="fp-rich-heart'+(inWish?' active':'')+'" data-pid="'+p.entityId+'" data-tooltip="'+(inWish?'Remove from Wishlist':'Add to Wishlist')+'" onclick="fpToggleWish(event,'+p.entityId+',this)">♥</button>':'';
@@ -255,7 +277,7 @@ function richCard(p,m){
   var tagHtml=m.showTag?'<span class="fp-rich-tag '+tcls+'"'+tagStyle+'>'+esc(tag)+'</span>':'<span></span>';
   return '<div class="fp-rich" data-bk="'+esc((b&&b.key)||'')+'">'+
     '<div class="fp-rich-top">'+
-      (brandLabel?'<span class="fp-rich-brand" style="background:'+brandBg+';color:'+brandTc+'">'+esc(brandLabel)+'</span>':'<span></span>')+
+      (brandLabel?'<span class="fp-rich-brand" style="background:'+brandBg+';color:'+brandTc+brandBorder+'">'+esc(brandLabel)+'</span>':'<span></span>')+
       tagHtml+
     '</div>'+
     (img?'<div class="fp-rich-img-wrap"'+(quickView?' onclick="fpQuickView('+p.entityId+')"':'')+'><img src="'+img+'" alt="'+esc(p.name)+'" loading="lazy"></div>':'<div class="fp-rich-ph">🔧</div>')+
