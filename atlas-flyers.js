@@ -219,7 +219,11 @@ function richCard(p,m){
   var bid='fpa-'+p.entityId+'-'+Math.random().toString(36).substr(2,4);
   var cn=cleanName(p.name,p.sku);
   var inWish=WISHLIST[p.entityId];
-  var showVisitors=getSetting('show_live_visitor_count',false);
+  // Master switch in Settings tab; if off, hide everywhere regardless of section column.
+  var globalVisitors=getSetting('show_live_visitor_count',false);
+  // Per-section column in Section Order tab.
+  var sectionVisitors=m._sectionKey?(SECTION_VISITOR_COUNT[m._sectionKey]!==false):false;
+  var showVisitors=globalVisitors&&sectionVisitors;
   var showHeart=getSetting('enable_wishlist_heart',true);
   var quickView=getSetting('enable_quick_view',true);
   var b=m.brand||null;
@@ -269,7 +273,8 @@ async function renderProductSection(sectionKey,gridId){
       tcls:def.cls,
       code:r['Custom Coupon Code']||'',
       st:(r['Stock Status']||'in').toLowerCase(),
-      _row:r
+      _row:r,
+      _sectionKey:sectionKey
     };
   }).filter(Boolean);
   if(!items.length){hide('fp-sec-'+sectionKey);return;}
@@ -480,7 +485,7 @@ window.fpOpenBrandPanel=async function(key){
     await fetchProducts(d.ids);
     var g=$('fpbg-'+key+'-'+i);if(!g)continue;
     g.innerHTML=d.ids.map(function(id){
-      return richCard(PRODUCT_CACHE[id],{brand:b.style,tag:lbl,tcls:def,st:'in'});
+      return richCard(PRODUCT_CACHE[id],{brand:b.style,tag:lbl,tcls:def,st:'in',_sectionKey:'shopByBrand'});
     }).join('');
   }
 };
@@ -729,6 +734,8 @@ window.fpTradeFilter=function(i){
 // ==================== SECTION ORDER ====================
 // Maps Section IDs (from the Section Order sheet) to actual DOM element IDs.
 // FAQs and sticky cart bar are LOCKED at the bottom — not reorderable.
+// Populated by applySectionOrder() from "Show Visitor Count" column. Section key -> bool.
+var SECTION_VISITOR_COUNT = {};
 var SECTION_ID_TO_DOM = {
   flyerTabs:'fp-flyer-tabs-wrap',
   dealOfDay:'fp-sec-dod',
@@ -768,6 +775,9 @@ function applySectionOrder(){
     var name=(r['Display Name']||r['displayName']||r['name']||'').trim();
     var order=parseFloat(r['Order']||r['order']||0);
     var active=(r['Active']||r['active']||'yes').toString().toLowerCase();
+    var svc=(r['Show Visitor Count']||r['showVisitorCount']||r['show_visitor_count']||'').toString().toLowerCase().trim();
+    // Default: if blank, treat as no (opt-in)
+    SECTION_VISITOR_COUNT[id]=(svc==='yes'||svc==='true');
     return {id:id,name:name,order:isNaN(order)?9999:order,active:active!=='no'&&active!=='false'};
   }).filter(function(e){return e.id;});
   entries.sort(function(a,b){return a.order-b.order;});
