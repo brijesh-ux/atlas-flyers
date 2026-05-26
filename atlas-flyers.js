@@ -250,10 +250,13 @@ function richCard(p,m){
   if(showVisitors||showHeart){
     visitorRowHtml='<div class="fp-rich-visitors">'+(showVisitors?'<span>👀 '+visitorCount()+' viewing now</span>':'<span></span>')+heartHtml+'</div>';
   }
+  // Tag: hidden by default unless m.showTag is true. Custom color via m.customTagColor.
+  var tagStyle=m.customTagColor?' style="background:'+m.customTagColor+';color:#fff"':'';
+  var tagHtml=m.showTag?'<span class="fp-rich-tag '+tcls+'"'+tagStyle+'>'+esc(tag)+'</span>':'<span></span>';
   return '<div class="fp-rich" data-bk="'+esc((b&&b.key)||'')+'">'+
     '<div class="fp-rich-top">'+
       (brandLabel?'<span class="fp-rich-brand" style="background:'+brandBg+';color:'+brandTc+'">'+esc(brandLabel)+'</span>':'<span></span>')+
-      '<span class="fp-rich-tag '+tcls+'">'+esc(tag)+'</span>'+
+      tagHtml+
     '</div>'+
     (img?'<div class="fp-rich-img-wrap"'+(quickView?' onclick="fpQuickView('+p.entityId+')"':'')+'><img src="'+img+'" alt="'+esc(p.name)+'" loading="lazy"></div>':'<div class="fp-rich-ph">🔧</div>')+
     '<a class="fp-rich-name" href="'+esc(p.path||'#')+'" onclick="fpTrackRecent('+p.entityId+')">'+esc(cn)+'</a>'+
@@ -280,14 +283,20 @@ async function renderProductSection(sectionKey,gridId){
     var ids=parseIds(r['Product ID']||r['productId']||'');
     if(!ids.length)return null;
     var b=getBrand(r['Brand ID']||r['brandKey']||r['brandId']);
+    var showTagRaw=(r['Show Tag']||r['showTag']||'').toString().toLowerCase().trim();
+    var showTag=(showTagRaw==='yes'||showTagRaw==='true');
+    var customTagText=(r['Custom Tag Text']||r['customTagText']||r['Custom Deal Label']||'').trim();
+    var customTagColor=(r['Custom Tag Color']||r['customTagColor']||'').trim();
     return {
       id:ids[0],
       brand:b,
       bl:r['Custom Brand Name']||'',
       bbg:r['Custom Background Color']||'',
       btc:r['Custom Text Color']||'',
-      tag:r['Custom Deal Label']||def.tag,
+      tag:customTagText||def.tag,
       tcls:def.cls,
+      showTag:showTag,
+      customTagColor:customTagColor,
       code:r['Custom Coupon Code']||'',
       st:(r['Stock Status']||'in').toLowerCase(),
       _row:r,
@@ -502,7 +511,7 @@ window.fpOpenBrandPanel=async function(key){
     await fetchProducts(d.ids);
     var g=$('fpbg-'+key+'-'+i);if(!g)continue;
     g.innerHTML=d.ids.map(function(id){
-      return richCard(PRODUCT_CACHE[id],{brand:b.style,tag:lbl,tcls:def,st:'in',_sectionKey:'shopByBrand'});
+      return richCard(PRODUCT_CACHE[id],{brand:b.style,tag:lbl,tcls:def,st:'in',_sectionKey:'shopByBrand',showTag:true});
     }).join('');
   }
 };
