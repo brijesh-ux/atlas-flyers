@@ -266,7 +266,8 @@ function richCard(p,m){
   var brandBorder=isUnknownBrand?';border:1px solid #ddd':'';
   var tag=m.tag||'DEAL';
   var tcls=m.tcls||'fp-t-hot';
-  var heartHtml=showHeart?'<button class="fp-rich-heart'+(inWish?' active':'')+'" data-pid="'+p.entityId+'" data-tooltip="'+(inWish?'Remove from Wishlist':'Add to Wishlist')+'" onclick="fpToggleWish(event,'+p.entityId+',this)">♥</button>':'';
+  var heartSvg='<svg viewBox="0 0 24 24" width="22" height="22" style="display:block;fill:currentColor"><path d="M12 21s-7.5-4.7-9.5-9.5C1.1 7.8 3.6 4 7.5 4c2.1 0 3.5 1.2 4.5 2.5C13 5.2 14.4 4 16.5 4 20.4 4 22.9 7.8 21.5 11.5 19.5 16.3 12 21 12 21z"/></svg>';
+  var heartHtml=showHeart?'<button class="fp-rich-heart'+(inWish?' active':'')+'" data-pid="'+p.entityId+'" data-tooltip="'+(inWish?'Remove from Wishlist':'Add to Wishlist')+'" onclick="fpToggleWish(event,'+p.entityId+',this)">'+heartSvg+'</button>':'';
   // Visitor count + heart go in same row. If visitor count off, heart still appears (right-aligned, no text on left).
   var visitorRowHtml='';
   if(showVisitors||showHeart){
