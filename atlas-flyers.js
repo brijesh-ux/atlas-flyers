@@ -973,8 +973,15 @@ window.fpQuickView=async function(pid){
   }
   window._fpModalImgCount=allImgs.length;
   window._fpModalImgIdx=0;
+  // Brand resolution for modal — same priority as cards
+  var modalBrand=getBrandFromProduct(p)||null;
+  var modalBrandLabel=modalBrand?modalBrand.name:'';
+  var modalBrandBg=modalBrand?modalBrand.accentBg:'#1a1a1a';
+  var modalBrandTc=modalBrand?modalBrand.accentText:'#ffffff';
+  var modalBrandBorder=modalBrand&&!modalBrand.key?';border:1px solid #ddd':'';
   c.innerHTML=galleryHtml+
-    '<div class="fp-modal-brand">SKU '+esc(p.sku||p.entityId)+'</div>'+
+    (modalBrandLabel?'<div class="fp-modal-brand-row"><span class="fp-modal-brand-badge" style="background:'+modalBrandBg+';color:'+modalBrandTc+modalBrandBorder+'">'+esc(modalBrandLabel)+'</span></div>':'')+
+    '<div class="fp-modal-sku">SKU# '+esc(p.sku||p.entityId)+'</div>'+
     '<div class="fp-modal-name">'+esc(cleanName(p.name,p.sku))+'</div>'+
     '<div class="fp-modal-prices"><div class="fp-modal-sale">$'+(qvCurrent?qvCurrent.toFixed(2):'?')+'</div>'+(qvHasDiscount?'<div class="fp-modal-was">$'+qvWas.toFixed(2)+'</div><div class="fp-modal-off">'+qvPct+'% Off</div>':'')+'</div>'+
     (desc?'<p style="font-size:13px;color:#555;line-height:1.5;margin-bottom:10px">'+esc(desc)+'...</p>':'')+
