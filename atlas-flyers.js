@@ -88,6 +88,39 @@ function getSetting(k,def){var v=SETTINGS[k];if(v===undefined||v==='')return def
 function trueish(v){return v===true||v==='yes'||String(v).toLowerCase()==='true';}
 function getBrand(key){if(!key)return null;var k=String(key).toLowerCase().trim();return BRAND_STYLES[k]||null;}
 
+// Holds the sanitized full-HTML description for the currently open quick-view product.
+var MODAL_DESC='';
+// Sanitize a BigCommerce product description: keep structural/formatting tags
+// (headings, paragraphs, lists, bold/italic, breaks), strip everything risky
+// (scripts, styles, images, tables, iframes) and all attributes (style/class/on*).
+function sanitizeDesc(html){
+  if(!html)return '';
+  var allowed={P:1,BR:1,H1:1,H2:1,H3:1,H4:1,H5:1,H6:1,UL:1,OL:1,LI:1,STRONG:1,B:1,EM:1,I:1,U:1,SPAN:1,DIV:1};
+  var doc;
+  try{doc=new DOMParser().parseFromString('<div>'+html+'</div>','text/html');}catch(e){return '';}
+  var root=doc.body.firstChild;
+  if(!root)return '';
+  // Remove dangerous elements entirely
+  root.querySelectorAll('script,style,img,table,thead,tbody,tr,td,th,iframe,form,input,button,svg,video,audio,link,meta,font').forEach(function(n){n.remove();});
+  // Walk and unwrap disallowed tags; strip all attributes from allowed ones
+  (function walk(node){
+    var kids=Array.prototype.slice.call(node.children);
+    kids.forEach(function(el){
+      walk(el);
+      if(!allowed[el.tagName]){
+        // unwrap: replace element with its children
+        var parent=el.parentNode;
+        while(el.firstChild)parent.insertBefore(el.firstChild,el);
+        parent.removeChild(el);
+      }else{
+        // strip all attributes
+        for(var i=el.attributes.length-1;i>=0;i--)el.removeAttribute(el.attributes[i].name);
+      }
+    });
+  })(root);
+  return root.innerHTML.trim();
+}
+
 // Extract brand from BC product object. Returns brand style if matched in BRAND_STYLES, else a generic fallback.
 function getBrandFromProduct(p){
   if(!p||!p.brand||!p.brand.name)return null;
@@ -1000,9 +1033,10 @@ window.fpQuickView=async function(pid){
   allImgs.sort(function(a,b){return (b.url===img?1:0)-(a.url===img?1:0);});
   // Fallback: if no images array, use defaultImage
   if(!allImgs.length&&img)allImgs.push({url:img,alt:p.name});
-  var descFull=p.description?p.description.replace(/<[^>]+>/g,'').trim():'';
-  var descIsLong=descFull.length>300;
-  var descTeaser=descIsLong?descFull.substring(0,300):descFull;
+  var descPlain=p.description?p.description.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim():'';
+  var descIsLong=descPlain.length>300;
+  var descTeaser=descIsLong?descPlain.substring(0,300):descPlain;
+  MODAL_DESC=descIsLong?sanitizeDesc(p.description):'';
   // Build carousel HTML
   var galleryHtml='';
   if(allImgs.length>1){
@@ -1034,7 +1068,7 @@ window.fpQuickView=async function(pid){
     '</div>'+
     '<div class="fp-modal-name">'+esc(cleanName(p.name,p.sku))+'</div>'+
     '<div class="fp-modal-prices"><div class="fp-modal-sale">$'+(qvCurrent?qvCurrent.toFixed(2):'?')+'</div>'+(qvHasDiscount?'<div class="fp-modal-was">$'+qvWas.toFixed(2)+'</div><div class="fp-modal-off">'+qvPct+'% Off</div>':'')+'</div>'+
-    (descFull?'<p class="fp-modal-desc" id="fp-modal-desc" data-full="'+esc(descFull)+'" data-teaser="'+esc(descTeaser)+'" style="font-size:13px;color:#555;line-height:1.5;margin-bottom:10px">'+esc(descTeaser)+(descIsLong?'… <a href="#" class="fp-modal-readmore" onclick="fpToggleDesc(event)">Read more</a>':'')+'</p>':'')+
+    (descPlain?'<div class="fp-modal-desc" id="fp-modal-desc" data-teaser="'+esc(descTeaser)+'" style="font-size:13px;color:#555;line-height:1.5;margin-bottom:10px">'+esc(descTeaser)+(descIsLong?'… <a href="#" class="fp-modal-readmore" onclick="fpToggleDesc(event)">Read more</a>':'')+'</div>':'')+
     '<div class="fp-modal-actions">'+
       '<div class="fp-modal-qty"><button class="fp-modal-qty-btn" onclick="fpQtyChg(-1)">−</button><div class="fp-modal-qty-val" id="fp-qty">1</div><button class="fp-modal-qty-btn" onclick="fpQtyChg(1)">+</button></div>'+
       '<button class="fp-modal-add" id="fp-modal-add" onclick="fpModalAdd('+pid+','+qvCurrent+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">Add to Cart</button>'+
@@ -1076,14 +1110,16 @@ window.fpToggleDesc=function(ev){
   if(ev){ev.preventDefault();ev.stopPropagation();}
   var el=document.getElementById('fp-modal-desc');if(!el)return;
   var expanded=el.getAttribute('data-expanded')==='1';
-  var full=el.getAttribute('data-full')||'';
   var teaser=el.getAttribute('data-teaser')||'';
   function dec(s){var t=document.createElement('textarea');t.innerHTML=s;return t.value;}
+  function escTxt(s){return s.replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
   if(expanded){
-    el.innerHTML=dec(teaser).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];})+'… <a href="#" class="fp-modal-readmore" onclick="fpToggleDesc(event)">Read more</a>';
+    el.classList.remove('fp-modal-desc-expanded');
+    el.innerHTML=escTxt(dec(teaser))+'… <a href="#" class="fp-modal-readmore" onclick="fpToggleDesc(event)">Read more</a>';
     el.setAttribute('data-expanded','0');
   }else{
-    el.innerHTML=dec(full).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];})+' <a href="#" class="fp-modal-readmore" onclick="fpToggleDesc(event)">Show less</a>';
+    el.classList.add('fp-modal-desc-expanded');
+    el.innerHTML=(MODAL_DESC||escTxt(dec(teaser)))+'<a href="#" class="fp-modal-readmore" onclick="fpToggleDesc(event)" style="display:inline-block;margin-top:8px">Show less</a>';
     el.setAttribute('data-expanded','1');
   }
 };
