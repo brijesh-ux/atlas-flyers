@@ -645,44 +645,19 @@ function renderHero(){
   '</a>';
 }
 
-// ==================== BRAND CHIPS ====================
+// ==================== BRAND CHIPS (REMOVED) ====================
+// The top brand-filter chip row has been removed — brand browsing now lives
+// only in the "Shop by Brand" section. renderChips() is still called from init
+// but now just strips the chip bar from the page if the markup is still present
+// in the HTML widget. fpFilter() and applyBrandFilter() are kept as no-ops so
+// any leftover references (e.g. renderProductSection, a stray "All" chip) stay
+// harmless and never hide product cards.
 function renderChips(){
-  var chips=$('fp-chips');
-  // Keep "All" chip
-  while(chips.children.length>1)chips.removeChild(chips.lastChild);
-  BRANDS_DEALS.forEach(function(b){
-    var div=document.createElement('div');
-    div.className='fp-chip';
-    div.setAttribute('data-bk',b.key);
-    div.textContent=b.name||b.key;
-    div.onclick=function(){fpFilter(b.key,div);};
-    if(b.style){
-      div.style.setProperty('--cbg',b.style.accentBg);
-      div.style.setProperty('--ctc',b.style.accentText);
-    }
-    chips.appendChild(div);
-  });
+  var wrap=document.querySelector('.fp-chips-wrap');
+  if(wrap&&wrap.parentNode)wrap.parentNode.removeChild(wrap);
 }
-window.fpFilter=function(bk,el){
-  document.querySelectorAll('.fp-chip').forEach(function(c){c.classList.remove('active');c.style.background='';c.style.color='';c.style.borderColor='';});
-  el.classList.add('active');
-  if(bk!=='all'&&el.style.getPropertyValue('--cbg')){
-    el.style.background=el.style.getPropertyValue('--cbg');
-    el.style.color=el.style.getPropertyValue('--ctc');
-    el.style.borderColor=el.style.getPropertyValue('--cbg');
-  }
-  BRAND_FILTER=bk;
-  if(getSetting('enable_brand_chip_filter',true))applyBrandFilter();
-  // Also open brand panel if it's a brand
-  if(bk!=='all'){setTimeout(function(){fpOpenBrandPanel(bk);},80);}
-};
-function applyBrandFilter(){
-  if(!getSetting('enable_brand_chip_filter',true))return;
-  document.querySelectorAll('.fp-rich').forEach(function(c){
-    if(BRAND_FILTER==='all'||c.dataset.bk===BRAND_FILTER){c.style.display='';}
-    else c.style.display='none';
-  });
-}
+window.fpFilter=function(){ /* brand chip filtering removed */ };
+function applyBrandFilter(){ /* brand chip filtering removed */ }
 
 // ==================== BUNDLES ====================
 async function renderBundles(){
@@ -960,6 +935,18 @@ function applySectionOrder(){
     if(!domId)return;
     var el=document.getElementById(domId);
     if(!el)return;
+    // For product-grid sections, don't reveal a section that has no data rows.
+    // This stops an empty header (e.g. "Under $99") from showing before lazy
+    // render runs. The section is still placed in order; if it has rows,
+    // renderProductSection later hides it only if everything is out of stock.
+    var pgrid=el.querySelector('[data-section]');
+    if(pgrid){
+      var sk=pgrid.getAttribute('data-section');
+      if(!(SECTION_DATA[sk]&&SECTION_DATA[sk].length)){
+        fragment.appendChild(el); // keep position in order, but leave hidden
+        return;
+      }
+    }
     el.classList.remove('fp-hidden');
     fragment.appendChild(el);
   });
