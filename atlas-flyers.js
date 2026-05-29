@@ -1071,7 +1071,7 @@ window.fpQuickView=async function(pid){
     (descPlain?'<div class="fp-modal-desc" id="fp-modal-desc" data-teaser="'+esc(descTeaser)+'" style="font-size:13px;color:#555;line-height:1.5;margin-bottom:10px">'+esc(descTeaser)+(descIsLong?'… <a href="#" class="fp-modal-readmore" onclick="fpToggleDesc(event)">Read more</a>':'')+'</div>':'')+
     '<div class="fp-modal-actions">'+
       '<div class="fp-modal-qty"><button class="fp-modal-qty-btn" onclick="fpQtyChg(-1)">−</button><div class="fp-modal-qty-val" id="fp-qty">1</div><button class="fp-modal-qty-btn" onclick="fpQtyChg(1)">+</button></div>'+
-      '<button class="fp-modal-add" id="fp-modal-add" onclick="fpModalAdd('+pid+','+qvCurrent+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">Add to Cart</button>'+
+      '<button class="fp-modal-add'+(inCartLabel(pid)?' added':'')+'" id="fp-modal-add" onclick="fpModalAdd('+pid+','+qvCurrent+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">'+(inCartLabel(pid)||'Add to Cart')+'</button>'+
     '</div>'+
     '<a class="fp-modal-view" href="'+esc(p.path||'#')+'">View full product details →</a>';
   // Enable finger-swipe on the image gallery (touch devices)
@@ -1140,7 +1140,7 @@ window.fpModalAdd=async function(pid,price,name){
   CART[pid].qty+=qty;
   CART_QTY[pid]=(CART_QTY[pid]||0)+qty;
   refreshCartButtons(pid);
-  btn.textContent='Added!';btn.classList.add('added');btn.disabled=false;
+  btn.textContent=inCartLabel(pid)||'Added!';btn.classList.add('added');btn.disabled=false;
   updateCartBar();toast(qty+' added to cart');
   setTimeout(fpCloseModal,800);
 };
