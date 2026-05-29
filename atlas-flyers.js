@@ -1028,8 +1028,10 @@ window.fpQuickView=async function(pid){
     '<div class="fp-modal-name">'+esc(cleanName(p.name,p.sku))+'</div>'+
     '<div class="fp-modal-prices"><div class="fp-modal-sale">$'+(qvCurrent?qvCurrent.toFixed(2):'?')+'</div>'+(qvHasDiscount?'<div class="fp-modal-was">$'+qvWas.toFixed(2)+'</div><div class="fp-modal-off">'+qvPct+'% Off</div>':'')+'</div>'+
     (desc?'<p style="font-size:13px;color:#555;line-height:1.5;margin-bottom:10px">'+esc(desc)+'...</p>':'')+
-    '<div class="fp-modal-qty"><button class="fp-modal-qty-btn" onclick="fpQtyChg(-1)">−</button><div class="fp-modal-qty-val" id="fp-qty">1</div><button class="fp-modal-qty-btn" onclick="fpQtyChg(1)">+</button></div>'+
-    '<button class="fp-modal-add" id="fp-modal-add" onclick="fpModalAdd('+pid+','+qvCurrent+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">Add to Cart</button>'+
+    '<div class="fp-modal-actions">'+
+      '<div class="fp-modal-qty"><button class="fp-modal-qty-btn" onclick="fpQtyChg(-1)">−</button><div class="fp-modal-qty-val" id="fp-qty">1</div><button class="fp-modal-qty-btn" onclick="fpQtyChg(1)">+</button></div>'+
+      '<button class="fp-modal-add" id="fp-modal-add" onclick="fpModalAdd('+pid+','+qvCurrent+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">Add to Cart</button>'+
+    '</div>'+
     '<a class="fp-modal-view" href="'+esc(p.path||'#')+'">View full product details →</a>';
 };
 window.fpModalGoto=function(idx){
