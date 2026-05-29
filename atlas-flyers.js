@@ -1033,6 +1033,23 @@ window.fpQuickView=async function(pid){
       '<button class="fp-modal-add" id="fp-modal-add" onclick="fpModalAdd('+pid+','+qvCurrent+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">Add to Cart</button>'+
     '</div>'+
     '<a class="fp-modal-view" href="'+esc(p.path||'#')+'">View full product details →</a>';
+  // Enable finger-swipe on the image gallery (touch devices)
+  var gal=document.getElementById('fp-modal-slides');
+  if(gal){
+    var sx=0,sy=0,swiping=false;
+    gal.addEventListener('touchstart',function(e){
+      var t=e.changedTouches[0];sx=t.clientX;sy=t.clientY;swiping=true;
+    },{passive:true});
+    gal.addEventListener('touchend',function(e){
+      if(!swiping)return;swiping=false;
+      var t=e.changedTouches[0];
+      var dx=t.clientX-sx,dy=t.clientY-sy;
+      // horizontal swipe only (ignore mostly-vertical scrolls), min 40px
+      if(Math.abs(dx)>40&&Math.abs(dx)>Math.abs(dy)){
+        if(dx<0)fpModalNext();else fpModalPrev();
+      }
+    },{passive:true});
+  }
 };
 window.fpModalGoto=function(idx){
   var slides=document.querySelectorAll('#fp-modal-slides .fp-modal-slide');
