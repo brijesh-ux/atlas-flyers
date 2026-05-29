@@ -604,16 +604,16 @@ window.fpCloseBrandPanel=function(key){
   if(OPEN_BRAND===key)OPEN_BRAND=null;
 };
 window.fpToggleBrandsGrid=function(){
+  // Layout is a responsive CSS grid; collapsed shows ~2 rows (max-height in CSS),
+  // expanded removes the cap. Just toggle the data attribute + button label — no
+  // inline widths (those would override the grid's responsive track sizing).
   var grid=$('fp-brands');var btn=$('fp-brands-btn');
   var ex=grid.getAttribute('data-ex')==='1';
   if(!ex){
-    grid.setAttribute('data-ex','1');grid.style.flexWrap='wrap';grid.style.overflowX='visible';
-    var w=window.innerWidth<600?'calc(50% - 6px)':'180px';
-    Array.from(grid.children).forEach(function(c){c.style.width=w;});
+    grid.setAttribute('data-ex','1');
     btn.textContent='COLLAPSE';btn.classList.add('expanded');
   }else{
-    grid.setAttribute('data-ex','0');grid.style.flexWrap='';grid.style.overflowX='auto';
-    Array.from(grid.children).forEach(function(c){c.style.width='200px';});
+    grid.setAttribute('data-ex','0');
     btn.textContent='VIEW ALL';btn.classList.remove('expanded');
   }
 };
