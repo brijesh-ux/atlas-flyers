@@ -102,6 +102,19 @@ function getBrandFromProduct(p){
   return {key:'',name:p.brand.name,accentBg:'#ffffff',accentText:'#0f0f0f',logoUrl:'',brandIconUrl:''};
 }
 
+// ==================== STOCK / AVAILABILITY ====================
+// Single source of truth for whether a product should render on the page.
+// Driven entirely by BigCommerce (CSV "Stock Status" column is ignored).
+// Show if: in stock OR available to order (Preorder). Hide if: Unavailable,
+// out of stock, or product missing/deleted (null).
+function isShowable(p){
+  if(!p)return false;
+  var av=p.availabilityV2&&p.availabilityV2.status;
+  if(av==='Unavailable')return false;        // not purchasable -> hide
+  if(av==='Preorder')return true;            // available to order -> show
+  return (p.inventory?p.inventory.isInStock:true)!==false; // else: show only if in stock
+}
+
 // ==================== CSV PARSER ====================
 function parseCSV(text){
   var lines=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').trim().split('\n');
@@ -188,7 +201,7 @@ async function fetchProducts(ids){
   for(var c=0;c<chunks.length;c++){
     var chunk=chunks[c];
     var fields=chunk.map(function(id,i){
-      return 'p'+i+':product(entityId:'+id+'){name entityId sku brand{name path} prices{price{value}salePrice{value}retailPrice{value}}defaultImage{url(width:400)} images{edges{node{urlOriginal url(width:800) isDefault altText}}} path description}';
+      return 'p'+i+':product(entityId:'+id+'){name entityId sku brand{name path} prices{price{value}salePrice{value}retailPrice{value}}defaultImage{url(width:400)} images{edges{node{urlOriginal url(width:800) isDefault altText}}} path description inventory{isInStock} availabilityV2{status}}';
     }).join(' ');
     var query='{site{'+fields+'}}';
     try{
@@ -276,6 +289,9 @@ function richCard(p,m){
   // Tag: hidden by default unless m.showTag is true. Custom color via m.customTagColor.
   var tagStyle=m.customTagColor?' style="background:'+m.customTagColor+';color:#fff"':'';
   var tagHtml=m.showTag?'<span class="fp-rich-tag '+tcls+'"'+tagStyle+'>'+esc(tag)+'</span>':'<span></span>';
+  // Stock badge driven by BigCommerce availability (CSV "Stock Status" ignored).
+  var bcStatus=p.availabilityV2&&p.availabilityV2.status;
+  var stockHtml=(bcStatus==='Preorder')?'<div class="fp-rich-stock fp-rich-stock-ord">✓ Available to Order</div>':'<div class="fp-rich-stock">✓ In Stock</div>';
   return '<div class="fp-rich" data-bk="'+esc((b&&b.key)||'')+'">'+
     '<div class="fp-rich-top">'+
       (brandLabel?'<span class="fp-rich-brand" style="background:'+brandBg+';color:'+brandTc+brandBorder+'">'+esc(brandLabel)+'</span>':'<span></span>')+
@@ -284,7 +300,7 @@ function richCard(p,m){
     (img?'<div class="fp-rich-img-wrap"'+(quickView?' onclick="fpQuickView('+p.entityId+')"':'')+'><img src="'+img+'" alt="'+esc(p.name)+'" loading="lazy"></div>':'<div class="fp-rich-ph">🔧</div>')+
     '<a class="fp-rich-name" href="'+esc(p.path||'#')+'" onclick="fpTrackRecent('+p.entityId+')">'+esc(cn)+'</a>'+
     '<div class="fp-rich-sku">SKU# '+esc(p.sku||p.entityId)+'</div>'+
-    (m.st==='order'?'<div class="fp-rich-stock fp-rich-stock-ord">✓ Available to Order</div>':'<div class="fp-rich-stock">✓ In Stock</div>')+
+    stockHtml+
     visitorRowHtml+
     '<div class="fp-rich-prices">'+(hasDiscount?'<div class="fp-rich-sale">$'+currentPrice.toFixed(2)+'</div><div class="fp-rich-off">↓ '+savePct+'% Off</div><div class="fp-rich-was">$'+wasPrice.toFixed(2)+'</div>':'<div class="fp-rich-reg">'+(pr?'$'+pr.toFixed(2):'See price')+'</div>')+'</div>'+
     (m.code?'<div class="fp-rich-code"><span class="fp-rich-code-lbl">Code:</span><span class="fp-rich-code-val">'+esc(m.code)+'</span></div>':'')+
@@ -329,7 +345,10 @@ async function renderProductSection(sectionKey,gridId){
   if(!items.length){hide('fp-sec-'+sectionKey);return;}
   var ids=items.map(function(x){return x.id;});
   await fetchProducts(ids);
-  var html=items.map(function(m){return richCard(PRODUCT_CACHE[m.id],m);}).join('');
+  // Filter out anything BigCommerce reports as out of stock / unavailable / deleted.
+  var visible=items.filter(function(m){return isShowable(PRODUCT_CACHE[m.id]);});
+  if(!visible.length){hide('fp-sec-'+sectionKey);return;}
+  var html=visible.map(function(m){return richCard(PRODUCT_CACHE[m.id],m);}).join('');
   grid.innerHTML=html;
   show('fp-sec-'+sectionKey);
   applyBrandFilter();
@@ -387,6 +406,8 @@ async function renderDealOfDay(){
   var sub=pick['Subline']||'';
   var ps=await fetchProducts([pid]);
   var p=ps[pid];if(!p){hide('fp-sec-dod');return;}
+  // Hide the whole Deal of the Day if BC reports it out of stock / unavailable.
+  if(!isShowable(p)){hide('fp-sec-dod');return;}
   var pr=p.prices&&p.prices.price?p.prices.price.value:null;
   var sl=p.prices&&p.prices.salePrice?p.prices.salePrice.value:null;
   var os=sl&&sl<pr;
@@ -421,6 +442,9 @@ async function renderCountdown(){
   var grid=$('fp-countdown');
   grid.innerHTML=items.map(function(){return'<div class="fp-skel" style="width:220px;height:280px"></div>';}).join('');
   await fetchProducts(items.map(function(x){return x.id;}));
+  // Drop any out-of-stock / unavailable items; hide section if none remain.
+  items=items.filter(function(it){return isShowable(PRODUCT_CACHE[it.id]);});
+  if(!items.length){hide('fp-sec-countdown');return;}
   COUNTDOWN_TIMERS=[];
   grid.innerHTML=items.map(function(it,i){
     var p=PRODUCT_CACHE[it.id];
@@ -533,7 +557,10 @@ window.fpOpenBrandPanel=async function(key){
     var lbl=({sale:'PRICE DROP',hot:'HOT DEAL',free:'🎁 FREE GIFT',new:'NEW',best:'BEST SELLER'})[d.type]||'DEAL';
     await fetchProducts(d.ids);
     var g=$('fpbg-'+key+'-'+i);if(!g)continue;
-    g.innerHTML=d.ids.map(function(id){
+    // Only render products BC reports as in stock / available to order.
+    var visibleIds=d.ids.filter(function(id){return isShowable(PRODUCT_CACHE[id]);});
+    if(!visibleIds.length){g.innerHTML='<div style="font-size:12px;color:#999;padding:4px 0 10px">These deals are currently sold out.</div>';continue;}
+    g.innerHTML=visibleIds.map(function(id){
       return richCard(PRODUCT_CACHE[id],{brand:b.style,tag:lbl,tcls:def,st:'in',_sectionKey:'shopByBrand',showTag:true});
     }).join('');
   }
@@ -645,6 +672,9 @@ async function renderBundles(){
   var html=bundles.map(function(bundle){
     var prods=bundle.ids.map(function(id){return PRODUCT_CACHE[id];}).filter(Boolean);
     if(!prods.length)return'';
+    // Hide the whole bundle if ANY component is out of stock / unavailable.
+    var allShowable=bundle.ids.every(function(id){return isShowable(PRODUCT_CACHE[id]);});
+    if(!allShowable)return'';
     var was=prods.reduce(function(a,p){return a+(p.prices&&p.prices.price?p.prices.price.value:0);},0);
     var save=was>bundle.price?(was-bundle.price).toFixed(0):'?';
     var ph=prods.map(function(p,pi){
@@ -664,7 +694,13 @@ async function renderBundles(){
 window.fpToggleBundle=function(id){var e=$('fpbd-'+id);if(e)e.classList.toggle('open');};
 window.fpAddBundle=async function(bid,ids){
   var btn=$('fpba-'+bid);if(btn){btn.disabled=true;btn.textContent='Adding...';}
-  for(var i=0;i<ids.length;i++)await addToCartSilent(ids[i]);
+  var anyFailed=false;
+  for(var i=0;i<ids.length;i++){var ok=await addToCartSilent(ids[i]);if(!ok)anyFailed=true;}
+  if(anyFailed){
+    if(btn){btn.textContent='Add Bundle';btn.disabled=false;}
+    toast('Couldn’t add the full bundle — please try again');
+    return;
+  }
   ids.forEach(function(id){
     var p=PRODUCT_CACHE[id];if(!p)return;
     if(!CART[id])CART[id]={name:p.name,price:p.prices&&p.prices.price?p.prices.price.value:0,qty:0};
@@ -714,8 +750,10 @@ async function renderStaff(){
   if(!staff.length){hide('fp-sec-staff');return;}
   var allIds=[];staff.forEach(function(s){s.ids.forEach(function(id){allIds.push(id);});});
   await fetchProducts(allIds);
-  $('fp-staff').innerHTML=staff.map(function(s){
-    var prods=s.ids.map(function(id){return{id:id,p:PRODUCT_CACHE[id]};}).filter(function(x){return x.p;});
+  // Build only staff cards that still have at least one in-stock product.
+  var cardsHtml=staff.map(function(s){
+    var prods=s.ids.map(function(id){return{id:id,p:PRODUCT_CACHE[id]};}).filter(function(x){return isShowable(x.p);});
+    if(!prods.length)return'';
     return '<div class="fp-staff-card">'+
       '<div class="fp-staff-head">'+
         '<div class="fp-staff-photo">'+(s.photo?'<img src="'+esc(s.photo)+'" alt="'+esc(s.name)+'" loading="lazy">':'👷')+'</div>'+
@@ -728,6 +766,8 @@ async function renderStaff(){
       }).join('')+'</div>'+
     '</div>';
   }).join('');
+  if(!cardsHtml.trim()){hide('fp-sec-staff');return;}
+  $('fp-staff').innerHTML=cardsHtml;
   show('fp-sec-staff');
 }
 
@@ -912,11 +952,11 @@ async function renderRecent(){
   if(!getSetting('show_recently_viewed',true)||!RECENT.length){hide('fp-sec-recent');return;}
   await fetchProducts(RECENT);
   var html=RECENT.map(function(id){
-    var p=PRODUCT_CACHE[id];if(!p)return'';
+    var p=PRODUCT_CACHE[id];if(!isShowable(p))return'';
     var img=p.defaultImage?p.defaultImage.url:'';
     return '<a class="fp-recent" href="'+esc(p.path||'#')+'"><div class="fp-recent-img">'+(img?'<img src="'+img+'" loading="lazy">':'🔧')+'</div><div class="fp-recent-name">'+esc(cleanName(p.name,p.sku))+'</div></a>';
   }).filter(Boolean).join('');
-  if(html.trim()){$('fp-recent').innerHTML=html;show('fp-sec-recent');}
+  if(html.trim()){$('fp-recent').innerHTML=html;show('fp-sec-recent');}else{hide('fp-sec-recent');}
 }
 
 // ==================== WISHLIST ====================
@@ -937,6 +977,8 @@ window.fpQuickView=async function(pid){
   document.body.style.overflow='hidden';
   await fetchProducts([pid]);
   var p=PRODUCT_CACHE[pid];if(!p){c.innerHTML='<p style="padding:20px">Product not available.</p>';return;}
+  // If the product went out of stock / unavailable, don't show the buy UI.
+  if(!isShowable(p)){c.innerHTML='<div style="padding:30px 20px;text-align:center"><div style="font-size:16px;font-weight:700;margin-bottom:6px">'+esc(cleanName(p.name,p.sku))+'</div><p style="font-size:13px;color:#777">This item is no longer available.</p><a class="fp-modal-view" href="'+esc(p.path||'#')+'">View product page →</a></div>';return;}
   var pr=p.prices&&p.prices.price?p.prices.price.value:null;
   var sl=p.prices&&p.prices.salePrice?p.prices.salePrice.value:null;
   var rp=p.prices&&p.prices.retailPrice?p.prices.retailPrice.value:null;
@@ -1010,7 +1052,13 @@ window.fpQtyChg=function(d){var el=$('fp-qty');var v=parseInt(el.textContent)||1
 window.fpModalAdd=async function(pid,price,name){
   var btn=$('fp-modal-add');var qty=parseInt($('fp-qty').textContent)||1;
   btn.disabled=true;btn.textContent='Adding...';
-  for(var i=0;i<qty;i++)await addToCartSilent(pid);
+  var anyFailed=false;
+  for(var i=0;i<qty;i++){var ok=await addToCartSilent(pid);if(!ok)anyFailed=true;}
+  if(anyFailed){
+    btn.textContent='Add to Cart';btn.disabled=false;
+    toast('Couldn’t add to cart — item may be unavailable');
+    return;
+  }
   if(!CART[pid])CART[pid]={name:name,price:price,qty:0};
   CART[pid].qty+=qty;
   btn.textContent='Added!';btn.classList.add('added');btn.disabled=false;
@@ -1022,7 +1070,8 @@ async function fpMultiQuickView(ids,title){
   c.innerHTML='<div style="padding:40px;text-align:center;color:#999">Loading...</div>';
   modal.classList.add('open');document.body.style.overflow='hidden';
   await fetchProducts(ids);
-  var items=ids.map(function(id){return PRODUCT_CACHE[id];}).filter(Boolean);
+  var items=ids.map(function(id){return PRODUCT_CACHE[id];}).filter(isShowable);
+  if(!items.length){c.innerHTML='<h3 style="margin-bottom:14px;font-size:18px">'+esc(title)+'</h3><p style="font-size:13px;color:#777;padding:8px">These items are currently sold out.</p>';return;}
   c.innerHTML='<h3 style="margin-bottom:14px;font-size:18px">'+esc(title)+'</h3>'+items.map(function(p){
     var pr=p.prices&&p.prices.price?p.prices.price.value:null;
     var sl=p.prices&&p.prices.salePrice?p.prices.salePrice.value:null;
@@ -1036,18 +1085,28 @@ async function fpMultiQuickView(ids,title){
 }
 
 // ==================== CART ====================
+// Returns true if the item was successfully added, false otherwise.
 async function addToCartSilent(id){
   try{
     var r=await fetch('/api/storefront/carts',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({lineItems:[{quantity:1,productId:id}]})});
-    if(!r.ok){
-      var ex=await fetch('/api/storefront/carts').then(function(x){return x.json();});
-      if(ex&&ex.length)await fetch('/api/storefront/carts/'+ex[0].id+'/items',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({lineItems:[{quantity:1,productId:id}]})});
+    if(r.ok)return true;
+    // Cart may already exist (creating a new one fails) — add to the existing cart instead.
+    var ex=await fetch('/api/storefront/carts').then(function(x){return x.json();}).catch(function(){return null;});
+    if(ex&&ex.length){
+      var r2=await fetch('/api/storefront/carts/'+ex[0].id+'/items',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({lineItems:[{quantity:1,productId:id}]})});
+      return r2.ok;
     }
-  }catch(e){}
+    return false;
+  }catch(e){return false;}
 }
 window.fpAdd=async function(id,price,name,bid){
   var b=$(bid);if(b){b.disabled=true;b.textContent='Adding...';}
-  await addToCartSilent(id);
+  var ok=await addToCartSilent(id);
+  if(!ok){
+    if(b){b.textContent='Add to Cart';b.disabled=false;}
+    toast('Couldn’t add to cart — item may be unavailable');
+    return;
+  }
   if(!CART[id])CART[id]={name:name,price:price,qty:0};
   CART[id].qty++;
   if(b){b.textContent='Added!';b.classList.add('added');b.disabled=false;}
@@ -1083,7 +1142,8 @@ window.fpToggleSection=function(gid,btn){
     btn.textContent='COLLAPSE';btn.classList.add('expanded');
   }else{
     g.setAttribute('data-ex','0');g.style.flexWrap='';g.style.overflowX='auto';
-    Array.from(g.children).forEach(function(c){if(c.classList.contains('fp-rich'))c.style.width='220px';});
+    var cw=window.innerWidth<600?'calc(50% - 6px)':'200px';
+    Array.from(g.children).forEach(function(c){if(c.classList.contains('fp-rich'))c.style.width=cw;});
     btn.textContent='VIEW ALL';btn.classList.remove('expanded');
   }
 };
