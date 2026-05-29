@@ -1240,17 +1240,17 @@ window.fpFAQ=function(i){$('fpfa-'+i).classList.toggle('open');$('fpfi-'+i).clas
 
 // ==================== SECTION VIEW ALL TOGGLE ====================
 window.fpToggleSection=function(gid,btn){
+  // Expand/collapse is driven by CSS off the data-ex attribute
+  // (see .fp-rich-grid[data-ex="1"]). No inline widths here — the old code forced
+  // every tile to a fixed 200px on desktop, which shrank and left-aligned them on
+  // wide screens. CSS now lays out a responsive grid on expand instead.
   var g=$(gid);if(!g)return;
   var ex=g.getAttribute('data-ex')==='1';
   if(!ex){
-    g.setAttribute('data-ex','1');g.style.flexWrap='wrap';g.style.overflowX='visible';
-    var w=window.innerWidth<600?'calc(50% - 6px)':'200px';
-    Array.from(g.children).forEach(function(c){if(c.classList.contains('fp-rich'))c.style.width=w;});
+    g.setAttribute('data-ex','1');
     btn.textContent='COLLAPSE';btn.classList.add('expanded');
   }else{
-    g.setAttribute('data-ex','0');g.style.flexWrap='';g.style.overflowX='auto';
-    var cw=window.innerWidth<600?'calc(50% - 6px)':'200px';
-    Array.from(g.children).forEach(function(c){if(c.classList.contains('fp-rich'))c.style.width=cw;});
+    g.setAttribute('data-ex','0');
     btn.textContent='VIEW ALL';btn.classList.remove('expanded');
   }
 };
