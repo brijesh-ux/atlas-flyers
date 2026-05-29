@@ -53,6 +53,7 @@ var FAQS_FALLBACK = [
   {q:'How do I redeem the Veto Pro Pac bonus bag?', a:'1) Buy a qualifying Veto product from Atlas in-store or online. 2) Redeem at vetopropac.com. 3) Veto ships the bonus bag directly to your door.'}
 ];
 var CART = {};
+var CART_QTY = {}; // productId -> quantity currently in the live BigCommerce cart (read on load)
 var WISHLIST = JSON.parse(localStorage.getItem('fp_wishlist') || '{}');
 var RECENT = JSON.parse(localStorage.getItem('fp_recent') || '[]');
 var OPEN_BRAND = null;
@@ -304,7 +305,7 @@ function richCard(p,m){
     visitorRowHtml+
     '<div class="fp-rich-prices">'+(hasDiscount?'<div class="fp-rich-sale">$'+currentPrice.toFixed(2)+'</div><div class="fp-rich-off">↓ '+savePct+'% Off</div><div class="fp-rich-was">$'+wasPrice.toFixed(2)+'</div>':'<div class="fp-rich-reg">'+(pr?'$'+pr.toFixed(2):'See price')+'</div>')+'</div>'+
     (m.code?'<div class="fp-rich-code"><span class="fp-rich-code-lbl">Code:</span><span class="fp-rich-code-val">'+esc(m.code)+'</span></div>':'')+
-    '<button class="fp-rich-add" id="'+bid+'" onclick="fpAdd('+p.entityId+','+(hasDiscount?currentPrice:pr)+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">Add to Cart</button>'+
+    '<button class="fp-rich-add'+(inCartLabel(p.entityId)?' added':'')+'" id="'+bid+'" data-pid="'+p.entityId+'" onclick="fpAdd('+p.entityId+','+(hasDiscount?currentPrice:pr)+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">'+(inCartLabel(p.entityId)||'Add to Cart')+'</button>'+
   '</div>';
 }
 
@@ -465,7 +466,7 @@ async function renderCountdown(){
       '<div class="fp-cd-img-wrap" onclick="fpQuickView('+it.id+')">'+(img?'<img src="'+img+'" loading="lazy">':'🔧')+'</div>'+
       '<div class="fp-cd-name">'+esc(cleanName(p.name,p.sku))+'</div>'+
       '<div class="fp-cd-prices"><span class="fp-cd-sale">$'+(os?sl.toFixed(2):pr?pr.toFixed(2):'?')+'</span>'+(os?'<span class="fp-cd-was">$'+pr.toFixed(2)+'</span>':'')+'</div>'+
-      '<button class="fp-cd-add" id="'+bid+'" onclick="fpAdd('+it.id+','+(os?sl:pr)+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">Add to Cart</button>'+
+      '<button class="fp-cd-add'+(inCartLabel(it.id)?' added':'')+'" id="'+bid+'" data-pid="'+it.id+'" onclick="fpAdd('+it.id+','+(os?sl:pr)+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">'+(inCartLabel(it.id)||'Add to Cart')+'</button>'+
     '</div>';
   }).filter(Boolean).join('');
   show('fp-sec-countdown');
@@ -705,6 +706,8 @@ window.fpAddBundle=async function(bid,ids){
     var p=PRODUCT_CACHE[id];if(!p)return;
     if(!CART[id])CART[id]={name:p.name,price:p.prices&&p.prices.price?p.prices.price.value:0,qty:0};
     CART[id].qty++;
+    CART_QTY[id]=(CART_QTY[id]||0)+1;
+    refreshCartButtons(id);
   });
   if(btn){btn.textContent='Added!';btn.classList.add('added');btn.disabled=false;}
   updateCartBar();toast('Bundle added!');
@@ -997,7 +1000,9 @@ window.fpQuickView=async function(pid){
   allImgs.sort(function(a,b){return (b.url===img?1:0)-(a.url===img?1:0);});
   // Fallback: if no images array, use defaultImage
   if(!allImgs.length&&img)allImgs.push({url:img,alt:p.name});
-  var desc=p.description?p.description.replace(/<[^>]+>/g,'').substring(0,300):'';
+  var descFull=p.description?p.description.replace(/<[^>]+>/g,'').trim():'';
+  var descIsLong=descFull.length>300;
+  var descTeaser=descIsLong?descFull.substring(0,300):descFull;
   // Build carousel HTML
   var galleryHtml='';
   if(allImgs.length>1){
@@ -1023,11 +1028,13 @@ window.fpQuickView=async function(pid){
   var modalBrandTc=modalBrand?modalBrand.accentText:'#ffffff';
   var modalBrandBorder=modalBrand&&!modalBrand.key?';border:1px solid #ddd':'';
   c.innerHTML=galleryHtml+
-    (modalBrandLabel?'<div class="fp-modal-brand-row"><span class="fp-modal-brand-badge" style="background:'+modalBrandBg+';color:'+modalBrandTc+modalBrandBorder+'">'+esc(modalBrandLabel)+'</span></div>':'')+
-    '<div class="fp-modal-sku">SKU# '+esc(p.sku||p.entityId)+'</div>'+
+    '<div class="fp-modal-brand-row">'+
+      (modalBrandLabel?'<span class="fp-modal-brand-badge" style="background:'+modalBrandBg+';color:'+modalBrandTc+modalBrandBorder+'">'+esc(modalBrandLabel)+'</span>':'')+
+      '<span class="fp-modal-sku">SKU# '+esc(p.sku||p.entityId)+'</span>'+
+    '</div>'+
     '<div class="fp-modal-name">'+esc(cleanName(p.name,p.sku))+'</div>'+
     '<div class="fp-modal-prices"><div class="fp-modal-sale">$'+(qvCurrent?qvCurrent.toFixed(2):'?')+'</div>'+(qvHasDiscount?'<div class="fp-modal-was">$'+qvWas.toFixed(2)+'</div><div class="fp-modal-off">'+qvPct+'% Off</div>':'')+'</div>'+
-    (desc?'<p style="font-size:13px;color:#555;line-height:1.5;margin-bottom:10px">'+esc(desc)+'...</p>':'')+
+    (descFull?'<p class="fp-modal-desc" id="fp-modal-desc" data-full="'+esc(descFull)+'" data-teaser="'+esc(descTeaser)+'" style="font-size:13px;color:#555;line-height:1.5;margin-bottom:10px">'+esc(descTeaser)+(descIsLong?'… <a href="#" class="fp-modal-readmore" onclick="fpToggleDesc(event)">Read more</a>':'')+'</p>':'')+
     '<div class="fp-modal-actions">'+
       '<div class="fp-modal-qty"><button class="fp-modal-qty-btn" onclick="fpQtyChg(-1)">−</button><div class="fp-modal-qty-val" id="fp-qty">1</div><button class="fp-modal-qty-btn" onclick="fpQtyChg(1)">+</button></div>'+
       '<button class="fp-modal-add" id="fp-modal-add" onclick="fpModalAdd('+pid+','+qvCurrent+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">Add to Cart</button>'+
@@ -1065,6 +1072,21 @@ window.fpModalGoto=function(idx){
 };
 window.fpModalNext=function(){fpModalGoto((window._fpModalImgIdx||0)+1);};
 window.fpModalPrev=function(){fpModalGoto((window._fpModalImgIdx||0)-1);};
+window.fpToggleDesc=function(ev){
+  if(ev){ev.preventDefault();ev.stopPropagation();}
+  var el=document.getElementById('fp-modal-desc');if(!el)return;
+  var expanded=el.getAttribute('data-expanded')==='1';
+  var full=el.getAttribute('data-full')||'';
+  var teaser=el.getAttribute('data-teaser')||'';
+  function dec(s){var t=document.createElement('textarea');t.innerHTML=s;return t.value;}
+  if(expanded){
+    el.innerHTML=dec(teaser).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];})+'… <a href="#" class="fp-modal-readmore" onclick="fpToggleDesc(event)">Read more</a>';
+    el.setAttribute('data-expanded','0');
+  }else{
+    el.innerHTML=dec(full).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];})+' <a href="#" class="fp-modal-readmore" onclick="fpToggleDesc(event)">Show less</a>';
+    el.setAttribute('data-expanded','1');
+  }
+};
 
 window.fpCloseModal=function(){$('fp-modal').classList.remove('open');document.body.style.overflow='';};
 window.fpQtyChg=function(d){var el=$('fp-qty');var v=parseInt(el.textContent)||1;v=Math.max(1,v+d);el.textContent=v;};
@@ -1080,6 +1102,8 @@ window.fpModalAdd=async function(pid,price,name){
   }
   if(!CART[pid])CART[pid]={name:name,price:price,qty:0};
   CART[pid].qty+=qty;
+  CART_QTY[pid]=(CART_QTY[pid]||0)+qty;
+  refreshCartButtons(pid);
   btn.textContent='Added!';btn.classList.add('added');btn.disabled=false;
   updateCartBar();toast(qty+' added to cart');
   setTimeout(fpCloseModal,800);
@@ -1104,6 +1128,45 @@ async function fpMultiQuickView(ids,title){
 }
 
 // ==================== CART ====================
+// Read the live BigCommerce cart (guest or logged-in; cookie/session based) so
+// tiles can show "✓ IN CART (x)" persistently across refreshes/visits.
+async function loadServerCart(){
+  CART_QTY={};
+  try{
+    var r=await fetch('/api/storefront/carts',{credentials:'same-origin'});
+    if(!r.ok)return;
+    var carts=await r.json();
+    if(!carts||!carts.length)return;
+    var li=carts[0].lineItems||{};
+    var all=(li.physicalItems||[]).concat(li.digitalItems||[]);
+    all.forEach(function(item){
+      var pid=item.productId;
+      if(pid==null)return;
+      CART_QTY[pid]=(CART_QTY[pid]||0)+(item.quantity||0);
+    });
+  }catch(e){/* no cart / not available -> leave empty */}
+}
+// Returns the "in cart" button label for a product, or null if not in cart.
+function inCartLabel(id){
+  var q=CART_QTY[id];
+  return q>0?('✓ IN CART ('+q+')'):null;
+}
+// Re-apply "in cart" state to every add button for a product (it can appear in
+// multiple sections). Call after a successful add.
+function refreshCartButtons(id){
+  var lbl=inCartLabel(id);
+  document.querySelectorAll('.fp-rich-add[data-pid="'+id+'"],.fp-cd-add[data-pid="'+id+'"]').forEach(function(b){
+    if(lbl){b.textContent=lbl;b.classList.add('added');}
+    else{b.textContent='Add to Cart';b.classList.remove('added');}
+  });
+}
+// Sweep all currently-rendered add buttons and apply in-cart state.
+function applyCartStateToButtons(){
+  document.querySelectorAll('.fp-rich-add[data-pid],.fp-cd-add[data-pid]').forEach(function(b){
+    var lbl=inCartLabel(b.getAttribute('data-pid'));
+    if(lbl){b.textContent=lbl;b.classList.add('added');}
+  });
+}
 // Returns true if the item was successfully added, false otherwise.
 async function addToCartSilent(id){
   try{
@@ -1128,7 +1191,9 @@ window.fpAdd=async function(id,price,name,bid){
   }
   if(!CART[id])CART[id]={name:name,price:price,qty:0};
   CART[id].qty++;
-  if(b){b.textContent='Added!';b.classList.add('added');b.disabled=false;}
+  CART_QTY[id]=(CART_QTY[id]||0)+1;
+  if(b)b.disabled=false;
+  refreshCartButtons(id);
   updateCartBar();toast('Added to cart');
 };
 function updateCartBar(){
@@ -1245,10 +1310,10 @@ async function init(){
   renderFAQs();
   setupScrollSave();
 
-  // 2) Fetch all other CSVs in parallel
+  // 2) Fetch all other CSVs in parallel (plus the live cart, so tiles can show "in cart")
   var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','clearance','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','newArrivals','lastChance','videoSection','shopByTrade','promoBanners','faqs','sectionOrder'];
   var promises=keys.map(function(k){return fetchCSV(k,GIDS[k]);});
-  var results=await Promise.all(promises);
+  var results=await Promise.all(promises.concat([loadServerCart()]));
   keys.forEach(function(k,i){SECTION_DATA[k]=results[i]||[];});
   console.log('[Atlas Flyers] All CSVs loaded');
 
