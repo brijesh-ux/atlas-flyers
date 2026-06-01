@@ -404,6 +404,7 @@ async function renderProductSection(sectionKey,gridId){
     grid.innerHTML=visible.map(function(m){return richCard(PRODUCT_CACHE[m.id],m);}).join('');
     show('fp-sec-'+sectionKey);
     applyBrandFilter();
+    if(typeof setupScrollArrows==='function')setupScrollArrows();
     return;
   }
 
@@ -427,6 +428,7 @@ async function renderProductSection(sectionKey,gridId){
   show('fp-sec-'+sectionKey);
   applyBrandFilter();
   wirePagerLazyLoad();
+  if(typeof setupScrollArrows==='function')setupScrollArrows();
 }
 
 // ==================== LAZY LOAD ====================
@@ -696,6 +698,7 @@ async function renderBrandRows(){
   // Fill each strip's first page, then wire lazy-loading.
   Object.keys(BRAND_STRIP_STATE).forEach(function(gid){ loadBrandPage(gid); });
   wireBrandLazyLoad();
+  if(typeof setupScrollArrows==='function')setupScrollArrows();
 }
 
 // Append the next page of products (in CSV order) to a strip.
@@ -719,6 +722,7 @@ async function loadBrandPage(gid){
   else grid.insertAdjacentHTML('beforeend',html);
   st.shown+=next.length;
   st.loading=false;
+  if(typeof refreshScrollArrows==='function')refreshScrollArrows(grid);
 }
 
 // IntersectionObserver: when a strip's end sentinel scrolls into view, load more.
@@ -779,6 +783,7 @@ async function loadPagerPage(gridId){
   else grid.insertAdjacentHTML('beforeend',html);
   st.shown+=next.length;
   st.loading=false;
+  if(typeof refreshScrollArrows==='function')refreshScrollArrows(grid);
 }
 
 function wirePagerLazyLoad(){
@@ -1445,7 +1450,54 @@ window.fpToggleSection=function(gid,btn){
     g.setAttribute('data-ex','0');
     btn.textContent='VIEW ALL';btn.classList.remove('expanded');
   }
+  // Arrows only make sense on a collapsed horizontal strip — refresh this one.
+  refreshScrollArrows(g);
 };
+
+// ==================== SHARED SCROLL ARROWS ====================
+// Overlays left/right chevrons on every horizontal product strip (.fp-rich-grid),
+// reusing the flyer-arrow style. Arrows show only when the strip overflows AND is
+// collapsed; they hide when expanded (VIEW ALL) and auto-hide at each end. Runs
+// once after render and is idempotent (safe to re-run after lazy-load appends).
+function setupScrollArrows(){
+  if(!getSetting('enable_scroll_arrows',true))return;
+  document.querySelectorAll('.fp-rich-grid').forEach(function(grid){
+    if(grid.parentNode&&grid.parentNode.classList.contains('fp-scroll-wrap'))return; // already wrapped
+    var wrap=document.createElement('div');
+    wrap.className='fp-scroll-wrap';
+    grid.parentNode.insertBefore(wrap,grid);
+    wrap.appendChild(grid);
+    var L=document.createElement('button');
+    L.className='fp-scroll-arrow fp-scroll-arrow-l';L.setAttribute('aria-label','Scroll left');L.innerHTML='‹';L.hidden=true;
+    var R=document.createElement('button');
+    R.className='fp-scroll-arrow fp-scroll-arrow-r';R.setAttribute('aria-label','Scroll right');R.innerHTML='›';R.hidden=true;
+    wrap.appendChild(L);wrap.appendChild(R);
+    L.onclick=function(){grid.scrollBy({left:-Math.round(grid.clientWidth*0.8),behavior:'smooth'});};
+    R.onclick=function(){grid.scrollBy({left:Math.round(grid.clientWidth*0.8),behavior:'smooth'});};
+    grid.addEventListener('scroll',function(){refreshScrollArrows(grid);},{passive:true});
+    grid.querySelectorAll('img').forEach(function(img){
+      if(!img.complete)img.addEventListener('load',function(){refreshScrollArrows(grid);},{once:true});
+    });
+    refreshScrollArrows(grid);
+  });
+  window.addEventListener('resize',function(){
+    document.querySelectorAll('.fp-rich-grid').forEach(refreshScrollArrows);
+  });
+}
+
+function refreshScrollArrows(grid){
+  if(!grid)return;
+  var wrap=grid.parentNode;
+  if(!wrap||!wrap.classList.contains('fp-scroll-wrap'))return;
+  var L=wrap.querySelector('.fp-scroll-arrow-l'), R=wrap.querySelector('.fp-scroll-arrow-r');
+  if(!L||!R)return;
+  var expanded=grid.getAttribute('data-ex')==='1';
+  var overflow=grid.scrollWidth>grid.clientWidth+4;
+  if(expanded||!overflow){ L.hidden=true; R.hidden=true; return; }
+  var max=grid.scrollWidth-grid.clientWidth-2;
+  L.hidden = grid.scrollLeft<=2;
+  R.hidden = grid.scrollLeft>=max;
+}
 
 // ==================== ENDING SOON ====================
 function renderEndingSoon(){
@@ -1572,6 +1624,10 @@ async function init(){
   renderBundles();
   renderStaff();
   renderBrandRows();
+
+  // Wrap any horizontal product strips with scroll arrows (idempotent; also
+  // called by the section/brand renderers as they populate on scroll).
+  setupScrollArrows();
 
   console.log('[Atlas Flyers] Init complete');
 }
