@@ -142,11 +142,20 @@ function getBrandFromProduct(p){
 // Show if: in stock OR available to order (Preorder). Hide if: Unavailable,
 // out of stock, or product missing/deleted (null).
 function isShowable(p){
+  // "Should this product appear at all?" — hide only truly dead products:
+  // missing object (failed fetch / deleted) or BC status Unavailable. Genuine
+  // out-of-stock products now SHOW (greyed, Add to Cart disabled — see isPurchasable).
   if(!p)return false;
   var av=p.availabilityV2&&p.availabilityV2.status;
-  if(av==='Unavailable')return false;        // not purchasable -> hide
-  if(av==='Preorder')return true;            // available to order -> show
-  return (p.inventory?p.inventory.isInStock:true)!==false; // else: show only if in stock
+  if(av==='Unavailable')return false;
+  return true;
+}
+function isPurchasable(p){
+  // "Can this be added to cart?" — false when out of stock (and not a preorder).
+  if(!p)return false;
+  var av=p.availabilityV2&&p.availabilityV2.status;
+  if(av==='Preorder')return true;            // orderable
+  return (p.inventory?p.inventory.isInStock:true)!==false;
 }
 
 // ==================== CSV PARSER ====================
@@ -326,7 +335,10 @@ function richCard(p,m){
   var tagHtml=m.showTag?'<span class="fp-rich-tag '+tcls+'"'+tagStyle+'>'+esc(tag)+'</span>':'<span></span>';
   // Stock badge driven by BigCommerce availability (CSV "Stock Status" ignored).
   var bcStatus=p.availabilityV2&&p.availabilityV2.status;
-  var stockHtml=(bcStatus==='Preorder')?'<div class="fp-rich-stock fp-rich-stock-ord">✓ Available to Order</div>':'<div class="fp-rich-stock">✓ In Stock</div>';
+  var canBuy=isPurchasable(p);
+  var stockHtml=!canBuy
+    ? '<div class="fp-rich-stock fp-rich-stock-oos">Out of Stock</div>'
+    : ((bcStatus==='Preorder')?'<div class="fp-rich-stock fp-rich-stock-ord">✓ Available to Order</div>':'<div class="fp-rich-stock">✓ In Stock</div>');
   return '<div class="fp-rich" data-bk="'+esc((b&&b.key)||'')+'">'+
     '<div class="fp-rich-top">'+
       (brandLabel?'<span class="fp-rich-brand" style="background:'+brandBg+';color:'+brandTc+brandBorder+'">'+esc(brandLabel)+'</span>':'<span></span>')+
@@ -339,7 +351,9 @@ function richCard(p,m){
     visitorRowHtml+
     '<div class="fp-rich-prices">'+(hasDiscount?'<div class="fp-rich-sale">$'+currentPrice.toFixed(2)+'</div><div class="fp-rich-off">↓ '+savePct+'% Off</div><div class="fp-rich-was">$'+wasPrice.toFixed(2)+'</div>':'<div class="fp-rich-reg">'+(pr?'$'+pr.toFixed(2):'See price')+'</div>')+'</div>'+
     (m.code?'<div class="fp-rich-code"><span class="fp-rich-code-lbl">Code:</span><span class="fp-rich-code-val">'+esc(m.code)+'</span></div>':'')+
-    '<button class="fp-rich-add'+(inCartLabel(p.entityId)?' added':'')+'" id="'+bid+'" data-pid="'+p.entityId+'" onclick="fpAdd('+p.entityId+','+(hasDiscount?currentPrice:pr)+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">'+(inCartLabel(p.entityId)||'Add to Cart')+'</button>'+
+    (canBuy
+      ? '<button class="fp-rich-add'+(inCartLabel(p.entityId)?' added':'')+'" id="'+bid+'" data-pid="'+p.entityId+'" onclick="fpAdd('+p.entityId+','+(hasDiscount?currentPrice:pr)+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">'+(inCartLabel(p.entityId)||'Add to Cart')+'</button>'
+      : '<button class="fp-rich-add fp-rich-add-oos" disabled aria-disabled="true">Out of Stock</button>')+
   '</div>';
 }
 
@@ -378,15 +392,41 @@ async function renderProductSection(sectionKey,gridId){
     };
   }).filter(Boolean);
   if(!items.length){hide('fp-sec-'+sectionKey);return;}
-  var ids=items.map(function(x){return x.id;});
-  await fetchProducts(ids);
-  // Filter out anything BigCommerce reports as out of stock / unavailable / deleted.
-  var visible=items.filter(function(m){return isShowable(PRODUCT_CACHE[m.id]);});
-  if(!visible.length){hide('fp-sec-'+sectionKey);return;}
-  var html=visible.map(function(m){return richCard(PRODUCT_CACHE[m.id],m);}).join('');
-  grid.innerHTML=html;
+
+  var pagingOn=getSetting('enable_section_paging',true);
+
+  // Small sections (or paging off): fetch all, filter, render at once — identical
+  // to the original behaviour.
+  if(!pagingOn || items.length<=PAGE_SIZE){
+    await fetchProducts(items.map(function(x){return x.id;}));
+    var visible=items.filter(function(m){return isShowable(PRODUCT_CACHE[m.id]);});
+    if(!visible.length){hide('fp-sec-'+sectionKey);return;}
+    grid.innerHTML=visible.map(function(m){return richCard(PRODUCT_CACHE[m.id],m);}).join('');
+    show('fp-sec-'+sectionKey);
+    applyBrandFilter();
+    return;
+  }
+
+  // Large sections: fetch only the first page up front (keeps the page fast and
+  // avoids the big-batch GraphQL 400s); the shared pager fetches later pages on
+  // scroll. Out-of-stock items within a page are skipped, preserving sheet order.
+  var firstIds=items.slice(0,PAGE_SIZE).map(function(x){return x.id;});
+  await fetchProducts(firstIds);
+  var firstHtml=items.slice(0,PAGE_SIZE).map(function(m){
+    var p=PRODUCT_CACHE[m.id];return isShowable(p)?richCard(p,m):'';
+  }).join('');
+  // Nothing in the first page in stock? fall back to hiding only if the whole
+  // section has no items at all (later pages may still have stock, so render the
+  // sentinel and let the pager pull them in).
+  grid.innerHTML=firstHtml+'<span class="fp-pager-sentinel" data-gid="'+gridId+'"></span>';
+  registerPager(gridId, items, function(m){
+    var p=PRODUCT_CACHE[m.id];
+    return isShowable(p)?richCard(p,m):'';
+  }, function(m){return m.id;});
+  PAGERS[gridId].shown=PAGE_SIZE; // first page already attempted
   show('fp-sec-'+sectionKey);
   applyBrandFilter();
+  wirePagerLazyLoad();
 }
 
 // ==================== LAZY LOAD ====================
@@ -678,6 +718,63 @@ function wireBrandLazyLoad(){
     });
   },{root:null,rootMargin:'300px',threshold:0});
   sentinels.forEach(function(s){io.observe(s);});
+}
+
+// ==================== SHARED PAGER (lazy "load 30 more on scroll") ====================
+// Generic engine used by the standard product sections. Each registered pager
+// knows its full item list and a renderItem(item) -> html callback. Renders one
+// page (PAGE_SIZE) at a time, appending before an end sentinel; a single shared
+// IntersectionObserver loads the next page when the sentinel scrolls into view.
+var PAGE_SIZE=30;
+var PAGERS={};        // gridId -> {items, shown, renderItem, fetchIds, loading}
+var pagerObserver=null;
+
+function registerPager(gridId, items, renderItem, fetchIds){
+  PAGERS[gridId]={items:items, shown:0, renderItem:renderItem, fetchIds:fetchIds||null, loading:false};
+}
+
+async function loadPagerPage(gridId){
+  var st=PAGERS[gridId];
+  if(!st||st.loading)return;
+  var grid=$(gridId);if(!grid)return;
+  if(st.shown>=st.items.length)return;
+  st.loading=true;
+
+  var next=st.items.slice(st.shown, st.shown+PAGE_SIZE);
+  if(st.fetchIds){
+    var ids=next.map(st.fetchIds).filter(function(x){return x!=null;});
+    if(ids.length)await fetchProducts(ids);
+  }
+  var sentinel=grid.querySelector('.fp-pager-sentinel');
+  var html='';
+  next.forEach(function(item){
+    var card=st.renderItem(item);
+    if(card)html+=card;
+  });
+  if(sentinel)sentinel.insertAdjacentHTML('beforebegin',html);
+  else grid.insertAdjacentHTML('beforeend',html);
+  st.shown+=next.length;
+  st.loading=false;
+}
+
+function wirePagerLazyLoad(){
+  var sentinels=document.querySelectorAll('.fp-pager-sentinel');
+  if(!sentinels.length)return;
+  if(!('IntersectionObserver' in window)){
+    Object.keys(PAGERS).forEach(function(gid){
+      var st=PAGERS[gid];
+      (function pump(){ if(st.shown<st.items.length){ loadPagerPage(gid).then(pump); } })();
+    });
+    return;
+  }
+  if(!pagerObserver){
+    pagerObserver=new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if(e.isIntersecting)loadPagerPage(e.target.getAttribute('data-gid'));
+      });
+    },{root:null,rootMargin:'400px',threshold:0});
+  }
+  sentinels.forEach(function(s){pagerObserver.observe(s);});
 }
 // Kept as a no-op shim: renderHero() still calls fpOpenBrandPanel for the
 // featured banner click. With the accordion layout gone, just scroll to the
@@ -1126,8 +1223,10 @@ window.fpQuickView=async function(pid){
     '<div class="fp-modal-prices"><div class="fp-modal-sale">$'+(qvCurrent?qvCurrent.toFixed(2):'?')+'</div>'+(qvHasDiscount?'<div class="fp-modal-was">$'+qvWas.toFixed(2)+'</div><div class="fp-modal-off">'+qvPct+'% Off</div>':'')+'</div>'+
     (descPlain?'<div class="fp-modal-desc" id="fp-modal-desc" data-teaser="'+esc(descTeaser)+'" style="font-size:13px;color:#555;line-height:1.5;margin-bottom:10px">'+esc(descTeaser)+(descIsLong?'… <a href="#" class="fp-modal-readmore" onclick="fpToggleDesc(event)">Read more</a>':'')+'</div>':'')+
     '<div class="fp-modal-actions">'+
-      '<div class="fp-modal-qty"><button class="fp-modal-qty-btn" onclick="fpQtyChg(-1)">−</button><div class="fp-modal-qty-val" id="fp-qty">1</div><button class="fp-modal-qty-btn" onclick="fpQtyChg(1)">+</button></div>'+
-      '<button class="fp-modal-add'+(inCartLabel(pid)?' added':'')+'" id="fp-modal-add" onclick="fpModalAdd('+pid+','+qvCurrent+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">'+(inCartLabel(pid)||'Add to Cart')+'</button>'+
+      (isPurchasable(p)
+        ? '<div class="fp-modal-qty"><button class="fp-modal-qty-btn" onclick="fpQtyChg(-1)">−</button><div class="fp-modal-qty-val" id="fp-qty">1</div><button class="fp-modal-qty-btn" onclick="fpQtyChg(1)">+</button></div>'+
+          '<button class="fp-modal-add'+(inCartLabel(pid)?' added':'')+'" id="fp-modal-add" onclick="fpModalAdd('+pid+','+qvCurrent+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">'+(inCartLabel(pid)||'Add to Cart')+'</button>'
+        : '<button class="fp-modal-add fp-rich-add-oos" disabled aria-disabled="true">Out of Stock</button>')+
     '</div>'+
     '<a class="fp-modal-view" href="'+esc(p.path||'#')+'">View full product details →</a>';
   // Enable finger-swipe on the image gallery (touch devices)
