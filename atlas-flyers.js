@@ -1156,12 +1156,18 @@ window.fpTrackRecent=function(pid){
 async function renderRecent(){
   if(!getSetting('show_recently_viewed',true)||!RECENT.length){hide('fp-sec-recent');return;}
   await fetchProducts(RECENT);
+  // Use the same full product card as other sections (price/stock/Add to Cart),
+  // no deal tag since these are simply items the visitor has viewed.
   var html=RECENT.map(function(id){
-    var p=PRODUCT_CACHE[id];if(!isShowable(p))return'';
-    var img=p.defaultImage?p.defaultImage.url:'';
-    return '<a class="fp-recent" href="'+esc(p.path||'#')+'"><div class="fp-recent-img">'+(img?'<img src="'+img+'" loading="lazy">':'🔧')+'</div><div class="fp-recent-name">'+esc(cleanName(p.name,p.sku))+'</div></a>';
+    var p=PRODUCT_CACHE[id];
+    if(!isShowable(p))return'';
+    return richCard(p,{showTag:false,_sectionKey:'recentlyViewed'});
   }).filter(Boolean).join('');
-  if(html.trim()){$('fp-recent').innerHTML=html;show('fp-sec-recent');}else{hide('fp-sec-recent');}
+  if(html.trim()){
+    $('fp-recent').innerHTML=html;
+    show('fp-sec-recent');
+    if(typeof setupScrollArrows==='function')setupScrollArrows();
+  }else{hide('fp-sec-recent');}
 }
 
 // ==================== WISHLIST ====================
