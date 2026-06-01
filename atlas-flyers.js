@@ -572,6 +572,7 @@ async function renderCountdown(){
   show('fp-sec-countdown');
   tickCountdowns();
   setInterval(tickCountdowns,1000);
+  if(typeof setupScrollArrows==='function')setupScrollArrows();
 }
 function tickCountdowns(){
   var now=Date.now();
@@ -1461,7 +1462,7 @@ window.fpToggleSection=function(gid,btn){
 // once after render and is idempotent (safe to re-run after lazy-load appends).
 function setupScrollArrows(){
   if(!getSetting('enable_scroll_arrows',true))return;
-  document.querySelectorAll('.fp-rich-grid').forEach(function(grid){
+  document.querySelectorAll('.fp-rich-grid, .fp-countdown-grid').forEach(function(grid){
     if(grid.parentNode&&grid.parentNode.classList.contains('fp-scroll-wrap'))return; // already wrapped
     var wrap=document.createElement('div');
     wrap.className='fp-scroll-wrap';
@@ -1481,7 +1482,7 @@ function setupScrollArrows(){
     refreshScrollArrows(grid);
   });
   window.addEventListener('resize',function(){
-    document.querySelectorAll('.fp-rich-grid').forEach(refreshScrollArrows);
+    document.querySelectorAll('.fp-rich-grid, .fp-countdown-grid').forEach(refreshScrollArrows);
   });
 }
 
