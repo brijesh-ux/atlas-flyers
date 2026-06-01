@@ -545,77 +545,87 @@ function parseShopByBrand(rows){
     return {key:k,name:style?style.name:k,style:style,deals:b.deals};
   });
 }
-function renderBrandCards(){
-  var grid=$('fp-brands');
-  grid.innerHTML=BRANDS_DEALS.map(function(b){
-    var dc=b.deals.length;
-    var fd=b.deals[0];
+// Shop by Brand — one ROW per brand (thin brand-colored border + solid left
+// block), with that brand's deals grouped into labeled mini-strips on the right.
+// Each deal strip reuses the standard .fp-rich product cards + the same VIEW ALL
+// (fpToggleSection) as every other section. Fully sheet-driven: a brand row only
+// renders if it has at least one in-stock product; empty deals/rows are hidden.
+async function renderBrandRows(){
+  var host=$('fp-brand-rows');
+  if(!host)return;
+  if(!BRANDS_DEALS.length){hide('fp-sec-shopByBrand-wrap');return;}
+
+  // 1) Fetch every product across every brand/deal up front (batched + cached).
+  var allIds=[];
+  BRANDS_DEALS.forEach(function(b){b.deals.forEach(function(d){d.ids.forEach(function(id){allIds.push(id);});});});
+  if(allIds.length)await fetchProducts(allIds);
+
+  // 2) Build rows, keeping only brands that have at least one showable product.
+  var rowsHtml='';
+  BRANDS_DEALS.forEach(function(b){
     var bg=b.style?b.style.accentBg:'#1a1a1a';
     var tc=b.style?b.style.accentText:'#fff';
-    var img=b.style?b.style.brandIconUrl:'';
-    var logo=b.style&&b.style.logoUrl?'<img src="'+esc(b.style.logoUrl)+'" alt="'+esc(b.name)+'" style="max-width:100%;max-height:36px;object-fit:contain">':'<span style="font-size:14px;font-weight:800;color:'+tc+'">'+esc(b.name)+'</span>';
-    return '<div class="fp-brand-card" data-bk="'+esc(b.key)+'" style="background:'+bg+'" onclick="fpOpenBrandPanel(\''+b.key+'\')">'+
-      '<div style="padding:10px;display:flex;align-items:center;justify-content:center;min-height:50px">'+logo+'</div>'+
-      '<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px">'+(img?'<img src="'+esc(img)+'" alt="" style="width:100%;height:110px;object-fit:contain">':'<div style="font-size:50px">🔧</div>')+'</div>'+
-      '<div style="padding:8px;text-align:center;border-top:1px solid rgba(255,255,255,0.15);color:'+tc+'"><div style="font-size:12px;font-weight:700">'+dc+' deal'+(dc>1?'s':'')+'</div>'+(fd&&fd.urgent?'<div style="font-size:10px;opacity:0.85;margin-top:2px">⚠ Ends '+esc(fd.exp)+'</div>':fd?'<div style="font-size:10px;opacity:0.85;margin-top:2px">'+esc(fd.exp)+'</div>':'')+'</div>'+
-    '</div>';
-  }).join('');
-  // Panels
-  $('fp-brand-panels').innerHTML=BRANDS_DEALS.map(function(b){
-    var bg=b.style?b.style.accentBg:'#1a1a1a';
-    var tc=b.style?b.style.accentText:'#fff';
-    var logo=b.style&&b.style.logoUrl?'<img src="'+esc(b.style.logoUrl)+'" alt="'+esc(b.name)+'" style="max-width:80px;max-height:28px;object-fit:contain">':'<span style="font-size:13px;font-weight:800;color:'+tc+'">'+esc(b.name)+'</span>';
-    return '<div class="fp-brand-panel" id="fpp-'+esc(b.key)+'"><div class="fp-panel-head" onclick="fpCloseBrandPanel(\''+b.key+'\')"><div class="fp-panel-head-left"><div class="fp-panel-logo" style="background:'+bg+'">'+logo+'</div><span class="fp-panel-title">'+esc(b.name)+' Deals</span></div><span class="fp-panel-close">×</span></div><div class="fp-panel-body" id="fppb-'+esc(b.key)+'"></div></div>';
-  }).join('');
-}
-window.fpOpenBrandPanel=async function(key){
-  if(OPEN_BRAND&&OPEN_BRAND!==key)fpCloseBrandPanel(OPEN_BRAND);
-  if(OPEN_BRAND===key){fpCloseBrandPanel(key);return;}
-  OPEN_BRAND=key;
-  var panel=$('fpp-'+key);if(!panel)return;
-  panel.classList.add('open');
-  setTimeout(function(){panel.scrollIntoView({behavior:'smooth',block:'start'});},60);
-  var b=BRANDS_DEALS.find(function(x){return x.key===key;});if(!b)return;
-  var body=$('fppb-'+key);
-  body.innerHTML=b.deals.map(function(d,i){
-    var bg=b.style?b.style.accentBg:'#1a1a1a';
-    var tc=b.style?b.style.accentText:'#fff';
-    return (i>0?'<hr class="fp-deal-divider">':'')+
-      '<div class="fp-deal-strip" style="background:'+bg+';color:'+tc+'"><div class="fp-deal-offer">'+esc(d.offer)+'</div><div class="fp-deal-sub">'+esc(d.where)+' · '+(d.urgent?'⚠ Ends '+esc(d.exp):esc(d.exp))+'</div></div>'+
-      (d.ids.length?'<div class="fp-rich-grid" id="fpbg-'+key+'-'+i+'"><div class="fp-skel"></div><div class="fp-skel"></div></div>':'<div style="font-size:12px;color:#999;padding:4px 0 10px">Visit the store to shop this deal.</div>');
-  }).join('');
-  for(var i=0;i<b.deals.length;i++){
-    var d=b.deals[i];
-    if(!d.ids.length)continue;
-    var def=TAG_CLS[d.type]||'fp-t-hot';
-    var lbl=({sale:'PRICE DROP',hot:'HOT DEAL',free:'🎁 FREE GIFT',new:'NEW',best:'BEST SELLER'})[d.type]||'DEAL';
-    await fetchProducts(d.ids);
-    var g=$('fpbg-'+key+'-'+i);if(!g)continue;
-    // Only render products BC reports as in stock / available to order.
-    var visibleIds=d.ids.filter(function(id){return isShowable(PRODUCT_CACHE[id]);});
-    if(!visibleIds.length){g.innerHTML='<div style="font-size:12px;color:#999;padding:4px 0 10px">These deals are currently sold out.</div>';continue;}
-    g.innerHTML=visibleIds.map(function(id){
-      return richCard(PRODUCT_CACHE[id],{brand:b.style,tag:lbl,tcls:def,st:'in',_sectionKey:'shopByBrand',showTag:true});
+
+    // Resolve each deal to its in-stock products; drop empty deals.
+    var liveDeals=b.deals.map(function(d){
+      var vis=d.ids.filter(function(id){return isShowable(PRODUCT_CACHE[id]);});
+      return {deal:d,ids:vis};
+    }).filter(function(x){return x.ids.length;});
+    if(!liveDeals.length)return; // whole brand row hidden if nothing in stock
+
+    var dc=liveDeals.length;
+    var fd=liveDeals[0].deal;
+    var expLine=fd?('<div class="fp-brow-exp">'+(fd.urgent?'⚠ Ends '+esc(fd.exp):esc(fd.exp))+'</div>'):'';
+
+    var logo=b.style&&b.style.logoUrl
+      ? '<img class="fp-brow-logo" src="'+esc(b.style.logoUrl)+'" alt="'+esc(b.name)+'">'
+      : '<span class="fp-brow-logotext" style="color:'+tc+'">'+esc(b.name)+'</span>';
+    var img=b.style&&b.style.brandIconUrl
+      ? '<img class="fp-brow-img" src="'+esc(b.style.brandIconUrl)+'" alt="">'
+      : '';
+
+    // Left brand block.
+    var left='<div class="fp-brow-left" style="background:'+bg+';color:'+tc+'">'+
+        '<div class="fp-brow-logowrap">'+logo+'</div>'+
+        (img?'<div class="fp-brow-imgwrap">'+img+'</div>':'')+
+        '<div class="fp-brow-meta" style="color:'+tc+'">'+
+          '<div class="fp-brow-count">'+dc+' deal'+(dc>1?'s':'')+'</div>'+
+          expLine+
+        '</div>'+
+      '</div>';
+
+    // Right side: one labeled strip per live deal, each with its own VIEW ALL.
+    var strips=liveDeals.map(function(x,i){
+      var d=x.deal;
+      var gid='fpbrow-'+b.key+'-'+i;
+      var cards=x.ids.map(function(id){
+        return richCard(PRODUCT_CACHE[id],{brand:b.style,st:'in',_sectionKey:'shopByBrand',showTag:false});
+      }).join('');
+      var label=d.offer||d.type||'Deals';
+      return '<div class="fp-brow-deal">'+
+          '<div class="fp-brow-dealhead">'+
+            '<span class="fp-brow-deallabel" style="background:'+bg+';color:'+tc+'">'+esc(label)+'</span>'+
+            '<button class="fp-section-btn" onclick="fpToggleSection(\''+gid+'\',this)">VIEW ALL</button>'+
+          '</div>'+
+          '<div class="fp-rich-grid" id="'+gid+'">'+cards+'</div>'+
+        '</div>';
     }).join('');
-  }
-};
-window.fpCloseBrandPanel=function(key){
-  var panel=$('fpp-'+key);if(panel)panel.classList.remove('open');
-  if(OPEN_BRAND===key)OPEN_BRAND=null;
-};
-window.fpToggleBrandsGrid=function(){
-  // Layout is a responsive CSS grid; collapsed shows ~2 rows (max-height in CSS),
-  // expanded removes the cap. Just toggle the data attribute + button label — no
-  // inline widths (those would override the grid's responsive track sizing).
-  var grid=$('fp-brands');var btn=$('fp-brands-btn');
-  var ex=grid.getAttribute('data-ex')==='1';
-  if(!ex){
-    grid.setAttribute('data-ex','1');
-    btn.textContent='COLLAPSE';btn.classList.add('expanded');
-  }else{
-    grid.setAttribute('data-ex','0');
-    btn.textContent='VIEW ALL';btn.classList.remove('expanded');
-  }
+
+    rowsHtml+='<div class="fp-brow" data-bk="'+esc(b.key)+'" style="border-color:'+bg+'">'+
+        left+'<div class="fp-brow-right">'+strips+'</div>'+
+      '</div>';
+  });
+
+  if(!rowsHtml.trim()){hide('fp-sec-shopByBrand-wrap');return;}
+  host.innerHTML=rowsHtml;
+  show('fp-sec-shopByBrand-wrap');
+}
+// Kept as a no-op shim: renderHero() still calls fpOpenBrandPanel for the
+// featured banner click. With the accordion layout gone, just scroll to the
+// Shop by Brand section instead.
+window.fpOpenBrandPanel=function(key){
+  var sec=$('fp-sec-shopByBrand-wrap');
+  if(sec)sec.scrollIntoView({behavior:'smooth',block:'start'});
 };
 
 // ==================== HERO (featured urgent brand deal) ====================
@@ -1360,7 +1370,6 @@ async function init(){
   renderFlyerTabs();
   renderHero();
   renderChips();
-  renderBrandCards();
   renderEndingSoon();
   renderCoupons();
   renderVideos();
@@ -1377,9 +1386,10 @@ async function init(){
   // 6) Lazy-load remaining product grids
   setupLazyLoad();
 
-  // 7) Async: bundles, staff picks (don't block)
+  // 7) Async: bundles, staff picks, shop-by-brand rows (don't block)
   renderBundles();
   renderStaff();
+  renderBrandRows();
 
   console.log('[Atlas Flyers] Init complete');
 }
