@@ -229,9 +229,10 @@ async function fetchProducts(ids){
     console.warn('[Atlas] No BC_STOREFRONT_TOKEN set');
     var o={};ids.forEach(function(id){o[id]=null;});return o;
   }
-  // Batch in chunks of 50
+  // Batch in chunks of 20 (BC GraphQL rejects very large aliased queries with a
+  // 400 — large brand lists like BOSCH were silently dropping products).
   var chunks=[];
-  for(var i=0;i<unique.length;i+=50)chunks.push(unique.slice(i,i+50));
+  for(var i=0;i<unique.length;i+=20)chunks.push(unique.slice(i,i+20));
   for(var c=0;c<chunks.length;c++){
     var chunk=chunks[c];
     var fields=chunk.map(function(id,i){
@@ -545,80 +546,138 @@ function parseShopByBrand(rows){
     return {key:k,name:style?style.name:k,style:style,deals:b.deals};
   });
 }
-// Shop by Brand — one ROW per brand (thin brand-colored border + solid left
-// block), with that brand's deals grouped into labeled mini-strips on the right.
-// Each deal strip reuses the standard .fp-rich product cards + the same VIEW ALL
-// (fpToggleSection) as every other section. Fully sheet-driven: a brand row only
-// renders if it has at least one in-stock product; empty deals/rows are hidden.
+// Shop by Brand — per brand, render each DEAL as: a headline box on top, then a
+// product strip. The brand's FIRST deal leads its strip with a product-sized
+// brand tile (logo, brand image, deal count, expiry); later deals start straight
+// from products. Each strip reuses the standard .fp-rich cards + VIEW ALL, and
+// lazy-loads 30 at a time on scroll. Fully sheet-driven; empty deals/brands hidden.
+var BRAND_STRIP_STATE={}; // gid -> {ids:[...], shown:N, brand, loading}
+var BRAND_PAGE=30;
+
 async function renderBrandRows(){
   var host=$('fp-brand-rows');
   if(!host)return;
   if(!BRANDS_DEALS.length){hide('fp-sec-shopByBrand-wrap');return;}
 
-  // 1) Fetch every product across every brand/deal up front (batched + cached).
-  var allIds=[];
-  BRANDS_DEALS.forEach(function(b){b.deals.forEach(function(d){d.ids.forEach(function(id){allIds.push(id);});});});
-  if(allIds.length)await fetchProducts(allIds);
+  // Fetch only what we need for the first page of each deal up front (in CSV
+  // order), so a brand with hundreds of IDs doesn't fetch everything at once.
+  var firstPageIds=[];
+  BRANDS_DEALS.forEach(function(b){
+    b.deals.forEach(function(d){ firstPageIds=firstPageIds.concat(d.ids.slice(0,BRAND_PAGE)); });
+  });
+  if(firstPageIds.length)await fetchProducts(firstPageIds);
 
-  // 2) Build rows, keeping only brands that have at least one showable product.
   var rowsHtml='';
   BRANDS_DEALS.forEach(function(b){
     var bg=b.style?b.style.accentBg:'#1a1a1a';
     var tc=b.style?b.style.accentText:'#fff';
 
-    // Resolve each deal to its in-stock products; drop empty deals.
-    var liveDeals=b.deals.map(function(d){
-      var vis=d.ids.filter(function(id){return isShowable(PRODUCT_CACHE[id]);});
-      return {deal:d,ids:vis};
-    }).filter(function(x){return x.ids.length;});
-    if(!liveDeals.length)return; // whole brand row hidden if nothing in stock
+    // Keep deals that have at least one in-stock product in their first page.
+    var liveDeals=b.deals.filter(function(d){
+      return d.ids.slice(0,BRAND_PAGE).some(function(id){return isShowable(PRODUCT_CACHE[id]);});
+    });
+    if(!liveDeals.length)return;
 
     var dc=liveDeals.length;
-    var fd=liveDeals[0].deal;
-    var expLine=fd?('<div class="fp-brow-exp">'+(fd.urgent?'⚠ Ends '+esc(fd.exp):esc(fd.exp))+'</div>'):'';
+    var fd=liveDeals[0];
+    var expTxt=fd?(fd.urgent?'⚠ Ends '+esc(fd.exp):esc(fd.exp)):'';
 
     var logo=b.style&&b.style.logoUrl
       ? '<img class="fp-brow-logo" src="'+esc(b.style.logoUrl)+'" alt="'+esc(b.name)+'">'
       : '<span class="fp-brow-logotext" style="color:'+tc+'">'+esc(b.name)+'</span>';
     var img=b.style&&b.style.brandIconUrl
-      ? '<img class="fp-brow-img" src="'+esc(b.style.brandIconUrl)+'" alt="">'
+      ? '<div class="fp-btile-imgwrap"><img class="fp-btile-img" src="'+esc(b.style.brandIconUrl)+'" alt=""></div>'
       : '';
 
-    // Left brand block.
-    var left='<div class="fp-brow-left" style="background:'+bg+';color:'+tc+'">'+
-        '<div class="fp-brow-logowrap">'+logo+'</div>'+
-        (img?'<div class="fp-brow-imgwrap">'+img+'</div>':'')+
-        '<div class="fp-brow-meta" style="color:'+tc+'">'+
-          '<div class="fp-brow-count">'+dc+' deal'+(dc>1?'s':'')+'</div>'+
-          expLine+
+    // The brand tile (same footprint as a product card) — first cell of deal 1.
+    var brandTile='<div class="fp-btile" style="background:'+bg+';color:'+tc+'">'+
+        '<div class="fp-btile-logo">'+logo+'</div>'+
+        img+
+        '<div class="fp-btile-meta">'+
+          '<div class="fp-btile-count">'+dc+' deal'+(dc>1?'s':'')+'</div>'+
+          (expTxt?'<div class="fp-btile-exp">'+expTxt+'</div>':'')+
         '</div>'+
       '</div>';
 
-    // Right side: one labeled strip per live deal, each with its own VIEW ALL.
-    var strips=liveDeals.map(function(x,i){
-      var d=x.deal;
+    var groups=liveDeals.map(function(d,i){
       var gid='fpbrow-'+b.key+'-'+i;
-      var cards=x.ids.map(function(id){
-        return richCard(PRODUCT_CACHE[id],{brand:b.style,st:'in',_sectionKey:'shopByBrand',showTag:false});
-      }).join('');
+      var visIds=d.ids.filter(function(id){
+        var p=PRODUCT_CACHE[id];
+        return p===undefined || isShowable(p); // keep un-fetched (later pages) + showable
+      });
+      // Record state for lazy-loading.
+      BRAND_STRIP_STATE[gid]={ids:d.ids,shown:0,brand:b.style,loading:false};
+
       var label=d.offer||d.type||'Deals';
+      var lead=(i===0)?brandTile:''; // only first deal gets the brand tile
+
       return '<div class="fp-brow-deal">'+
           '<div class="fp-brow-dealhead">'+
             '<span class="fp-brow-deallabel" style="background:'+bg+';color:'+tc+'">'+esc(label)+'</span>'+
             '<button class="fp-section-btn" onclick="fpToggleSection(\''+gid+'\',this)">VIEW ALL</button>'+
           '</div>'+
-          '<div class="fp-rich-grid" id="'+gid+'">'+cards+'</div>'+
+          '<div class="fp-rich-grid" id="'+gid+'" data-lead="'+(lead?'1':'0')+'">'+lead+
+            '<span class="fp-brow-sentinel" data-gid="'+gid+'"></span>'+
+          '</div>'+
         '</div>';
     }).join('');
 
-    rowsHtml+='<div class="fp-brow" data-bk="'+esc(b.key)+'" style="border-color:'+bg+'">'+
-        left+'<div class="fp-brow-right">'+strips+'</div>'+
-      '</div>';
+    rowsHtml+='<div class="fp-brow" data-bk="'+esc(b.key)+'">'+groups+'</div>';
   });
 
   if(!rowsHtml.trim()){hide('fp-sec-shopByBrand-wrap');return;}
   host.innerHTML=rowsHtml;
   show('fp-sec-shopByBrand-wrap');
+
+  // Fill each strip's first page, then wire lazy-loading.
+  Object.keys(BRAND_STRIP_STATE).forEach(function(gid){ loadBrandPage(gid); });
+  wireBrandLazyLoad();
+}
+
+// Append the next page of products (in CSV order) to a strip.
+async function loadBrandPage(gid){
+  var st=BRAND_STRIP_STATE[gid];
+  if(!st||st.loading)return;
+  var grid=$(gid);if(!grid)return;
+  if(st.shown>=st.ids.length)return;
+  st.loading=true;
+
+  var next=st.ids.slice(st.shown, st.shown+BRAND_PAGE);
+  await fetchProducts(next);
+  var sentinel=grid.querySelector('.fp-brow-sentinel');
+  var html='';
+  next.forEach(function(id){
+    var p=PRODUCT_CACHE[id];
+    if(!isShowable(p))return; // skip OOS / failed, preserve order of the rest
+    html+=richCard(p,{brand:st.brand,st:'in',_sectionKey:'shopByBrand',showTag:false});
+  });
+  if(sentinel)sentinel.insertAdjacentHTML('beforebegin',html);
+  else grid.insertAdjacentHTML('beforeend',html);
+  st.shown+=next.length;
+  st.loading=false;
+}
+
+// IntersectionObserver: when a strip's end sentinel scrolls into view, load more.
+function wireBrandLazyLoad(){
+  var sentinels=document.querySelectorAll('.fp-brow-sentinel');
+  if(!sentinels.length)return;
+  if(!('IntersectionObserver' in window)){
+    // Fallback: just load everything.
+    Object.keys(BRAND_STRIP_STATE).forEach(function(gid){
+      var st=BRAND_STRIP_STATE[gid];
+      (function pump(){ if(st.shown<st.ids.length){ loadBrandPage(gid).then(pump); } })();
+    });
+    return;
+  }
+  var io=new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){
+        var gid=e.target.getAttribute('data-gid');
+        loadBrandPage(gid);
+      }
+    });
+  },{root:null,rootMargin:'300px',threshold:0});
+  sentinels.forEach(function(s){io.observe(s);});
 }
 // Kept as a no-op shim: renderHero() still calls fpOpenBrandPanel for the
 // featured banner click. With the accordion layout gone, just scroll to the
