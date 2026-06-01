@@ -455,13 +455,37 @@ function setupLazyLoad(){
 function renderFlyerTabs(){
   var el=$('fp-flyer-tabs');
   var rows=SECTION_DATA.flyerTabs||[];
-  if(!rows.length){el.style.display='none';return;}
-  el.innerHTML=rows.slice(0,4).map(function(r){
+  if(!rows.length){var w=$('fp-flyer-tabs-wrap');if(w)w.style.display='none';return;}
+  el.innerHTML=rows.map(function(r){
     var t=r['Flyer Name']||r['title']||'';
     var im=r['Flyer Image URL']||r['imageUrl']||'';
     var lk=r['Link When Clicked']||r['linkUrl']||'#';
     return '<a class="fp-flyer-tab" href="'+esc(lk)+'">'+(im?'<img src="'+esc(im)+'" alt="'+esc(t)+'" loading="eager">':'')+'<div class="fp-flyer-tab-title">'+esc(t)+'</div></a>';
   }).join('');
+  setupFlyerArrows();
+}
+// Horizontal scroll row + arrow controls. Arrows scroll ~80% of a view and
+// auto-hide at each end so users see the row is scrollable.
+function setupFlyerArrows(){
+  var row=$('fp-flyer-tabs');
+  var L=$('fp-flyer-arrow-l'), R=$('fp-flyer-arrow-r');
+  if(!row||!L||!R)return;
+  function update(){
+    var max=row.scrollWidth-row.clientWidth-2;
+    var scrollable=row.scrollWidth>row.clientWidth+4;
+    L.hidden = !scrollable || row.scrollLeft<=2;
+    R.hidden = !scrollable || row.scrollLeft>=max;
+  }
+  function page(dir){ row.scrollBy({left:dir*Math.round(row.clientWidth*0.8),behavior:'smooth'}); }
+  L.onclick=function(){page(-1);};
+  R.onclick=function(){page(1);};
+  row.addEventListener('scroll',update,{passive:true});
+  window.addEventListener('resize',update);
+  setTimeout(update,60);
+  // Re-check once images have loaded (scrollWidth changes as they size in).
+  row.querySelectorAll('img').forEach(function(img){
+    if(!img.complete)img.addEventListener('load',update,{once:true});
+  });
 }
 
 // ==================== DEAL OF THE DAY ====================
