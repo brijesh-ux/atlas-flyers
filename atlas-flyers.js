@@ -598,10 +598,16 @@ function parseShopByBrand(rows){
   rows.forEach(function(r){
     var k=(r['Brand ID']||r['brandKey']||r['key']||'').toLowerCase().trim();
     if(!k)return;
-    if(!byBrand[k]){byBrand[k]={key:k,deals:[]};order.push(k);}
+    if(!byBrand[k]){
+      byBrand[k]={key:k,deals:[],
+        // Read per-brand display toggle from the brand's FIRST row. Blank = hide.
+        showCount:trueish(r['Show Deal Count']||r['showDealCount']||'')
+      };
+      order.push(k);
+    }
     byBrand[k].deals.push({
       offer:r['Deal Headline']||r['dealOffer']||'',
-      exp:r['Deal Expiry']||r['dealExpiry']||'Ongoing',
+      exp:(r['Deal Expiry']||r['dealExpiry']||'').trim(), // blank stays blank -> hidden
       urgent:trueish(r['Urgent']||r['urgent']),
       where:r['Where Available']||r['where']||'Online & in-store',
       type:(r['Deal Type']||r['dealType']||'sale').toLowerCase(),
@@ -610,7 +616,7 @@ function parseShopByBrand(rows){
   });
   return order.map(function(k){
     var b=byBrand[k];var style=getBrand(k);
-    return {key:k,name:style?style.name:k,style:style,deals:b.deals};
+    return {key:k,name:style?style.name:k,style:style,deals:b.deals,showCount:b.showCount};
   });
 }
 // Shop by Brand — per brand, render each DEAL as: a headline box on top, then a
@@ -647,7 +653,13 @@ async function renderBrandRows(){
 
     var dc=liveDeals.length;
     var fd=liveDeals[0];
-    var expTxt=fd?(fd.urgent?'⚠ Ends '+esc(fd.exp):esc(fd.exp)):'';
+    // Expiry: only when the sheet cell is non-blank. Count: only when Show Deal
+    // Count is yes for this brand. Both fully sheet-driven (blank = hide).
+    var expRaw=fd&&fd.exp?fd.exp:'';
+    var expTxt=expRaw?(fd.urgent?'⚠ Ends '+esc(expRaw):esc(expRaw)):'';
+    var countHtml=b.showCount?('<div class="fp-btile-count">'+dc+' deal'+(dc>1?'s':'')+'</div>'):'';
+    var expHtml=expTxt?('<div class="fp-btile-exp">'+expTxt+'</div>'):'';
+    var metaHtml=(countHtml||expHtml)?('<div class="fp-btile-meta">'+countHtml+expHtml+'</div>'):'';
 
     var logo=b.style&&b.style.logoUrl
       ? '<img class="fp-brow-logo" src="'+esc(b.style.logoUrl)+'" alt="'+esc(b.name)+'">'
@@ -660,10 +672,7 @@ async function renderBrandRows(){
     var brandTile='<div class="fp-btile" style="background:'+bg+';color:'+tc+'">'+
         '<div class="fp-btile-logo">'+logo+'</div>'+
         img+
-        '<div class="fp-btile-meta">'+
-          '<div class="fp-btile-count">'+dc+' deal'+(dc>1?'s':'')+'</div>'+
-          (expTxt?'<div class="fp-btile-exp">'+expTxt+'</div>':'')+
-        '</div>'+
+        metaHtml+
       '</div>';
 
     var groups=liveDeals.map(function(d,i){
@@ -832,7 +841,7 @@ function renderHero(){
   wrap.innerHTML='<a class="fp-featured" style="background:'+bg+';border-color:'+bg+'" onclick="fpOpenBrandPanel(\''+b.key+'\');return false;" href="#">'+
     '<div style="display:flex;align-items:center;flex:1;min-width:0">'+logo+
       '<div style="min-width:0">'+
-        '<span class="fp-feat-badge" style="background:rgba(0,0,0,0.25);color:'+tc+'">'+(d.urgent?'⚠ Ends '+esc(d.exp)+' — Hurry':'Active Deal')+'</span>'+
+        '<span class="fp-feat-badge" style="background:rgba(0,0,0,0.25);color:'+tc+'">'+((d.urgent&&d.exp)?'⚠ Ends '+esc(d.exp)+' — Hurry':'Active Deal')+'</span>'+
         '<div class="fp-feat-title" style="color:'+tc+'">'+esc(d.offer)+'</div>'+
         '<div class="fp-feat-sub" style="color:'+tc+';opacity:0.8">'+esc(d.where)+'</div>'+
       '</div>'+
@@ -1503,7 +1512,7 @@ function refreshScrollArrows(grid){
 // ==================== ENDING SOON ====================
 function renderEndingSoon(){
   var urgent=[];
-  BRANDS_DEALS.forEach(function(b){b.deals.forEach(function(d){if(d.urgent)urgent.push(b.name+' — '+d.offer+' ends '+d.exp);});});
+  BRANDS_DEALS.forEach(function(b){b.deals.forEach(function(d){if(d.urgent)urgent.push(b.name+' — '+d.offer+(d.exp?' ends '+d.exp:''));});});
   var el=$('fp-ending-sub');if(el)el.textContent=urgent.length?urgent.slice(0,3).join(' · '):'Check current deals for expiry dates';
 }
 
