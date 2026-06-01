@@ -76,7 +76,8 @@ var SECTION_DEFAULTS = {
   newFeatured: {tag:'FEATURED', cls:'fp-t-new'},
   topSearched: {tag:'TOP PICK', cls:'fp-t-best'},
   newArrivals: {tag:'NEW', cls:'fp-t-new'},
-  lastChance: {tag:'LOW STOCK', cls:'fp-t-clr'}
+  lastChance: {tag:'LOW STOCK', cls:'fp-t-clr'},
+  dealOfDay: {tag:"TODAY'S STEAL", cls:'fp-t-hot'}
 };
 
 // ==================== UTILS ====================
@@ -360,6 +361,8 @@ function richCard(p,m){
 // ==================== SECTION RENDERER ====================
 async function renderProductSection(sectionKey,gridId){
   var grid=$(gridId);if(!grid)return;
+  // Legacy global toggle for Deal of the Day still works.
+  if(sectionKey==='dealOfDay'&&!getSetting('show_deal_of_the_day',true)){hide('fp-sec-dod');return;}
   var rows=SECTION_DATA[sectionKey]||[];
   if(!rows.length){hide('fp-sec-'+sectionKey);return;}
   // Show skeleton
@@ -491,40 +494,12 @@ function setupFlyerArrows(){
 }
 
 // ==================== DEAL OF THE DAY ====================
-async function renderDealOfDay(){
-  if(!getSetting('show_deal_of_the_day',true)){hide('fp-sec-dod');return;}
-  var rows=SECTION_DATA.dealOfDay||[];
-  if(!rows.length){hide('fp-sec-dod');return;}
-  // Pick one based on day of year for stable daily selection
-  var today=new Date();
-  var dayOfYear=Math.floor((today-new Date(today.getFullYear(),0,0))/86400000);
-  var pick=rows[dayOfYear%rows.length];
-  var pid=parseIds(pick['Product ID']||pick['productId']||'')[0];
-  if(!pid){hide('fp-sec-dod');return;}
-  var b=getBrand(pick['Brand ID']);
-  var bg=pick['Background Color']||(b&&b.accentBg)||'#1a1a1a';
-  var headline=pick['Headline']||"Today's Steal";
-  var sub=pick['Subline']||'';
-  var ps=await fetchProducts([pid]);
-  var p=ps[pid];if(!p){hide('fp-sec-dod');return;}
-  // Hide the whole Deal of the Day if BC reports it out of stock / unavailable.
-  if(!isShowable(p)){hide('fp-sec-dod');return;}
-  var pr=p.prices&&p.prices.price?p.prices.price.value:null;
-  var sl=p.prices&&p.prices.salePrice?p.prices.salePrice.value:null;
-  var os=sl&&sl<pr;
-  var img=p.defaultImage?p.defaultImage.url:'';
-  var el=$('fp-dod');
-  el.innerHTML='<a class="fp-dod" href="'+esc(p.path||'#')+'" style="background:'+bg+'" onclick="fpTrackRecent('+pid+')">'+
-    '<div class="fp-dod-img">'+(img?'<img src="'+img+'" alt="" loading="eager">':'🔧')+'</div>'+
-    '<div class="fp-dod-body">'+
-      '<span class="fp-dod-tag">'+esc(headline)+'</span>'+
-      '<div class="fp-dod-name">'+esc(cleanName(p.name,p.sku))+'</div>'+
-      (sub?'<div class="fp-dod-sub">'+esc(sub)+'</div>':'')+
-      '<div class="fp-dod-price">$'+(os?sl.toFixed(2):pr?pr.toFixed(2):'?')+(os?'<span class="fp-dod-was">$'+pr.toFixed(2)+'</span>':'')+'</div>'+
-    '</div>'+
-  '</a>';
-  show('fp-sec-dod');
-}
+// Deal of the Day is now a standard product section: it renders through
+// renderProductSection (via data-section="dealOfDay") showing ALL products from
+// the Deal of the Day tab as tiles, and is positioned via the Section Order tab.
+// The old single-product daily-rotation banner has been retired. The legacy
+// show_deal_of_the_day setting is still honoured (see renderProductSection).
+function renderDealOfDay(){ /* retired — see renderProductSection */ }
 
 // ==================== COUNTDOWN TIMER ====================
 var COUNTDOWN_TIMERS=[];
@@ -1624,7 +1599,6 @@ async function init(){
 
   // 5) Render product-heavy sections (above-fold first, lazy rest)
   await Promise.all([
-    renderDealOfDay(),
     renderCountdown(),
     renderRecent()
   ]);
