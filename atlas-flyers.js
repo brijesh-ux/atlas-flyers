@@ -825,6 +825,7 @@ window.fpOpenBrandPanel=function(key){
 
 // ==================== HERO (featured urgent brand deal) ====================
 function renderHero(){
+  var wrap=$('fp-hero-wrap');
   var urgent=null;
   for(var i=0;i<BRANDS_DEALS.length&&!urgent;i++){
     var b=BRANDS_DEALS[i];
@@ -832,8 +833,9 @@ function renderHero(){
       if(b.deals[j].urgent){urgent={brand:b,deal:b.deals[j]};break;}
     }
   }
-  if(!urgent&&BRANDS_DEALS.length)urgent={brand:BRANDS_DEALS[0],deal:BRANDS_DEALS[0].deals[0]};
-  var wrap=$('fp-hero-wrap');if(!urgent||!wrap)return;
+  // No fallback: if no deal is marked Urgent, hide the banner entirely.
+  if(!urgent){ if(wrap)wrap.innerHTML=''; return; }
+  if(!wrap)return;
   var b=urgent.brand,d=urgent.deal;
   var bg=b.style?b.style.accentBg:'#1a1a1a';
   var tc=b.style?b.style.accentText:'#fff';
