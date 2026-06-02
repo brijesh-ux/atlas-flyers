@@ -277,10 +277,37 @@ function cleanName(name,sku){
   name=name.replace(/^[A-Z]{2,3}-[A-Z0-9-]+\s+/i,'').trim();
   return name;
 }
-function visitorCount(){
-  var min=getSetting('live_visitor_min',5);
-  var max=getSetting('live_visitor_max',47);
-  return Math.floor(Math.random()*(max-min+1))+min;
+// Deterministic pseudo-random in [0,1) from a numeric seed. Same seed → same
+// value (stable for all visitors), but we fold in a 30-minute time bucket so
+// the numbers rotate every half hour. No Math.random() → no per-reload flicker.
+function fpSeeded(seed){
+  var x=Math.sin(seed)*10000;
+  return x-Math.floor(x);
+}
+function fpBucket(){
+  var mins=parseInt(getSetting('live_visitor_window_min',30),10)||30;
+  return Math.floor(Date.now()/(mins*60*1000));
+}
+// Tiered "viewing now" count, correlated with the discount:
+//   >30% off  → 200–450 (hot deals look busy)
+//   1–30% off → 40–199
+//   full price→ 1–90 (and only shown on a subset; see fpVisitorShow)
+function visitorCount(p,savePct){
+  var id=parseInt(p&&p.entityId,10)||0;
+  var seed=id*31+fpBucket();
+  var min,max;
+  if(savePct>30){ min=200; max=450; }
+  else if(savePct>0){ min=40; max=199; }
+  else { min=1; max=90; }
+  return Math.floor(fpSeeded(seed+13)*(max-min+1))+min;
+}
+// For full-price products, only show the counter on ~1/3 (rotates each window).
+// Discounted products always show it.
+function fpVisitorShow(p,savePct){
+  if(savePct>0)return true;
+  var id=parseInt(p&&p.entityId,10)||0;
+  var ratio=parseInt(getSetting('live_visitor_show_ratio',3),10)||3;
+  return Math.floor(fpSeeded(id*31+fpBucket()+7)*ratio)===0;
 }
 function richCard(p,m){
   if(!p)return'<div class="fp-rich"><div style="padding:30px 10px;text-align:center;color:#bbb;font-size:11px">Product unavailable</div></div>';
@@ -315,7 +342,10 @@ function richCard(p,m){
   var globalVisitors=getSetting('show_live_visitor_count',false);
   // Per-section column in Section Order tab.
   var sectionVisitors=m._sectionKey?(SECTION_VISITOR_COUNT[m._sectionKey]!==false):false;
-  var showVisitors=globalVisitors&&sectionVisitors;
+  // Counter shows on all discounted products; on full-price products only a
+  // rotating ~1/3 subset (see fpVisitorShow). Counts are tiered by discount and
+  // rotate every 30 min (see visitorCount).
+  var showVisitors=globalVisitors&&sectionVisitors&&fpVisitorShow(p,savePct);
   var showHeart=getSetting('enable_wishlist_heart',true);
   var quickView=getSetting('enable_quick_view',true);
   // Brand resolution priority:
@@ -336,7 +366,7 @@ function richCard(p,m){
   // Visitor count + heart go in same row. If visitor count off, heart still appears (right-aligned, no text on left).
   var visitorRowHtml='';
   if(showVisitors||showHeart||ribbonHtml){
-    visitorRowHtml='<div class="fp-rich-visitors">'+(showVisitors?'<span>👀 '+visitorCount()+' viewing now</span>':'<span></span>')+heartHtml+ribbonHtml+'</div>';
+    visitorRowHtml='<div class="fp-rich-visitors">'+(showVisitors?'<span>👀 '+visitorCount(p,savePct)+' viewing now</span>':'<span></span>')+heartHtml+ribbonHtml+'</div>';
   }
   // Tag: hidden by default unless m.showTag is true. Custom color via m.customTagColor.
   var tagStyle=m.customTagColor?' style="background:'+m.customTagColor+';color:#fff"':'';
@@ -1513,9 +1543,11 @@ function toast(msg){var t=$('fp-toast');t.textContent=msg;t.classList.add('show'
 
 // ==================== FAQS ====================
 function renderFAQs(){
+  var w=$('fp-faqs');
+  if(!w)return; // not on the flyer page
   var list=FAQS.length?FAQS:FAQS_FALLBACK;
-  if(!list.length){var w=$('fp-faqs');if(w)w.parentNode.style.display='none';return;}
-  $('fp-faqs').innerHTML=list.map(function(f,i){
+  if(!list.length){if(w.parentNode)w.parentNode.style.display='none';return;}
+  w.innerHTML=list.map(function(f,i){
     return '<div class="fp-faq"><div class="fp-faq-q" onclick="fpFAQ('+i+')">'+esc(f.q)+'<span class="fp-faq-icon" id="fpfi-'+i+'">+</span></div><div class="fp-faq-a" id="fpfa-'+i+'"><div class="fp-faq-inner">'+f.a+'</div></div></div>';
   }).join('');
 }
@@ -1631,6 +1663,11 @@ function fixContainer(){
 
 // ==================== INIT ====================
 async function init(){
+  // The flyer script is loaded site-wide via Script Manager, but the flyer
+  // markup only exists on the flyer page. Bail early everywhere else so we
+  // don't fetch CSVs or run renderers against elements that aren't present
+  // (which throws "Cannot set properties of null" on category/product/etc.).
+  if(!document.querySelector('.flyers-page')){return;}
   console.log('[Atlas Flyers] Starting...');
   fixContainer();
   // 1) Fetch settings + brand styles first (needed everywhere)
