@@ -335,8 +335,8 @@ function richCard(p,m){
   var heartHtml=showHeart?'<button class="fp-rich-heart'+(inWish?' active':'')+'" data-pid="'+p.entityId+'" data-tooltip="'+(inWish?'Remove from Wishlist':'Add to Wishlist')+'" onclick="fpToggleWish(event,'+p.entityId+',this)">'+heartSvg+'</button>':'';
   // Visitor count + heart go in same row. If visitor count off, heart still appears (right-aligned, no text on left).
   var visitorRowHtml='';
-  if(showVisitors||showHeart){
-    visitorRowHtml='<div class="fp-rich-visitors">'+(showVisitors?'<span>👀 '+visitorCount()+' viewing now</span>':'<span></span>')+heartHtml+'</div>';
+  if(showVisitors||showHeart||ribbonHtml){
+    visitorRowHtml='<div class="fp-rich-visitors">'+(showVisitors?'<span>👀 '+visitorCount()+' viewing now</span>':'<span></span>')+heartHtml+ribbonHtml+'</div>';
   }
   // Tag: hidden by default unless m.showTag is true. Custom color via m.customTagColor.
   var tagStyle=m.customTagColor?' style="background:'+m.customTagColor+';color:#fff"':'';
@@ -352,7 +352,7 @@ function richCard(p,m){
       (brandLabel?'<span class="fp-rich-brand" style="background:'+brandBg+';color:'+brandTc+brandBorder+'">'+esc(brandLabel)+'</span>':'<span></span>')+
       tagHtml+
     '</div>'+
-    (img?'<div class="fp-rich-img-wrap"'+(quickView?' onclick="fpQuickView('+p.entityId+')"':'')+'><img src="'+img+'" alt="'+esc(p.name)+'" loading="lazy">'+ribbonHtml+'</div>':'<div class="fp-rich-ph">🔧'+ribbonHtml+'</div>')+
+    (img?'<div class="fp-rich-img-wrap"'+(quickView?' onclick="fpQuickView('+p.entityId+')"':'')+'><img src="'+img+'" alt="'+esc(p.name)+'" loading="lazy"></div>':'<div class="fp-rich-ph">🔧</div>')+
     '<a class="fp-rich-name" href="'+esc(p.path||'#')+'" onclick="fpTrackRecent('+p.entityId+')">'+esc(cn)+'</a>'+
     '<div class="fp-rich-sku">SKU# '+esc(p.sku||p.entityId)+'</div>'+
     stockHtml+
