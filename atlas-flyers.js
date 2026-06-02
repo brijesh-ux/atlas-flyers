@@ -698,14 +698,17 @@ async function loadBrandPage(gid){
   await fetchProducts(next);
   var sentinel=grid.querySelector('.fp-brow-sentinel');
   var html='';
+  var rendered=0;
   next.forEach(function(id){
     var p=PRODUCT_CACHE[id];
     if(!isShowable(p))return; // skip OOS / failed, preserve order of the rest
     html+=richCard(p,{brand:st.brand,st:'in',_sectionKey:'shopByBrand',showTag:false});
+    rendered++;
   });
   if(sentinel)sentinel.insertAdjacentHTML('beforebegin',html);
   else grid.insertAdjacentHTML('beforeend',html);
-  st.shown+=next.length;
+  st.shown+=next.length;            // cursor through the ID list (for paging)
+  st.rendered=(st.rendered||0)+rendered; // tiles actually displayed (for label)
   st.loading=false;
   if(typeof refreshScrollArrows==='function')refreshScrollArrows(grid);
   updateBrandLoadMore(gid);
@@ -728,7 +731,7 @@ function updateBrandLoadMore(gid){
       var anchor=(grid.parentNode&&grid.parentNode.classList.contains('fp-scroll-wrap'))?grid.parentNode:grid;
       anchor.parentNode.insertBefore(btn,anchor.nextSibling);
     }
-    btn.textContent='Load More — showing '+st.shown+' of '+st.ids.length;
+    btn.textContent='Load More';
     btn.style.display='';
   }else if(btn){
     btn.style.display='none';
@@ -791,13 +794,15 @@ async function loadPagerPage(gridId){
   }
   var sentinel=grid.querySelector('.fp-pager-sentinel');
   var html='';
+  var rendered=0;
   next.forEach(function(item){
     var card=st.renderItem(item);
-    if(card)html+=card;
+    if(card){html+=card;rendered++;}
   });
   if(sentinel)sentinel.insertAdjacentHTML('beforebegin',html);
   else grid.insertAdjacentHTML('beforeend',html);
   st.shown+=next.length;
+  st.rendered=(st.rendered||0)+rendered;
   st.loading=false;
   if(typeof refreshScrollArrows==='function')refreshScrollArrows(grid);
   updateLoadMore(gridId);
@@ -823,7 +828,7 @@ function updateLoadMore(gridId){
       var anchor=(grid.parentNode&&grid.parentNode.classList.contains('fp-scroll-wrap'))?grid.parentNode:grid;
       anchor.parentNode.insertBefore(btn,anchor.nextSibling);
     }
-    btn.textContent='Load More — showing '+st.shown+' of '+st.items.length;
+    btn.textContent='Load More';
     btn.style.display='';
   }else if(btn){
     btn.style.display='none';
