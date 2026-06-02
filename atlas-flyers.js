@@ -694,7 +694,7 @@ async function loadBrandPage(gid){
   if(st.shown>=st.ids.length)return;
   st.loading=true;
 
-  var next=st.ids.slice(st.shown, st.shown+BRAND_PAGE);
+  var next=st.ids.slice(st.shown, st.shown+pageSize());
   await fetchProducts(next);
   var sentinel=grid.querySelector('.fp-brow-sentinel');
   var html='';
@@ -708,6 +708,31 @@ async function loadBrandPage(gid){
   st.shown+=next.length;
   st.loading=false;
   if(typeof refreshScrollArrows==='function')refreshScrollArrows(grid);
+  updateBrandLoadMore(gid);
+}
+
+// Load More button for brand strips (expanded only); collapsed keeps infinite scroll.
+function updateBrandLoadMore(gid){
+  var grid=$(gid);if(!grid)return;
+  var st=BRAND_STRIP_STATE[gid];if(!st)return;
+  var host=grid.closest('.fp-brow-deal')||grid.parentNode;
+  var btn=host.querySelector('.fp-loadmore[data-gid="'+gid+'"]');
+  var expanded=grid.getAttribute('data-ex')==='1';
+  var more=st.shown<st.ids.length;
+  if(expanded&&more){
+    if(!btn){
+      btn=document.createElement('button');
+      btn.className='fp-loadmore';
+      btn.setAttribute('data-gid',gid);
+      btn.onclick=function(){ loadBrandPage(gid); };
+      var anchor=(grid.parentNode&&grid.parentNode.classList.contains('fp-scroll-wrap'))?grid.parentNode:grid;
+      anchor.parentNode.insertBefore(btn,anchor.nextSibling);
+    }
+    btn.textContent='Load More — showing '+st.shown+' of '+st.ids.length;
+    btn.style.display='';
+  }else if(btn){
+    btn.style.display='none';
+  }
 }
 
 // IntersectionObserver: when a strip's end sentinel scrolls into view, load more.
@@ -724,10 +749,12 @@ function wireBrandLazyLoad(){
   }
   var io=new IntersectionObserver(function(entries){
     entries.forEach(function(e){
-      if(e.isIntersecting){
-        var gid=e.target.getAttribute('data-gid');
-        loadBrandPage(gid);
-      }
+      if(!e.isIntersecting)return;
+      var gid=e.target.getAttribute('data-gid');
+      var grid=$(gid);
+      // Infinite scroll only while collapsed; expanded uses Load More button.
+      if(grid&&grid.getAttribute('data-ex')==='1')return;
+      loadBrandPage(gid);
     });
   },{root:null,rootMargin:'300px',threshold:0});
   sentinels.forEach(function(s){io.observe(s);});
@@ -738,7 +765,10 @@ function wireBrandLazyLoad(){
 // knows its full item list and a renderItem(item) -> html callback. Renders one
 // page (PAGE_SIZE) at a time, appending before an end sentinel; a single shared
 // IntersectionObserver loads the next page when the sentinel scrolls into view.
-var PAGE_SIZE=30;
+// Page size for lazy-load / Load More. Smaller on mobile (2 tiles/row) so a
+// "page" is roughly the same number of rows as desktop (4 tiles/row).
+function pageSize(){ return (window.innerWidth<600)?12:24; }
+var PAGE_SIZE=pageSize();
 var PAGERS={};        // gridId -> {items, shown, renderItem, fetchIds, loading}
 var pagerObserver=null;
 
@@ -753,7 +783,8 @@ async function loadPagerPage(gridId){
   if(st.shown>=st.items.length)return;
   st.loading=true;
 
-  var next=st.items.slice(st.shown, st.shown+PAGE_SIZE);
+  var sz=pageSize();
+  var next=st.items.slice(st.shown, st.shown+sz);
   if(st.fetchIds){
     var ids=next.map(st.fetchIds).filter(function(x){return x!=null;});
     if(ids.length)await fetchProducts(ids);
@@ -769,6 +800,34 @@ async function loadPagerPage(gridId){
   st.shown+=next.length;
   st.loading=false;
   if(typeof refreshScrollArrows==='function')refreshScrollArrows(grid);
+  updateLoadMore(gridId);
+}
+
+// Load More button: shown only while a section is EXPANDED (VIEW ALL). While
+// collapsed, the IntersectionObserver handles infinite horizontal scroll instead.
+function updateLoadMore(gridId){
+  var grid=$(gridId);if(!grid)return;
+  var st=PAGERS[gridId];if(!st)return;
+  var sec=grid.closest('.fp-section');
+  var host=sec||grid.parentNode;
+  var btn=host.querySelector('.fp-loadmore[data-gid="'+gridId+'"]');
+  var expanded=grid.getAttribute('data-ex')==='1';
+  var more=st.shown<st.items.length;
+  if(expanded&&more){
+    if(!btn){
+      btn=document.createElement('button');
+      btn.className='fp-loadmore';
+      btn.setAttribute('data-gid',gridId);
+      btn.onclick=function(){ loadPagerPage(gridId); };
+      // Place the button right after the grid (or its scroll wrapper).
+      var anchor=(grid.parentNode&&grid.parentNode.classList.contains('fp-scroll-wrap'))?grid.parentNode:grid;
+      anchor.parentNode.insertBefore(btn,anchor.nextSibling);
+    }
+    btn.textContent='Load More — showing '+st.shown+' of '+st.items.length;
+    btn.style.display='';
+  }else if(btn){
+    btn.style.display='none';
+  }
 }
 
 function wirePagerLazyLoad(){
@@ -784,7 +843,13 @@ function wirePagerLazyLoad(){
   if(!pagerObserver){
     pagerObserver=new IntersectionObserver(function(entries){
       entries.forEach(function(e){
-        if(e.isIntersecting)loadPagerPage(e.target.getAttribute('data-gid'));
+        if(!e.isIntersecting)return;
+        var gid=e.target.getAttribute('data-gid');
+        var grid=$(gid);
+        // Infinite scroll only while collapsed. When expanded (VIEW ALL), the
+        // Load More button drives paging instead, so the observer stays quiet.
+        if(grid&&grid.getAttribute('data-ex')==='1')return;
+        loadPagerPage(gid);
       });
     },{root:null,rootMargin:'400px',threshold:0});
   }
@@ -1445,6 +1510,9 @@ window.fpToggleSection=function(gid,btn){
   }
   // Arrows only make sense on a collapsed horizontal strip — refresh this one.
   refreshScrollArrows(g);
+  // Show/hide the Load More button for this section (expanded = button mode).
+  if(PAGERS[gid]){ if(typeof updateLoadMore==='function')updateLoadMore(gid); }
+  else if(typeof BRAND_STRIP_STATE!=='undefined'&&BRAND_STRIP_STATE[gid]){ if(typeof updateBrandLoadMore==='function')updateBrandLoadMore(gid); }
 };
 
 // ==================== SHARED SCROLL ARROWS ====================
