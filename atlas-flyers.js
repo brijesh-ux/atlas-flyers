@@ -1212,6 +1212,16 @@ function applySectionOrder(){
         return;
       }
     }
+    // Same emptiness guard for custom (non-grid) sections that are driven by their
+    // own sheet tab — trades, coupons, videos. If the tab has no rows, keep the
+    // section hidden so we don't show a lonely header with no content.
+    var customDataKey={ 'fp-sec-trades':'shopByTrade', 'fp-sec-coupons':'coupons', 'fp-sec-videos':'videoSection' }[domId];
+    if(customDataKey){
+      if(!(SECTION_DATA[customDataKey]&&SECTION_DATA[customDataKey].length)){
+        fragment.appendChild(el); // keep position, leave hidden
+        return;
+      }
+    }
     el.classList.remove('fp-hidden');
     fragment.appendChild(el);
   });
