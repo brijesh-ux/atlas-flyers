@@ -300,6 +300,13 @@ function richCard(p,m){
     savePct=Math.round((1-pr/rp)*100);saveAmt=rp-pr;
   }
   var hasDiscount=(priceMode!=='normal');
+  // Savings ribbon: percent when >=10%, dollar amount (2 decimals) when <10%.
+  // Pinned to the bottom-right of the product image (see .fp-rich-ribbon CSS).
+  var ribbonHtml='';
+  if(hasDiscount&&savePct>0){
+    var ribbonLabel=(savePct<10)?('Save $'+saveAmt.toFixed(2)):(savePct+'% Off');
+    ribbonHtml='<div class="fp-rich-ribbon">'+ribbonLabel+'<span class="fp-rich-ribbon-tail"></span></div>';
+  }
   var img=p.defaultImage?p.defaultImage.url:null;
   var bid='fpa-'+p.entityId+'-'+Math.random().toString(36).substr(2,4);
   var cn=cleanName(p.name,p.sku);
@@ -345,12 +352,12 @@ function richCard(p,m){
       (brandLabel?'<span class="fp-rich-brand" style="background:'+brandBg+';color:'+brandTc+brandBorder+'">'+esc(brandLabel)+'</span>':'<span></span>')+
       tagHtml+
     '</div>'+
-    (img?'<div class="fp-rich-img-wrap"'+(quickView?' onclick="fpQuickView('+p.entityId+')"':'')+'><img src="'+img+'" alt="'+esc(p.name)+'" loading="lazy"></div>':'<div class="fp-rich-ph">🔧</div>')+
+    (img?'<div class="fp-rich-img-wrap"'+(quickView?' onclick="fpQuickView('+p.entityId+')"':'')+'><img src="'+img+'" alt="'+esc(p.name)+'" loading="lazy">'+ribbonHtml+'</div>':'<div class="fp-rich-ph">🔧'+ribbonHtml+'</div>')+
     '<a class="fp-rich-name" href="'+esc(p.path||'#')+'" onclick="fpTrackRecent('+p.entityId+')">'+esc(cn)+'</a>'+
     '<div class="fp-rich-sku">SKU# '+esc(p.sku||p.entityId)+'</div>'+
     stockHtml+
     visitorRowHtml+
-    '<div class="fp-rich-prices">'+(hasDiscount?'<div class="fp-rich-sale">$'+currentPrice.toFixed(2)+'</div><div class="fp-rich-off">↓ '+savePct+'% Off</div><div class="fp-rich-was">$'+wasPrice.toFixed(2)+'</div>':'<div class="fp-rich-reg">'+(pr?'$'+pr.toFixed(2):'See price')+'</div>')+'</div>'+
+    '<div class="fp-rich-prices">'+(hasDiscount?'<div class="fp-rich-sale">$'+currentPrice.toFixed(2)+'</div><div class="fp-rich-was">$'+wasPrice.toFixed(2)+'</div>':'<div class="fp-rich-reg">'+(pr?'$'+pr.toFixed(2):'See price')+'</div>')+'</div>'+
     (m.code?'<div class="fp-rich-code"><span class="fp-rich-code-lbl">Code:</span><span class="fp-rich-code-val">'+esc(m.code)+'</span></div>':'')+
     (canBuy
       ? '<button class="fp-rich-add'+(inCartLabel(p.entityId)?' added':'')+'" id="'+bid+'" data-pid="'+p.entityId+'" onclick="fpAdd('+p.entityId+','+(hasDiscount?currentPrice:pr)+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">'+(inCartLabel(p.entityId)||'Add to Cart')+'</button>'
@@ -1187,6 +1194,12 @@ function applySectionOrder(){
     if(!domId)return;
     var el=document.getElementById(domId);
     if(!el)return;
+    // Sheet-driven heading: use the Display Name from Section Order when provided.
+    // The hardcoded title in the HTML acts as a fallback when the cell is blank.
+    if(e.name){
+      var titleEl=el.querySelector('.fp-section-title');
+      if(titleEl)titleEl.textContent=e.name;
+    }
     // For product-grid sections, don't reveal a section that has no data rows.
     // This stops an empty header (e.g. "Under $99") from showing before lazy
     // render runs. The section is still placed in order; if it has rows,
