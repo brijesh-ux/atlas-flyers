@@ -33,7 +33,8 @@ var GIDS = {
   shopByTrade: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1407344995',
   promoBanners: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2007099777',
   faqs: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=807514654',
-  sectionOrder: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1373796339'
+  sectionOrder: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1373796339',
+  allCoupons: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1364979606'
 };
 var STORE = window.location.origin;
 var STORE_TOKEN = window.BC_STOREFRONT_TOKEN || '';
@@ -54,6 +55,7 @@ var FAQS_FALLBACK = [
 ];
 var CART = {};
 var CART_QTY = {}; // productId -> quantity currently in the live BigCommerce cart (read on load)
+var PRODUCT_COUPONS = {}; // productId -> coupon code (from the "All Coupon Codes" tab)
 var WISHLIST = JSON.parse(localStorage.getItem('fp_wishlist') || '{}');
 var RECENT = JSON.parse(localStorage.getItem('fp_recent') || '[]');
 var OPEN_BRAND = null;
@@ -335,6 +337,10 @@ function richCard(p,m){
     ribbonHtml='<div class="fp-rich-ribbon">'+ribbonLabel+'<span class="fp-rich-ribbon-tail"></span></div>';
   }
   var img=p.defaultImage?p.defaultImage.url:null;
+  // Per-product coupon code (from the "All Coupon Codes" tab). Shown as a
+  // click-to-copy ticket on the top-right of the image. Blank/unmapped = none.
+  var couponCode=PRODUCT_COUPONS[String(p.entityId)]||'';
+  var couponHtml=couponCode?'<span class="fp-rich-coupon" data-code="'+esc(couponCode)+'" onclick="fpCopyProductCoupon(event,this)" title="Click to copy"><span class="cc-code">'+esc(couponCode)+'</span><span class="cc-hint">tap to copy code</span></span>':'';
   var bid='fpa-'+p.entityId+'-'+Math.random().toString(36).substr(2,4);
   var cn=cleanName(p.name,p.sku);
   var inWish=WISHLIST[p.entityId];
@@ -362,11 +368,11 @@ function richCard(p,m){
   var tag=m.tag||'DEAL';
   var tcls=m.tcls||'fp-t-hot';
   var heartSvg='<svg viewBox="0 0 24 24" width="22" height="22" style="display:block;fill:currentColor"><path d="M12 21s-7.5-4.7-9.5-9.5C1.1 7.8 3.6 4 7.5 4c2.1 0 3.5 1.2 4.5 2.5C13 5.2 14.4 4 16.5 4 20.4 4 22.9 7.8 21.5 11.5 19.5 16.3 12 21 12 21z"/></svg>';
-  var heartHtml=showHeart?'<button class="fp-rich-heart'+(inWish?' active':'')+'" data-pid="'+p.entityId+'" data-tooltip="'+(inWish?'Remove from Wishlist':'Add to Wishlist')+'" onclick="fpToggleWish(event,'+p.entityId+',this)">'+heartSvg+'</button>':'';
-  // Visitor count + heart go in same row. If visitor count off, heart still appears (right-aligned, no text on left).
+  var heartHtml='';  // wishlist heart removed from flyer deal tiles (deals page = action, not save-for-later)
+  // Visitor row holds: viewing-now (left) · ribbon · coupon (right).
   var visitorRowHtml='';
-  if(showVisitors||showHeart||ribbonHtml){
-    visitorRowHtml='<div class="fp-rich-visitors">'+(showVisitors?'<span>👀 '+visitorCount(p,savePct)+' viewing now</span>':'<span></span>')+heartHtml+ribbonHtml+'</div>';
+  if(showVisitors||ribbonHtml||couponHtml){
+    visitorRowHtml='<div class="fp-rich-visitors">'+(showVisitors?'<span>👀 '+visitorCount(p,savePct)+' viewing now</span>':'<span></span>')+ribbonHtml+couponHtml+'</div>';
   }
   // Tag: hidden by default unless m.showTag is true. Custom color via m.customTagColor.
   var tagStyle=m.customTagColor?' style="background:'+m.customTagColor+';color:#fff"':'';
@@ -1558,6 +1564,25 @@ function updateCartBar(){
   $('fp-checkout').classList.toggle('visible',c>0);
 }
 function toast(msg){var t=$('fp-toast');t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2200);}
+// Copy a product's coupon code to the clipboard with brief "Copied!" feedback.
+window.fpCopyProductCoupon=function(e,el){
+  e.stopPropagation();           // don't trigger the tile's quick-view
+  e.preventDefault();
+  var code=el.getAttribute('data-code')||'';
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(code).catch(function(){});
+  }
+  var codeEl=el.querySelector('.cc-code');
+  var hintEl=el.querySelector('.cc-hint');
+  if(codeEl&&hintEl){
+    var pc=codeEl.textContent, ph=hintEl.textContent;
+    el.classList.add('copied');
+    codeEl.textContent='✓ Copied!';
+    hintEl.textContent='';
+    setTimeout(function(){codeEl.textContent=pc;hintEl.textContent=ph;el.classList.remove('copied');},1200);
+  }
+  toast('Coupon '+code+' copied');
+};
 
 // ==================== FAQS ====================
 function renderFAQs(){
@@ -1722,11 +1747,21 @@ async function init(){
   setupScrollSave();
 
   // 2) Fetch all other CSVs in parallel (plus the live cart, so tiles can show "in cart")
-  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','clearance','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','newArrivals','lastChance','videoSection','shopByTrade','promoBanners','faqs','sectionOrder'];
+  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','clearance','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','newArrivals','lastChance','videoSection','shopByTrade','promoBanners','faqs','sectionOrder','allCoupons'];
   var promises=keys.map(function(k){return fetchCSV(k,GIDS[k]);});
   var results=await Promise.all(promises.concat([loadServerCart()]));
   keys.forEach(function(k,i){SECTION_DATA[k]=results[i]||[];});
   console.log('[Atlas Flyers] All CSVs loaded');
+
+  // 2.1) Build the per-product coupon lookup from the "All Coupon Codes" tab.
+  // Columns: "Big Commerce Product ID" + "Coupon Code". Rows with a blank
+  // product ID are ignored.
+  PRODUCT_COUPONS={};
+  (SECTION_DATA.allCoupons||[]).forEach(function(r){
+    var pid=(r['Big Commerce Product ID']||r['BigCommerce Product ID']||r['Product ID']||'').toString().trim();
+    var code=(r['Coupon Code']||'').toString().trim();
+    if(pid&&code)PRODUCT_COUPONS[pid]=code;
+  });
 
   // 2.5) Parse FAQs from sheet (overrides hardcoded fallback)
   var faqRows=SECTION_DATA.faqs||[];
