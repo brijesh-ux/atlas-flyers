@@ -1755,13 +1755,18 @@ async function init(){
   console.log('[Atlas Flyers] All CSVs loaded');
 
   // 2.1) Build the per-product coupon lookup from the "All Coupon Codes" tab.
-  // Columns: "Big Commerce Product ID" + "Coupon Code". Rows with a blank
-  // product ID are ignored.
+  // Columns: "Big Commerce Product ID" + "Coupon Code". The ID cell may contain
+  // a SINGLE id or a COMMA-SEPARATED LIST of ids (like the brand tabs) — every
+  // id in the list gets mapped to that row's code. Blank ids are ignored.
   PRODUCT_COUPONS={};
   (SECTION_DATA.allCoupons||[]).forEach(function(r){
-    var pid=(r['Big Commerce Product ID']||r['BigCommerce Product ID']||r['Product ID']||'').toString().trim();
+    var idCell=(r['Big Commerce Product ID']||r['BigCommerce Product ID']||r['Product ID']||'').toString();
     var code=(r['Coupon Code']||'').toString().trim();
-    if(pid&&code)PRODUCT_COUPONS[pid]=code;
+    if(!code)return;
+    idCell.split(',').forEach(function(pid){
+      pid=pid.trim();
+      if(pid)PRODUCT_COUPONS[pid]=code;
+    });
   });
 
   // 2.5) Parse FAQs from sheet (overrides hardcoded fallback)
