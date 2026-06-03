@@ -340,7 +340,7 @@ function richCard(p,m){
   // Per-product coupon code (from the "All Coupon Codes" tab). Shown as a
   // click-to-copy ticket on the top-right of the image. Blank/unmapped = none.
   var couponCode=PRODUCT_COUPONS[String(p.entityId)]||'';
-  var couponHtml=couponCode?'<span class="fp-rich-coupon" data-code="'+esc(couponCode)+'" onclick="fpCopyProductCoupon(event,this)" title="Click to copy"><span class="cc-code">'+esc(couponCode)+'</span><span class="cc-hint">tap to copy code</span></span>':'';
+  var couponHtml=couponCode?'<span class="fp-rich-coupon" data-code="'+esc(couponCode)+'" onclick="fpCopyProductCoupon(event,this)" title="Click to copy"><span class="cc-code">'+esc(couponCode)+'</span><span class="cc-hint">✂</span></span>':'';
   var bid='fpa-'+p.entityId+'-'+Math.random().toString(36).substr(2,4);
   var cn=cleanName(p.name,p.sku);
   var inWish=WISHLIST[p.entityId];
@@ -372,7 +372,7 @@ function richCard(p,m){
   // Visitor row holds: viewing-now (left) · ribbon · coupon (right).
   var visitorRowHtml='';
   if(showVisitors||ribbonHtml||couponHtml){
-    visitorRowHtml='<div class="fp-rich-visitors">'+(showVisitors?'<span>👀 '+visitorCount(p,savePct)+' viewing now</span>':'<span></span>')+ribbonHtml+couponHtml+'</div>';
+    visitorRowHtml='<div class="fp-rich-visitors">'+(showVisitors?'<span>👀 '+visitorCount(p,savePct)+' viewing</span>':'<span></span>')+ribbonHtml+couponHtml+'</div>';
   }
   // Tag: hidden by default unless m.showTag is true. Custom color via m.customTagColor.
   var tagStyle=m.customTagColor?' style="background:'+m.customTagColor+';color:#fff"':'';
