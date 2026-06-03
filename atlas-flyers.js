@@ -1007,6 +1007,7 @@ window.fpAddBundle=async function(bid,ids){
     refreshCartButtons(id);
   });
   if(btn){btn.textContent='Added!';btn.classList.add('added');btn.disabled=false;}
+  await loadServerCart();
   updateCartBar();toast('Bundle added!');
 };
 
@@ -1441,6 +1442,7 @@ window.fpModalAdd=async function(pid,price,name){
   CART_QTY[pid]=(CART_QTY[pid]||0)+qty;
   refreshCartButtons(pid);
   btn.textContent=inCartLabel(pid)||'Added!';btn.classList.add('added');btn.disabled=false;
+  await loadServerCart();
   updateCartBar();toast(qty+' added to cart');
   setTimeout(fpCloseModal,800);
 };
@@ -1466,20 +1468,30 @@ async function fpMultiQuickView(ids,title){
 // ==================== CART ====================
 // Read the live BigCommerce cart (guest or logged-in; cookie/session based) so
 // tiles can show "✓ IN CART (x)" persistently across refreshes/visits.
+var CART_TOTAL_QTY=0;   // total item count in the real BC cart
+var CART_TOTAL_AMT=0;   // grand total ($) of the real BC cart
 async function loadServerCart(){
-  CART_QTY={};
+  CART_QTY={};CART_TOTAL_QTY=0;CART_TOTAL_AMT=0;
   try{
     var r=await fetch('/api/storefront/carts',{credentials:'same-origin'});
     if(!r.ok)return;
     var carts=await r.json();
     if(!carts||!carts.length)return;
-    var li=carts[0].lineItems||{};
+    var cart=carts[0];
+    var li=cart.lineItems||{};
     var all=(li.physicalItems||[]).concat(li.digitalItems||[]);
     all.forEach(function(item){
       var pid=item.productId;
       if(pid==null)return;
-      CART_QTY[pid]=(CART_QTY[pid]||0)+(item.quantity||0);
+      var q=item.quantity||0;
+      CART_QTY[pid]=(CART_QTY[pid]||0)+q;
+      CART_TOTAL_QTY+=q;
+      // sum line totals (extendedSalePrice is the per-line total after discounts)
+      CART_TOTAL_AMT+=(item.extendedSalePrice!=null?item.extendedSalePrice:(item.salePrice||item.listPrice||0)*q);
     });
+    // prefer the cart's own grand total if present
+    if(cart.cartAmount!=null)CART_TOTAL_AMT=cart.cartAmount;
+    else if(cart.baseAmount!=null)CART_TOTAL_AMT=cart.baseAmount;
   }catch(e){/* no cart / not available -> leave empty */}
 }
 // Returns the "in cart" button label for a product, or null if not in cart.
@@ -1530,13 +1542,16 @@ window.fpAdd=async function(id,price,name,bid){
   CART_QTY[id]=(CART_QTY[id]||0)+1;
   if(b)b.disabled=false;
   refreshCartButtons(id);
+  await loadServerCart();   // re-read the real cart so the bar shows the true total
   updateCartBar();toast('Added to cart');
 };
 function updateCartBar(){
-  var c=0,t=0;
-  Object.values(CART).forEach(function(i){c+=i.qty;t+=i.price*i.qty;});
+  // Use the real BigCommerce cart totals (loaded via loadServerCart), which
+  // include items added in this session AND items already in the cart / added
+  // elsewhere — not just the session-only CART object.
+  var c=CART_TOTAL_QTY,t=CART_TOTAL_AMT;
   $('fp-cart-count').textContent=c+(c===1?' item':' items');
-  $('fp-cart-total').textContent='$'+t.toFixed(2);
+  $('fp-cart-total').textContent='$'+(t||0).toFixed(2);
   $('fp-checkout').classList.toggle('visible',c>0);
 }
 function toast(msg){var t=$('fp-toast');t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2200);}
@@ -1753,6 +1768,10 @@ async function init(){
   // Wrap any horizontal product strips with scroll arrows (idempotent; also
   // called by the section/brand renderers as they populate on scroll).
   setupScrollArrows();
+
+  // Reflect the real cart total in the sticky bar on load (in case the visitor
+  // arrived with items already in their cart).
+  updateCartBar();
 
   console.log('[Atlas Flyers] Init complete');
 }
