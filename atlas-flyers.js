@@ -1516,17 +1516,20 @@ function applyCartStateToButtons(){
   });
 }
 // Returns true if the item was successfully added, false otherwise.
+// Checks for an existing cart FIRST and adds to it; only creates a new cart if
+// none exists. (Creating-first caused a 422 "cart already exists" error on every
+// add after the first, flooding the console.)
 async function addToCartSilent(id){
   try{
-    var r=await fetch('/api/storefront/carts',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({lineItems:[{quantity:1,productId:id}]})});
-    if(r.ok)return true;
-    // Cart may already exist (creating a new one fails) — add to the existing cart instead.
-    var ex=await fetch('/api/storefront/carts').then(function(x){return x.json();}).catch(function(){return null;});
+    var ex=await fetch('/api/storefront/carts',{credentials:'same-origin'}).then(function(x){return x.ok?x.json():null;}).catch(function(){return null;});
     if(ex&&ex.length){
+      // Add to the existing cart
       var r2=await fetch('/api/storefront/carts/'+ex[0].id+'/items',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({lineItems:[{quantity:1,productId:id}]})});
       return r2.ok;
     }
-    return false;
+    // No cart yet — create one
+    var r=await fetch('/api/storefront/carts',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({lineItems:[{quantity:1,productId:id}]})});
+    return r.ok;
   }catch(e){return false;}
 }
 window.fpAdd=async function(id,price,name,bid){
