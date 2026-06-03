@@ -56,6 +56,7 @@ var FAQS_FALLBACK = [
 var CART = {};
 var CART_QTY = {}; // productId -> quantity currently in the live BigCommerce cart (read on load)
 var PRODUCT_COUPONS = {}; // productId -> coupon code (from the "All Coupon Codes" tab)
+var COUPON_PRODUCT_IDS = []; // ordered, de-duped product IDs that have a coupon
 var WISHLIST = JSON.parse(localStorage.getItem('fp_wishlist') || '{}');
 var RECENT = JSON.parse(localStorage.getItem('fp_recent') || '[]');
 var OPEN_BRAND = null;
@@ -79,6 +80,7 @@ var SECTION_DEFAULTS = {
   topSearched: {tag:'TOP PICK', cls:'fp-t-best'},
   newArrivals: {tag:'NEW', cls:'fp-t-new'},
   lastChance: {tag:'LOW STOCK', cls:'fp-t-clr'},
+  monthlyFlyer: {tag:'COUPON DEAL', cls:'fp-t-hot'},
   dealOfDay: {tag:"TODAY'S STEAL", cls:'fp-t-hot'}
 };
 
@@ -646,6 +648,48 @@ function parseShopByBrand(rows){
 var BRAND_STRIP_STATE={}; // gid -> {ids:[...], shown:N, brand, loading}
 var BRAND_PAGE=30;
 
+// Inject coupon products into their brand's "Shop All" group in Brand Deals.
+// Rules: only if the brand has a "Shop All" group AND the product isn't already
+// anywhere in Brand Deals (no duplication). Brand is detected from the product's
+// BigCommerce data. Products with no matching brand group are left out (they
+// still appear in the Monthly Flyer section).
+async function injectCouponProductsIntoBrandDeals(){
+  if(!COUPON_PRODUCT_IDS.length||!BRANDS_DEALS.length)return;
+
+  // Set of IDs already present anywhere in Brand Deals (for de-dupe).
+  var existing={};
+  BRANDS_DEALS.forEach(function(b){
+    b.deals.forEach(function(d){ (d.ids||[]).forEach(function(id){ existing[String(id)]=1; }); });
+  });
+
+  // Candidates = coupon products not already in Brand Deals.
+  var candidates=COUPON_PRODUCT_IDS.filter(function(id){return !existing[String(id)];});
+  if(!candidates.length)return;
+
+  // Need product details (for brand) — fetch them.
+  await fetchProducts(candidates);
+
+  candidates.forEach(function(id){
+    var p=PRODUCT_CACHE[id];
+    if(!isShowable(p))return;                 // skip OOS / failed
+    var brandStyle=getBrandFromProduct(p);
+    if(!brandStyle||!brandStyle.key)return;   // unknown / unmatched brand -> Monthly Flyer only
+    // Find this brand in Brand Deals.
+    var brand=null;
+    for(var i=0;i<BRANDS_DEALS.length;i++){ if(BRANDS_DEALS[i].key===brandStyle.key){brand=BRANDS_DEALS[i];break;} }
+    if(!brand)return;                         // brand has no Brand Deals group -> Monthly Flyer only
+    // Find its "Shop All" group (offer/type containing "shop all").
+    var shopAll=null;
+    for(var j=0;j<brand.deals.length;j++){
+      var label=((brand.deals[j].offer||'')+' '+(brand.deals[j].type||'')).toLowerCase();
+      if(label.indexOf('shop all')!==-1){shopAll=brand.deals[j];break;}
+    }
+    if(!shopAll)return;                       // no "Shop All" group -> Monthly Flyer only
+    shopAll.ids.push(id);                     // append (de-dup already guaranteed)
+    existing[String(id)]=1;
+  });
+}
+
 async function renderBrandRows(){
   var host=$('fp-brand-rows');
   if(!host)return;
@@ -1159,6 +1203,7 @@ var SECTION_ID_TO_DOM = {
   staffPicks:'fp-sec-staff',
   videoSection:'fp-sec-videos',
   coupons:'fp-sec-coupons',
+  monthlyFlyer:'fp-sec-monthlyFlyer',
   endingSoon:'fp-sec-ending'
 };
 
@@ -1759,15 +1804,25 @@ async function init(){
   // a SINGLE id or a COMMA-SEPARATED LIST of ids (like the brand tabs) — every
   // id in the list gets mapped to that row's code. Blank ids are ignored.
   PRODUCT_COUPONS={};
+  var couponIdOrder=[];           // preserves sheet order, de-duped
+  var seenCoupon={};
   (SECTION_DATA.allCoupons||[]).forEach(function(r){
     var idCell=(r['Big Commerce Product ID']||r['BigCommerce Product ID']||r['Product ID']||'').toString();
     var code=(r['Coupon Code']||'').toString().trim();
     if(!code)return;
     idCell.split(',').forEach(function(pid){
       pid=pid.trim();
-      if(pid)PRODUCT_COUPONS[pid]=code;
+      if(!pid)return;
+      PRODUCT_COUPONS[pid]=code;
+      if(!seenCoupon[pid]){seenCoupon[pid]=1;couponIdOrder.push(pid);}
     });
   });
+  COUPON_PRODUCT_IDS=couponIdOrder;
+  // Synthetic rows so the Monthly Flyer section renders through the generic
+  // section renderer (paging, scroll, View All) exactly like other sections.
+  SECTION_DATA.monthlyFlyer=couponIdOrder.map(function(id){return {'Product ID':id};});
+
+  // (Brand injection runs later, after BRANDS_DEALS is parsed — see below.)
 
   // 2.5) Parse FAQs from sheet (overrides hardcoded fallback)
   var faqRows=SECTION_DATA.faqs||[];
@@ -1784,6 +1839,8 @@ async function init(){
 
   // 3) Process Shop by Brand
   BRANDS_DEALS=parseShopByBrand(SECTION_DATA.shopByBrand||[]);
+  // Inject coupon products into matching brand "Shop All" groups (no dup) before render.
+  await injectCouponProductsIntoBrandDeals();
 
   // 4) Render synchronous bits (no product fetching needed yet)
   renderFlyerTabs();
