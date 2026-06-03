@@ -369,11 +369,12 @@ function richCard(p,m){
   var tcls=m.tcls||'fp-t-hot';
   var heartSvg='<svg viewBox="0 0 24 24" width="22" height="22" style="display:block;fill:currentColor"><path d="M12 21s-7.5-4.7-9.5-9.5C1.1 7.8 3.6 4 7.5 4c2.1 0 3.5 1.2 4.5 2.5C13 5.2 14.4 4 16.5 4 20.4 4 22.9 7.8 21.5 11.5 19.5 16.3 12 21 12 21z"/></svg>';
   var heartHtml='';  // wishlist heart removed from flyer deal tiles (deals page = action, not save-for-later)
-  // Visitor row holds: viewing-now (left) · ribbon · coupon (right).
-  var visitorRowHtml='';
-  if(showVisitors||ribbonHtml||couponHtml){
-    visitorRowHtml='<div class="fp-rich-visitors">'+(showVisitors?'<span>👀 '+visitorCount(p,savePct)+' viewing</span>':'<span></span>')+ribbonHtml+couponHtml+'</div>';
-  }
+  // New tile layout (3 rows under the product name):
+  //   Row 1: SKU (left) + stock badge (right)         -> .fp-rich-meta
+  //   Row 2: viewing count (left) + savings ribbon (right, overhangs edge) -> .fp-rich-stats
+  //   Row 3: coupon ticket, centered                   -> .fp-rich-couponrow
+  var viewingHtml=showVisitors?'<span class="fp-rich-viewing">👀 '+visitorCount(p,savePct)+' viewing</span>':'<span></span>';
+  var couponRowHtml=couponHtml?'<div class="fp-rich-couponrow">'+couponHtml+'</div>':'';
   // Tag: hidden by default unless m.showTag is true. Custom color via m.customTagColor.
   var tagStyle=m.customTagColor?' style="background:'+m.customTagColor+';color:#fff"':'';
   var tagHtml=m.showTag?'<span class="fp-rich-tag '+tcls+'"'+tagStyle+'>'+esc(tag)+'</span>':'<span></span>';
@@ -390,9 +391,9 @@ function richCard(p,m){
     '</div>'+
     (img?'<div class="fp-rich-img-wrap"'+(quickView?' onclick="fpQuickView('+p.entityId+')"':'')+'><img src="'+img+'" alt="'+esc(p.name)+'" loading="lazy"></div>':'<div class="fp-rich-ph">🔧</div>')+
     '<a class="fp-rich-name" href="'+esc(p.path||'#')+'" onclick="fpTrackRecent('+p.entityId+')">'+esc(cn)+'</a>'+
-    '<div class="fp-rich-sku">SKU# '+esc(p.sku||p.entityId)+'</div>'+
-    stockHtml+
-    visitorRowHtml+
+    '<div class="fp-rich-meta"><div class="fp-rich-sku">SKU# '+esc(p.sku||p.entityId)+'</div>'+stockHtml+'</div>'+
+    '<div class="fp-rich-stats">'+viewingHtml+ribbonHtml+'</div>'+
+    couponRowHtml+
     '<div class="fp-rich-prices">'+(hasDiscount?'<div class="fp-rich-sale">$'+currentPrice.toFixed(2)+'</div><div class="fp-rich-was">$'+wasPrice.toFixed(2)+'</div>':'<div class="fp-rich-reg">'+(pr?'$'+pr.toFixed(2):'See price')+'</div>')+'</div>'+
     (m.code?'<div class="fp-rich-code"><span class="fp-rich-code-lbl">Code:</span><span class="fp-rich-code-val">'+esc(m.code)+'</span></div>':'')+
     (canBuy
