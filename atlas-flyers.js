@@ -335,7 +335,7 @@ function richCard(p,m){
   // Pinned to the bottom-right of the product image (see .fp-rich-ribbon CSS).
   var ribbonHtml='';
   if(hasDiscount&&savePct>0){
-    var ribbonLabel=(savePct<10)?('Save $'+saveAmt.toFixed(2)):(savePct+'% Off');
+    var ribbonLabel=(savePct<10)?('$'+saveAmt.toFixed(2)+' off'):(savePct+'% Off');
     ribbonHtml='<div class="fp-rich-ribbon">'+ribbonLabel+'<span class="fp-rich-ribbon-tail"></span></div>';
   }
   var img=p.defaultImage?p.defaultImage.url:null;
