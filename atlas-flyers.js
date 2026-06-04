@@ -1561,10 +1561,14 @@ function refreshCartButtons(id){
   });
 }
 // Sweep all currently-rendered add buttons and apply in-cart state.
+// Resets buttons for items no longer in the cart too (so a removal elsewhere —
+// e.g. the theme's cart drawer — reverts the tile to "Add to Cart").
 function applyCartStateToButtons(){
   document.querySelectorAll('.fp-rich-add[data-pid],.fp-cd-add[data-pid]').forEach(function(b){
+    if(b.disabled)return; // leave out-of-stock buttons alone
     var lbl=inCartLabel(b.getAttribute('data-pid'));
     if(lbl){b.textContent=lbl;b.classList.add('added');}
+    else{b.textContent='Add to Cart';b.classList.remove('added');}
   });
 }
 // Returns true if the item was successfully added, false otherwise.
@@ -1875,6 +1879,46 @@ async function init(){
   updateCartBar();
 
   console.log('[Atlas Flyers] Init complete');
+
+  // ---- Keep the flyer's cart UI (footer + tile buttons) in sync when the cart
+  // changes outside the flyer — e.g. an item removed in the theme's own cart
+  // drawer. Re-reads the real BC cart and re-paints. Debounced + guarded so it
+  // never piles up requests or slows the page.
+  var _resyncing=false, _resyncT=null;
+  async function resyncCart(){
+    if(_resyncing)return;            // never overlap reads
+    _resyncing=true;
+    try{ await loadServerCart(); updateCartBar(); applyCartStateToButtons(); }
+    catch(e){}
+    _resyncing=false;
+  }
+  function resyncSoon(){             // collapse rapid triggers into one read
+    clearTimeout(_resyncT);
+    _resyncT=setTimeout(resyncCart,250);
+  }
+  // Re-sync when the shopper returns to the page (covers drawer edits, other
+  // tabs, and back-from-checkout). Reliable, costs nothing until it fires.
+  document.addEventListener('visibilitychange',function(){
+    if(document.visibilityState==='visible')resyncSoon();
+  });
+  window.addEventListener('pageshow',resyncSoon);
+  // Faster path: notice cart-changing API calls (the drawer's add/remove) and
+  // re-sync shortly after. Only acts on cart URLs; everything else passes
+  // straight through untouched, so it adds no overhead to other requests.
+  if(window.fetch){
+    var _origFetch=window.fetch;
+    window.fetch=function(){
+      var u=(arguments[0]&&arguments[0].url)||arguments[0]||'';
+      var m=((arguments[1]&&arguments[1].method)||(arguments[0]&&arguments[0].method)||'GET').toUpperCase();
+      var p=_origFetch.apply(this,arguments);
+      try{
+        if(typeof u==='string'&&u.indexOf('/api/storefront/cart')!==-1&&m!=='GET'){
+          p.then(function(){resyncSoon();},function(){});
+        }
+      }catch(e){}
+      return p;
+    };
+  }
 }
 
 // Run
