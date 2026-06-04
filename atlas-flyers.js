@@ -1894,7 +1894,7 @@ async function init(){
   }
   function resyncSoon(){             // collapse rapid triggers into one read
     clearTimeout(_resyncT);
-    _resyncT=setTimeout(resyncCart,250);
+    _resyncT=setTimeout(resyncCart,400); // ~400ms: lets BC settle the cart server-side first
   }
   // Re-sync when the shopper returns to the page (covers drawer edits, other
   // tabs, and back-from-checkout). Reliable, costs nothing until it fires.
@@ -1902,20 +1902,31 @@ async function init(){
     if(document.visibilityState==='visible')resyncSoon();
   });
   window.addEventListener('pageshow',resyncSoon);
-  // Faster path: notice cart-changing API calls (the drawer's add/remove) and
-  // re-sync shortly after. Only acts on cart URLs; everything else passes
-  // straight through untouched, so it adds no overhead to other requests.
+  // Detect cart-changing API calls (add/remove/update) and re-sync shortly
+  // after. Only acts on cart URLs with a non-GET method; everything else passes
+  // straight through, so no overhead is added to other requests.
+  function isCartMutation(url,method){
+    return typeof url==='string'
+      && url.indexOf('/api/storefront/cart')!==-1
+      && String(method||'GET').toUpperCase()!=='GET';
+  }
+  // PRIMARY trigger — the theme's cart drawer (add/remove) uses XHR, so this is
+  // the path that actually fires on a drawer edit.
+  if(window.XMLHttpRequest&&XMLHttpRequest.prototype){
+    var _xhrOpen=XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open=function(method,url){
+      try{ if(isCartMutation(url,method)) this.addEventListener('loadend',resyncSoon); }catch(e){}
+      return _xhrOpen.apply(this,arguments);
+    };
+  }
+  // Secondary trigger — covers any cart calls made via fetch().
   if(window.fetch){
     var _origFetch=window.fetch;
     window.fetch=function(){
       var u=(arguments[0]&&arguments[0].url)||arguments[0]||'';
-      var m=((arguments[1]&&arguments[1].method)||(arguments[0]&&arguments[0].method)||'GET').toUpperCase();
+      var m=(arguments[1]&&arguments[1].method)||(arguments[0]&&arguments[0].method)||'GET';
       var p=_origFetch.apply(this,arguments);
-      try{
-        if(typeof u==='string'&&u.indexOf('/api/storefront/cart')!==-1&&m!=='GET'){
-          p.then(function(){resyncSoon();},function(){});
-        }
-      }catch(e){}
+      try{ if(isCartMutation(u,m)) p.then(function(){resyncSoon();},function(){}); }catch(e){}
       return p;
     };
   }
