@@ -1432,8 +1432,8 @@ window.fpQuickView=async function(pid){
   // Fallback: if no images array, use defaultImage
   if(!allImgs.length&&img)allImgs.push({url:img,alt:p.name});
   var descPlain=p.description?p.description.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim():'';
-  var descIsLong=descPlain.length>300;
-  var descTeaser=descIsLong?descPlain.substring(0,300):descPlain;
+  var descIsLong=descPlain.length>150;
+  var descTeaser=descIsLong?descPlain.substring(0,150):descPlain;
   MODAL_DESC=descIsLong?sanitizeDesc(p.description):'';
   // Build carousel HTML
   var galleryHtml='';
