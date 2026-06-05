@@ -962,8 +962,11 @@ function fpCollapseSection(gridId){
   // Hide/relabel the Load More / Show Less button for this section.
   if(typeof PAGERS!=='undefined'&&PAGERS[gridId]){ updateLoadMore(gridId); }
   else if(typeof BRAND_STRIP_STATE!=='undefined'&&BRAND_STRIP_STATE[gridId]){ updateBrandLoadMore(gridId); }
-  // Scroll the section back into view at its top.
-  var sec=grid.closest('.fp-section')||grid.closest('.fp-brow-deal');
+  // Scroll the section back into view at its top. Check the narrow brand-strip
+  // container (.fp-brow-deal) BEFORE the broad .fp-section — brand strips live
+  // inside the single Shop-by-Brand .fp-section wrapper, so closest('.fp-section')
+  // would scroll all the way up to the wrapper instead of this specific strip.
+  var sec=grid.closest('.fp-brow-deal')||grid.closest('.fp-section');
   if(sec)sec.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
