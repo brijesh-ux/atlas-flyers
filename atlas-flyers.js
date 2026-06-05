@@ -939,17 +939,31 @@ function updateLoadMore(gridId){
 }
 
 // Shared "Show Less" action: fully collapse a section back to its horizontal
-// strip (same as the header VIEW ALL/COLLAPSE toggle) and scroll it to the top
-// so the user isn't stranded at the bottom of a long expanded grid.
+// strip (same end state as the header VIEW ALL/COLLAPSE toggle) and scroll it to
+// the top so the user isn't stranded at the bottom of a long expanded grid.
+// We set state directly and locate the section's OWN header button by matching
+// the gid in its onclick (querySelector('.fp-section-btn') can match the wrong
+// section's button when several share a container), then sync its label.
 function fpCollapseSection(gridId){
   var grid=$(gridId);if(!grid)return;
-  var sec=grid.closest('.fp-section')||grid.closest('.fp-brow-deal');
-  var headBtn=(sec||document).querySelector('.fp-section-btn');
-  if(headBtn&&typeof window.fpToggleSection==='function'){
-    window.fpToggleSection(gridId, headBtn);
-  }else{
-    grid.setAttribute('data-ex','0');
+  // Collapse the grid itself.
+  grid.setAttribute('data-ex','0');
+  // Find THIS section's header toggle button (its onclick references this gid)
+  // and reset it to the collapsed label, instead of trusting DOM proximity.
+  var headBtn=null;
+  var btns=document.querySelectorAll('.fp-section-btn');
+  for(var i=0;i<btns.length;i++){
+    var oc=btns[i].getAttribute('onclick')||'';
+    if(oc.indexOf("'"+gridId+"'")!==-1){ headBtn=btns[i]; break; }
   }
+  if(headBtn){ headBtn.textContent='VIEW ALL'; headBtn.classList.remove('expanded'); }
+  // Refresh the horizontal scroll arrows now that it's a strip again.
+  if(typeof refreshScrollArrows==='function')refreshScrollArrows(grid);
+  // Hide/relabel the Load More / Show Less button for this section.
+  if(typeof PAGERS!=='undefined'&&PAGERS[gridId]){ updateLoadMore(gridId); }
+  else if(typeof BRAND_STRIP_STATE!=='undefined'&&BRAND_STRIP_STATE[gridId]){ updateBrandLoadMore(gridId); }
+  // Scroll the section back into view at its top.
+  var sec=grid.closest('.fp-section')||grid.closest('.fp-brow-deal');
   if(sec)sec.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
