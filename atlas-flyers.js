@@ -810,16 +810,23 @@ function updateBrandLoadMore(gid){
   var btn=host.querySelector('.fp-loadmore[data-gid="'+gid+'"]');
   var expanded=grid.getAttribute('data-ex')==='1';
   var more=st.shown<st.ids.length;
-  if(expanded&&more){
+  if(expanded){
     if(!btn){
       btn=document.createElement('button');
       btn.className='fp-loadmore';
       btn.setAttribute('data-gid',gid);
-      btn.onclick=function(){ loadBrandPage(gid); };
       var anchor=(grid.parentNode&&grid.parentNode.classList.contains('fp-scroll-wrap'))?grid.parentNode:grid;
       anchor.parentNode.insertBefore(btn,anchor.nextSibling);
     }
-    btn.textContent='Load More';
+    if(more){
+      btn.textContent='Load More';
+      btn.classList.remove('fp-loadmore-less');
+      btn.onclick=function(){ loadBrandPage(gid); };
+    }else{
+      btn.textContent='Show Less';
+      btn.classList.add('fp-loadmore-less');
+      btn.onclick=function(){ fpCollapseSection(gid); };
+    }
     btn.style.display='';
   }else if(btn){
     btn.style.display='none';
@@ -906,21 +913,44 @@ function updateLoadMore(gridId){
   var btn=host.querySelector('.fp-loadmore[data-gid="'+gridId+'"]');
   var expanded=grid.getAttribute('data-ex')==='1';
   var more=st.shown<st.items.length;
-  if(expanded&&more){
+  // While expanded: "Load More" if there's more to load, otherwise "Show Less"
+  // (fully collapse the section back to the strip). While collapsed: hide button.
+  if(expanded){
     if(!btn){
       btn=document.createElement('button');
       btn.className='fp-loadmore';
       btn.setAttribute('data-gid',gridId);
-      btn.onclick=function(){ loadPagerPage(gridId); };
-      // Place the button right after the grid (or its scroll wrapper).
       var anchor=(grid.parentNode&&grid.parentNode.classList.contains('fp-scroll-wrap'))?grid.parentNode:grid;
       anchor.parentNode.insertBefore(btn,anchor.nextSibling);
     }
-    btn.textContent='Load More';
+    if(more){
+      btn.textContent='Load More';
+      btn.classList.remove('fp-loadmore-less');
+      btn.onclick=function(){ loadPagerPage(gridId); };
+    }else{
+      btn.textContent='Show Less';
+      btn.classList.add('fp-loadmore-less');
+      btn.onclick=function(){ fpCollapseSection(gridId); };
+    }
     btn.style.display='';
   }else if(btn){
     btn.style.display='none';
   }
+}
+
+// Shared "Show Less" action: fully collapse a section back to its horizontal
+// strip (same as the header VIEW ALL/COLLAPSE toggle) and scroll it to the top
+// so the user isn't stranded at the bottom of a long expanded grid.
+function fpCollapseSection(gridId){
+  var grid=$(gridId);if(!grid)return;
+  var sec=grid.closest('.fp-section')||grid.closest('.fp-brow-deal');
+  var headBtn=(sec||document).querySelector('.fp-section-btn');
+  if(headBtn&&typeof window.fpToggleSection==='function'){
+    window.fpToggleSection(gridId, headBtn);
+  }else{
+    grid.setAttribute('data-ex','0');
+  }
+  if(sec)sec.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
 function wirePagerLazyLoad(){
