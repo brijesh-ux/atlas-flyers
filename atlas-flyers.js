@@ -528,8 +528,25 @@ function renderFlyerTabs(){
     if(!a)return;
     var bk=a.getAttribute('data-scroll-bk');
     var strip=document.querySelector('.fp-brow[data-bk="'+bk+'"]');
-    if(strip){ ev.preventDefault(); strip.scrollIntoView({behavior:'smooth',block:'start'}); }
-    // else: do nothing — the anchor's normal href (Link When Clicked) runs.
+    if(!strip)return; // brand not on page today -> let the normal link run
+    ev.preventDefault();
+    // Offset for any sticky/fixed bar pinned at the top (e.g. the site header),
+    // so the strip lands just below it instead of being hidden underneath.
+    // Measured at click time, so it stays correct across devices/header sizes.
+    var offset=0;
+    var els=document.querySelectorAll('body *');
+    for(var i=0;i<els.length;i++){
+      var s=getComputedStyle(els[i]);
+      if((s.position==='fixed'||s.position==='sticky')){
+        var rect=els[i].getBoundingClientRect();
+        // Only bars actually pinned at the very top and spanning the width.
+        if(rect.top<=1 && rect.height>0 && rect.height<200 && rect.width>window.innerWidth*0.6){
+          if(rect.bottom>offset)offset=rect.bottom;
+        }
+      }
+    }
+    var y=window.pageYOffset+strip.getBoundingClientRect().top-offset-8;
+    window.scrollTo({top:y<0?0:y,behavior:'smooth'});
   });
   setupFlyerArrows();
 }
