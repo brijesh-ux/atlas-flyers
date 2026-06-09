@@ -517,7 +517,7 @@ function renderFlyerTabs(){
     // brand's strip on the page (.fp-brow[data-bk="..."]). If it's present we
     // scroll to it; if the brand isn't featured that day, we fall back to the
     // normal Link When Clicked URL. Nothing is brand-specific in the code.
-    var sc=(r['Scroll to Section']||r['Scroll To Section']||r['scrollTo']||'').toLowerCase().trim();
+    var sc=(r['Scroll to Section']||r['Scroll To Section']||r['scrollTo']||'').trim();
     var dataAttr=sc?' data-scroll-bk="'+esc(sc)+'"':'';
     return '<a class="fp-flyer-tab" href="'+esc(lk)+'"'+dataAttr+'>'+(im?'<img src="'+esc(im)+'" alt="'+esc(t)+'" loading="eager">':'')+'<div class="fp-flyer-tab-title">'+esc(t)+'</div></a>';
   }).join('');
@@ -527,21 +527,39 @@ function renderFlyerTabs(){
     var a=ev.target.closest('.fp-flyer-tab[data-scroll-bk]');
     if(!a)return;
     var bk=a.getAttribute('data-scroll-bk');
-    var strip=document.querySelector('.fp-brow[data-bk="'+bk+'"]');
-    if(!strip)return; // brand not on page today -> let the normal link run
+    // Resolve the scroll target from the cell value (column E). Try, in order:
+    //   1) a brand strip in Brand Deals (.fp-brow[data-bk]) — e.g. "Bosch","Wiha"
+    //   2) a section by its Display Name — e.g. "June Flyer Deals"
+    //   3) a section by its Section ID — e.g. "monthlyFlyer"
+    // If none is on the page, let the tab's normal link run. Case/space-forgiving.
+    var key=bk.toLowerCase().replace(/\s+/g,' ').trim();
+    var target=document.querySelector('.fp-brow[data-bk="'+key+'"]');
+    if(!target && SECTION_NAME_TO_DOM[key]){
+      target=document.getElementById(SECTION_NAME_TO_DOM[key]);
+    }
+    if(!target && SECTION_ID_TO_DOM[bk]){
+      target=document.getElementById(SECTION_ID_TO_DOM[bk]);
+    }
+    if(!target)return; // nothing on page to scroll to -> normal link runs
     ev.preventDefault();
-    // Offset for any sticky/fixed bar pinned at the top (e.g. the site header),
-    // so the strip lands just below it instead of being hidden underneath.
-    // Measured at click time, so it stays correct across devices/header sizes.
+    var strip=target;
+    // Offset for the sticky site header so the strip lands just below it.
+    // The theme's header is .sticky-header (~110px). Fall back to scanning for
+    // the bottom-most top-pinned sticky/fixed bar if that class isn't found.
     var offset=0;
-    var els=document.querySelectorAll('body *');
-    for(var i=0;i<els.length;i++){
-      var s=getComputedStyle(els[i]);
-      if((s.position==='fixed'||s.position==='sticky')){
-        var rect=els[i].getBoundingClientRect();
-        // Only bars actually pinned at the very top and spanning the width.
-        if(rect.top<=1 && rect.height>0 && rect.height<200 && rect.width>window.innerWidth*0.6){
-          if(rect.bottom>offset)offset=rect.bottom;
+    var hdr=document.querySelector('.sticky-header');
+    if(hdr){
+      offset=hdr.getBoundingClientRect().bottom;
+    }
+    if(offset<=0){
+      var els=document.querySelectorAll('body *');
+      for(var i=0;i<els.length;i++){
+        var s=getComputedStyle(els[i]);
+        if(s.position==='fixed'||s.position==='sticky'){
+          var rect=els[i].getBoundingClientRect();
+          if(rect.top<=2 && rect.height>0 && rect.height<200 && rect.width>window.innerWidth*0.5 && rect.bottom>offset){
+            offset=rect.bottom;
+          }
         }
       }
     }
@@ -1288,6 +1306,9 @@ var SECTION_ID_TO_DOM = {
   monthlyFlyer:'fp-sec-monthlyFlyer',
   endingSoon:'fp-sec-ending'
 };
+// Display Name (lowercased) -> DOM id, populated as sections are placed. Lets
+// flyer-tab banners scroll to a section by its Display Name (column E).
+var SECTION_NAME_TO_DOM = {};
 
 function applySectionOrder(){
   var rows=SECTION_DATA.sectionOrder||[];
@@ -1364,6 +1385,8 @@ function applySectionOrder(){
     if(e.name){
       var titleEl=el.querySelector('.fp-section-title');
       if(titleEl)titleEl.textContent=e.name;
+      // Map Display Name -> DOM id so flyer-tab banners can scroll by section name.
+      SECTION_NAME_TO_DOM[e.name.toLowerCase().replace(/\s+/g,' ').trim()]=domId;
     }
     // For product-grid sections, don't reveal a section that has no data rows.
     // This stops an empty header (e.g. "Under $99") from showing before lazy
