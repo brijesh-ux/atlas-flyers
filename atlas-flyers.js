@@ -511,8 +511,26 @@ function renderFlyerTabs(){
     var t=r['Flyer Name']||r['title']||'';
     var im=r['Flyer Image URL']||r['imageUrl']||'';
     var lk=r['Link When Clicked']||r['linkUrl']||'#';
-    return '<a class="fp-flyer-tab" href="'+esc(lk)+'">'+(im?'<img src="'+esc(im)+'" alt="'+esc(t)+'" loading="eager">':'')+'<div class="fp-flyer-tab-title">'+esc(t)+'</div></a>';
+    // Optional: scroll to a brand strip in Brand Deals instead of following the
+    // link. Put the brand's Brand ID (same value as the Shop by Brand Deals
+    // sheet) in the "Scroll to Section" column. At click time we look for that
+    // brand's strip on the page (.fp-brow[data-bk="..."]). If it's present we
+    // scroll to it; if the brand isn't featured that day, we fall back to the
+    // normal Link When Clicked URL. Nothing is brand-specific in the code.
+    var sc=(r['Scroll to Section']||r['Scroll To Section']||r['scrollTo']||'').toLowerCase().trim();
+    var dataAttr=sc?' data-scroll-bk="'+esc(sc)+'"':'';
+    return '<a class="fp-flyer-tab" href="'+esc(lk)+'"'+dataAttr+'>'+(im?'<img src="'+esc(im)+'" alt="'+esc(t)+'" loading="eager">':'')+'<div class="fp-flyer-tab-title">'+esc(t)+'</div></a>';
   }).join('');
+  // Delegated click: if a tab targets a brand and that brand's strip exists on
+  // the page, smooth-scroll to it; otherwise let the normal link proceed.
+  el.addEventListener('click',function(ev){
+    var a=ev.target.closest('.fp-flyer-tab[data-scroll-bk]');
+    if(!a)return;
+    var bk=a.getAttribute('data-scroll-bk');
+    var strip=document.querySelector('.fp-brow[data-bk="'+bk+'"]');
+    if(strip){ ev.preventDefault(); strip.scrollIntoView({behavior:'smooth',block:'start'}); }
+    // else: do nothing — the anchor's normal href (Link When Clicked) runs.
+  });
   setupFlyerArrows();
 }
 // Horizontal scroll row + arrow controls. Arrows scroll ~80% of a view and
