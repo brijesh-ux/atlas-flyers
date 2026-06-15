@@ -1961,6 +1961,14 @@ async function init(){
   renderTrades();
   applySectionOrder();
 
+  // Sections are now ordered and the empty ones hidden — reveal the page (it was
+  // held at opacity:0 by the .flyers-page:not(.fp-ready) rule in the widget CSS).
+  // This stops the flash where default-order headers (e.g. "Deal of the Day")
+  // briefly appeared before the JS reordered/hid them. Product grids inside still
+  // fill in via their skeletons/lazy-load; brand deals still arrive last by design.
+  var fpPage=document.querySelector('.flyers-page');
+  if(fpPage)fpPage.classList.add('fp-ready');
+
   // 5) Render product-heavy sections (above-fold first, lazy rest)
   await Promise.all([
     renderCountdown(),
