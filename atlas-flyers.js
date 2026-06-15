@@ -700,6 +700,10 @@ function parseShopByBrand(rows){
 // lazy-loads 30 at a time on scroll. Fully sheet-driven; empty deals/brands hidden.
 var BRAND_STRIP_STATE={}; // gid -> {ids:[...], shown:N, brand, loading}
 var BRAND_PAGE=30;
+// Products fetched + rendered per brand strip on FIRST paint, so the whole Shop
+// by Brand section appears immediately with the rest of the page. The remaining
+// products stream in afterwards in the background (see backgroundFillBrandStrips).
+var BRAND_FIRST_PAINT=8;
 
 // Inject coupon products into their brand's "Shop All" group in Brand Deals.
 // Rules: only if the brand has a "Shop All" group AND the product isn't already
@@ -748,11 +752,11 @@ async function renderBrandRows(){
   if(!host)return;
   if(!BRANDS_DEALS.length){hide('fp-sec-shopByBrand-wrap');return;}
 
-  // Fetch only what we need for the first page of each deal up front (in CSV
-  // order), so a brand with hundreds of IDs doesn't fetch everything at once.
+  // Fetch only the small first-paint batch per deal up front, so the section
+  // appears fast even for brands with hundreds of IDs. The rest stream later.
   var firstPageIds=[];
   BRANDS_DEALS.forEach(function(b){
-    b.deals.forEach(function(d){ firstPageIds=firstPageIds.concat(d.ids.slice(0,BRAND_PAGE)); });
+    b.deals.forEach(function(d){ firstPageIds=firstPageIds.concat(d.ids.slice(0,BRAND_FIRST_PAINT)); });
   });
   if(firstPageIds.length)await fetchProducts(firstPageIds);
 
@@ -761,9 +765,9 @@ async function renderBrandRows(){
     var bg=b.style?b.style.accentBg:'#1a1a1a';
     var tc=b.style?b.style.accentText:'#fff';
 
-    // Keep deals that have at least one in-stock product in their first page.
+    // Keep deals that have at least one in-stock product in their first batch.
     var liveDeals=b.deals.filter(function(d){
-      return d.ids.slice(0,BRAND_PAGE).some(function(id){return isShowable(PRODUCT_CACHE[id]);});
+      return d.ids.slice(0,BRAND_FIRST_PAINT).some(function(id){return isShowable(PRODUCT_CACHE[id]);});
     });
     if(!liveDeals.length)return;
 
@@ -821,21 +825,41 @@ async function renderBrandRows(){
   host.innerHTML=rowsHtml;
   show('fp-sec-shopByBrand-wrap');
 
-  // Fill each strip's first page, then wire lazy-loading.
-  Object.keys(BRAND_STRIP_STATE).forEach(function(gid){ loadBrandPage(gid); });
+  // First paint: render the small initial batch for every strip right away
+  // (data already fetched above), so the whole section shows with the page.
+  Object.keys(BRAND_STRIP_STATE).forEach(function(gid){ loadBrandPage(gid, BRAND_FIRST_PAINT); });
   wireBrandLazyLoad();
+  // Then quietly stream the remaining products in the background so the strips
+  // fill out without the user having to scroll to each one.
+  backgroundFillBrandStrips();
   if(typeof setupScrollArrows==='function')setupScrollArrows();
 }
 
-// Append the next page of products (in CSV order) to a strip.
-async function loadBrandPage(gid){
+// Background loader: after first paint, walk each collapsed strip page by page
+// until all its products are loaded. Throttled so it never floods the BC API or
+// blocks interaction. Expanded strips are left to their Load More button.
+function backgroundFillBrandStrips(){
+  Object.keys(BRAND_STRIP_STATE).forEach(function(gid){
+    (function pump(){
+      var st=BRAND_STRIP_STATE[gid];
+      if(!st||st.shown>=st.ids.length)return;     // done
+      var grid=$(gid);
+      if(grid&&grid.getAttribute('data-ex')==='1'){ setTimeout(pump,800); return; } // expanded: wait
+      loadBrandPage(gid).then(function(){ setTimeout(pump,150); });
+    })();
+  });
+}
+
+// Append the next page of products (in CSV order) to a strip. `size` overrides
+// the default page size (used for the small first-paint batch).
+async function loadBrandPage(gid, size){
   var st=BRAND_STRIP_STATE[gid];
   if(!st||st.loading)return;
   var grid=$(gid);if(!grid)return;
   if(st.shown>=st.ids.length)return;
   st.loading=true;
 
-  var next=st.ids.slice(st.shown, st.shown+pageSize());
+  var next=st.ids.slice(st.shown, st.shown+(size||pageSize()));
   await fetchProducts(next);
   var sentinel=grid.querySelector('.fp-brow-sentinel');
   var html='';
