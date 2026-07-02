@@ -2072,4 +2072,46 @@ async function init(){
 // Run
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 
+
+// ==================== DEEP-LINK: ?section= (ad / email landing) ====================
+// Jump straight to a section on page load, even one that has NO flyer tab.
+//   URL:  /flyers-and-deals/?section=<key>
+// <key> is the SAME value you'd put in a Flyer Tab's "Scroll to Section" column:
+//   a Section ID (e.g. hotDeals, under99, clearance, freeBattery),
+//   a section Display Name (e.g. "Hot Deals"), or a Brand ID (e.g. Bosch).
+// Reuses the tab-scroll resolution + sticky-header offset. Case/space-forgiving.
+function fpScrollToSectionKey(bk){
+  if(!bk) return false;
+  var raw=String(bk).trim();
+  var key=raw.toLowerCase().replace(/\s+/g,' ').trim();
+  var target=document.querySelector('.fp-brow[data-bk="'+key+'"]');
+  if(!target && SECTION_NAME_TO_DOM[key]) target=document.getElementById(SECTION_NAME_TO_DOM[key]);
+  if(!target && SECTION_ID_TO_DOM[raw])   target=document.getElementById(SECTION_ID_TO_DOM[raw]);
+  if(!target){ for(var k in SECTION_ID_TO_DOM){ if(k.toLowerCase()===key){ target=document.getElementById(SECTION_ID_TO_DOM[k]); break; } } }
+  if(!target) return false;
+  var offset=0, hdr=document.querySelector('.sticky-header');
+  if(hdr) offset=hdr.getBoundingClientRect().bottom;
+  if(offset<=0){
+    var els=document.querySelectorAll('body *');
+    for(var i=0;i<els.length;i++){
+      var s=getComputedStyle(els[i]);
+      if(s.position==='fixed'||s.position==='sticky'){
+        var rect=els[i].getBoundingClientRect();
+        if(rect.top<=2 && rect.height>0 && rect.height<200 && rect.width>window.innerWidth*0.5 && rect.bottom>offset) offset=rect.bottom;
+      }
+    }
+  }
+  var y=window.pageYOffset+target.getBoundingClientRect().top-offset-8;
+  window.scrollTo({top:y<0?0:y,behavior:'smooth'});
+  return true;
+}
+window.fpScrollToSectionKey=fpScrollToSectionKey;
+(function initSectionDeepLink(){
+  var m=/[?&]section=([^&#]+)/.exec(location.search);
+  if(!m) return;
+  var bk=decodeURIComponent(m[1].replace(/\+/g,' '));
+  // Sections render async (sheet fetch), so retry until the target exists (~12s).
+  var tries=0, t=setInterval(function(){ tries++; if(fpScrollToSectionKey(bk)||tries>60) clearInterval(t); },200);
+})();
+
 })();
