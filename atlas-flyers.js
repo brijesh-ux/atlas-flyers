@@ -2074,21 +2074,21 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
 
 // ==================== DEEP-LINK: ?section= (ad / email landing) ====================
-// Jump straight to a section on page load, even one that has NO flyer tab.
-//   URL:  /flyers-and-deals/?section=<key>
-// <key> is the SAME value you'd put in a Flyer Tab's "Scroll to Section" column:
-//   a Section ID (e.g. hotDeals, under99, clearance, freeBattery),
-//   a section Display Name (e.g. "Hot Deals"), or a Brand ID (e.g. Bosch).
-// Reuses the tab-scroll resolution + sticky-header offset. Case/space-forgiving.
-function fpScrollToSectionKey(bk){
-  if(!bk) return false;
-  var raw=String(bk).trim();
-  var key=raw.toLowerCase().replace(/\s+/g,' ').trim();
-  var target=document.querySelector('.fp-brow[data-bk="'+key+'"]');
-  if(!target && SECTION_NAME_TO_DOM[key]) target=document.getElementById(SECTION_NAME_TO_DOM[key]);
-  if(!target && SECTION_ID_TO_DOM[raw])   target=document.getElementById(SECTION_ID_TO_DOM[raw]);
-  if(!target){ for(var k in SECTION_ID_TO_DOM){ if(k.toLowerCase()===key){ target=document.getElementById(SECTION_ID_TO_DOM[k]); break; } } }
-  if(!target) return false;
+// Jump straight to a section on load, even one with NO flyer tab.
+//   URL:  /flyers-and-deals/?section=<key>   (Section ID, Display Name, or Brand ID)
+// Reuses the flyer-tab resolution + sticky-header offset. Case/space-forgiving.
+// Sections render async AND keep shifting as more load above, so we wait for the
+// target's position to STABILISE before the final scroll (avoids landing short).
+function fpResolveSection(bk){
+  if(!bk) return null;
+  var raw=String(bk).trim(), key=raw.toLowerCase().replace(/\s+/g,' ').trim();
+  var t=document.querySelector('.fp-brow[data-bk="'+key+'"]');
+  if(!t && SECTION_NAME_TO_DOM[key]) t=document.getElementById(SECTION_NAME_TO_DOM[key]);
+  if(!t && SECTION_ID_TO_DOM[raw])   t=document.getElementById(SECTION_ID_TO_DOM[raw]);
+  if(!t){ for(var k in SECTION_ID_TO_DOM){ if(k.toLowerCase()===key){ t=document.getElementById(SECTION_ID_TO_DOM[k]); break; } } }
+  return t;
+}
+function fpSectionOffset(){
   var offset=0, hdr=document.querySelector('.sticky-header');
   if(hdr) offset=hdr.getBoundingClientRect().bottom;
   if(offset<=0){
@@ -2096,22 +2096,34 @@ function fpScrollToSectionKey(bk){
     for(var i=0;i<els.length;i++){
       var s=getComputedStyle(els[i]);
       if(s.position==='fixed'||s.position==='sticky'){
-        var rect=els[i].getBoundingClientRect();
-        if(rect.top<=2 && rect.height>0 && rect.height<200 && rect.width>window.innerWidth*0.5 && rect.bottom>offset) offset=rect.bottom;
+        var rc=els[i].getBoundingClientRect();
+        if(rc.top<=2 && rc.height>0 && rc.height<200 && rc.width>window.innerWidth*0.5 && rc.bottom>offset) offset=rc.bottom;
       }
     }
   }
-  var y=window.pageYOffset+target.getBoundingClientRect().top-offset-8;
+  return offset;
+}
+function fpScrollToSectionKey(bk){
+  var t=fpResolveSection(bk); if(!t) return false;
+  var y=window.pageYOffset+t.getBoundingClientRect().top-fpSectionOffset()-8;
   window.scrollTo({top:y<0?0:y,behavior:'smooth'});
   return true;
 }
 window.fpScrollToSectionKey=fpScrollToSectionKey;
 (function initSectionDeepLink(){
-  var m=/[?&]section=([^&#]+)/.exec(location.search);
-  if(!m) return;
+  var m=/[?&]section=([^&#]+)/.exec(location.search); if(!m) return;
   var bk=decodeURIComponent(m[1].replace(/\+/g,' '));
-  // Sections render async (sheet fetch), so retry until the target exists (~12s).
-  var tries=0, t=setInterval(function(){ tries++; if(fpScrollToSectionKey(bk)||tries>60) clearInterval(t); },200);
+  var lastTop=null, stable=0, tries=0;
+  var t=setInterval(function(){
+    tries++;
+    var el=fpResolveSection(bk);
+    if(el){
+      var abs=el.getBoundingClientRect().top+window.pageYOffset; // absolute doc position
+      if(lastTop!==null && Math.abs(abs-lastTop)<2) stable++; else stable=0;
+      lastTop=abs;
+      if(stable>=3 || tries>=60){ fpScrollToSectionKey(bk); clearInterval(t); }  // settled (~600ms) or 12s cap
+    } else if(tries>=60){ clearInterval(t); }
+  },200);
 })();
 
 })();
