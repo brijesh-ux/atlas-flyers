@@ -2074,11 +2074,13 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
 
 // ==================== DEEP-LINK: ?section= (ad / email landing) ====================
-// Jump straight to a section on load, even one with NO flyer tab.
-//   URL:  /flyers-and-deals/?section=<key>   (Section ID, Display Name, or Brand ID)
-// Reuses the flyer-tab resolution + sticky-header offset. Case/space-forgiving.
-// Sections render async AND keep shifting as more load above, so we wait for the
-// target's position to STABILISE before the final scroll (avoids landing short).
+// Jump straight to a section on load — even one with NO flyer tab and even one not
+// listed in SECTION_ID_TO_DOM (e.g. faqs). URL: /flyers-and-deals/?section=<key>
+//   <key> = Section ID (hotDeals), a DOM key (faqs -> #fp-sec-faqs), a Display Name,
+//   or a Brand ID. Case/space-forgiving.
+// Sections render async AND shift as more load above, AND the page restores a saved
+// scroll pos (fp_scroll) ~800ms after load. So we CONTINUOUSLY re-align to the target
+// until it holds — lands fast and overrides both the drift and the restore.
 function fpResolveSection(bk){
   if(!bk) return null;
   var raw=String(bk).trim(), key=raw.toLowerCase().replace(/\s+/g,' ').trim();
@@ -2086,6 +2088,8 @@ function fpResolveSection(bk){
   if(!t && SECTION_NAME_TO_DOM[key]) t=document.getElementById(SECTION_NAME_TO_DOM[key]);
   if(!t && SECTION_ID_TO_DOM[raw])   t=document.getElementById(SECTION_ID_TO_DOM[raw]);
   if(!t){ for(var k in SECTION_ID_TO_DOM){ if(k.toLowerCase()===key){ t=document.getElementById(SECTION_ID_TO_DOM[k]); break; } } }
+  if(!t) t=document.getElementById('fp-sec-'+raw);   // direct DOM-id fallback (covers sections not in the map)
+  if(!t) t=document.getElementById(raw);             // last resort: literal id
   return t;
 }
 function fpSectionOffset(){
@@ -2105,24 +2109,24 @@ function fpSectionOffset(){
 }
 function fpScrollToSectionKey(bk){
   var t=fpResolveSection(bk); if(!t) return false;
-  var y=window.pageYOffset+t.getBoundingClientRect().top-fpSectionOffset()-8;
-  window.scrollTo({top:y<0?0:y,behavior:'smooth'});
+  var y=Math.max(0, window.pageYOffset+t.getBoundingClientRect().top-fpSectionOffset()-8);
+  window.scrollTo({top:y,behavior:'smooth'});
   return true;
 }
 window.fpScrollToSectionKey=fpScrollToSectionKey;
 (function initSectionDeepLink(){
   var m=/[?&]section=([^&#]+)/.exec(location.search); if(!m) return;
   var bk=decodeURIComponent(m[1].replace(/\+/g,' '));
-  var lastTop=null, stable=0, tries=0;
+  try{ sessionStorage.removeItem('fp_scroll'); }catch(e){}   // don't let scroll-restore fight the deep link
+  var aligned=0, tries=0;
   var t=setInterval(function(){
     tries++;
     var el=fpResolveSection(bk);
-    if(el){
-      var abs=el.getBoundingClientRect().top+window.pageYOffset; // absolute doc position
-      if(lastTop!==null && Math.abs(abs-lastTop)<2) stable++; else stable=0;
-      lastTop=abs;
-      if(stable>=3 || tries>=60){ fpScrollToSectionKey(bk); clearInterval(t); }  // settled (~600ms) or 12s cap
-    } else if(tries>=60){ clearInterval(t); }
+    if(!el){ if(tries>=90) clearInterval(t); return; }        // give up after ~18s if it never renders
+    var want=Math.max(0, el.getBoundingClientRect().top+window.pageYOffset-fpSectionOffset()-8);
+    if(Math.abs(window.pageYOffset-want)<=4){ aligned++; }
+    else { aligned=0; window.scrollTo({top:want, behavior:'auto'}); }  // re-align as content shifts / restore fires
+    if((aligned>=4 && tries>=6) || tries>=90) clearInterval(t);        // held ~0.8s & past the 800ms restore
   },200);
 })();
 
