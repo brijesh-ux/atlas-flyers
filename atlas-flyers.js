@@ -795,14 +795,14 @@ async function renderBrandRows(){
   if(!host)return;
   if(!BRANDS_DEALS.length){hide('fp-sec-shopByBrand-wrap');return;}
 
-  // Per-section freshness: when shopByBrand is Sequencing=Off, shuffle both the brand
-  // ORDER and the products inside each brand's strips (daily seed). Non-mutating — a
-  // fresh copy is derived from BRANDS_DEALS each call, so it's stable within the day
-  // and the strip pager (BRAND_STRIP_STATE below) stays consistent.
+  // Per-section freshness: when shopByBrand is Sequencing=Off, shuffle ONLY the
+  // products inside each brand's strips (daily seed). Brand-card ORDER is left as-is.
+  // Non-mutating — a fresh copy is derived from BRANDS_DEALS each call, so it's stable
+  // within the day and the strip pager (BRAND_STRIP_STATE below) stays consistent.
   var brands=BRANDS_DEALS;
   if(SECTION_SEQUENCING['shopByBrand']===false){
     var bseed=fpFreshSeed('shopByBrand');
-    brands=fpSeededShuffle(BRANDS_DEALS,bseed).map(function(b){
+    brands=BRANDS_DEALS.map(function(b){
       var bcopy={};for(var bk in b)bcopy[bk]=b[bk];
       bcopy.deals=b.deals.map(function(d,i){
         var dcopy={};for(var dk in d)dcopy[dk]=d[dk];
