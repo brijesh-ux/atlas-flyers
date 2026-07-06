@@ -318,6 +318,20 @@ function fpSeededShuffle(arr,seed){
   }
   return a;
 }
+// Per-section base seed: stable per section + rotating day-bucket. Same for all
+// visitors within the window; advances every "Rotation Days" days.
+function fpFreshSeed(sectionKey){
+  return fpStrHash(sectionKey)+fpDayBucket(SECTION_ROTATE_DAYS[sectionKey]||1);
+}
+// Apply per-section freshness to a raw sheet-row array. Returns rows unchanged when
+// Sequencing is On/blank (default), or a daily seeded shuffle when Off. Shared by
+// EVERY section renderer so the Section Order columns work everywhere, not just the
+// generic product grids. Idempotent: always derives from the passed array + a
+// deterministic seed, so calling a renderer twice yields the same order.
+function fpFreshRows(sectionKey,rows){
+  if(!rows||rows.length<2||SECTION_SEQUENCING[sectionKey]!==false)return rows||[];
+  return fpSeededShuffle(rows,fpFreshSeed(sectionKey));
+}
 // Tiered "viewing now" count, correlated with the discount:
 //   >30% off  → 200–450 (hot deals look busy)
 //   1–30% off → 40–199
@@ -437,6 +451,7 @@ async function renderProductSection(sectionKey,gridId){
   if(sectionKey==='dealOfDay'&&!getSetting('show_deal_of_the_day',true)){hide('fp-sec-dod');return;}
   var rows=SECTION_DATA[sectionKey]||[];
   if(!rows.length){hide('fp-sec-'+sectionKey);return;}
+  rows=fpFreshRows(sectionKey,rows); // per-section daily freshness (Sequencing=Off)
   // Show skeleton
   if(getSetting('enable_skeleton_screens',true)){
     grid.innerHTML='<div class="fp-skel"></div><div class="fp-skel"></div><div class="fp-skel"></div><div class="fp-skel"></div>';
@@ -467,14 +482,6 @@ async function renderProductSection(sectionKey,gridId){
     };
   }).filter(Boolean);
   if(!items.length){hide('fp-sec-'+sectionKey);return;}
-
-  // Product freshness: Sequencing=Off (Section Order tab) randomises the order with a
-  // daily-bucket seed — reshuffles every "Rotation Days" days, but stays fixed within
-  // that window (no per-reload flicker, and the pager below stays consistent since it
-  // slices this same reordered array). Default (On/blank) keeps sheet order untouched.
-  if(SECTION_SEQUENCING[sectionKey]===false){
-    items=fpSeededShuffle(items,fpStrHash(sectionKey)+fpDayBucket(SECTION_ROTATE_DAYS[sectionKey]||1));
-  }
 
   var pagingOn=getSetting('enable_section_paging',true);
 
@@ -541,6 +548,7 @@ function renderFlyerTabs(){
   var el=$('fp-flyer-tabs');
   var rows=SECTION_DATA.flyerTabs||[];
   if(!rows.length){var w=$('fp-flyer-tabs-wrap');if(w)w.style.display='none';return;}
+  rows=fpFreshRows('flyerTabs',rows); // freshness (Sequencing=Off)
   el.innerHTML=rows.map(function(r){
     var t=r['Flyer Name']||r['title']||'';
     var im=r['Flyer Image URL']||r['imageUrl']||'';
@@ -640,6 +648,7 @@ async function renderCountdown(){
   if(!getSetting('show_countdown_timers',true)){hide('fp-sec-countdown');return;}
   var rows=SECTION_DATA.countdown||[];
   if(!rows.length){hide('fp-sec-countdown');return;}
+  rows=fpFreshRows('countdown',rows); // freshness (Sequencing=Off)
   var items=rows.map(function(r){
     var pid=parseIds(r['Product ID']||r['productId']||'')[0];
     if(!pid)return null;
@@ -786,16 +795,34 @@ async function renderBrandRows(){
   if(!host)return;
   if(!BRANDS_DEALS.length){hide('fp-sec-shopByBrand-wrap');return;}
 
+  // Per-section freshness: when shopByBrand is Sequencing=Off, shuffle both the brand
+  // ORDER and the products inside each brand's strips (daily seed). Non-mutating — a
+  // fresh copy is derived from BRANDS_DEALS each call, so it's stable within the day
+  // and the strip pager (BRAND_STRIP_STATE below) stays consistent.
+  var brands=BRANDS_DEALS;
+  if(SECTION_SEQUENCING['shopByBrand']===false){
+    var bseed=fpFreshSeed('shopByBrand');
+    brands=fpSeededShuffle(BRANDS_DEALS,bseed).map(function(b){
+      var bcopy={};for(var bk in b)bcopy[bk]=b[bk];
+      bcopy.deals=b.deals.map(function(d,i){
+        var dcopy={};for(var dk in d)dcopy[dk]=d[dk];
+        dcopy.ids=fpSeededShuffle(d.ids||[],bseed+fpStrHash(b.key||'')+i);
+        return dcopy;
+      });
+      return bcopy;
+    });
+  }
+
   // Fetch only the small first-paint batch per deal up front, so the section
   // appears fast even for brands with hundreds of IDs. The rest stream later.
   var firstPageIds=[];
-  BRANDS_DEALS.forEach(function(b){
+  brands.forEach(function(b){
     b.deals.forEach(function(d){ firstPageIds=firstPageIds.concat(d.ids.slice(0,BRAND_FIRST_PAINT)); });
   });
   if(firstPageIds.length)await fetchProducts(firstPageIds);
 
   var rowsHtml='';
-  BRANDS_DEALS.forEach(function(b){
+  brands.forEach(function(b){
     var bg=b.style?b.style.accentBg:'#1a1a1a';
     var tc=b.style?b.style.accentText:'#fff';
 
@@ -1161,6 +1188,7 @@ function applyBrandFilter(){ /* brand chip filtering removed */ }
 async function renderBundles(){
   var rows=SECTION_DATA.bundles||[];
   if(!rows.length){hide('fp-sec-bundles');return;}
+  rows=fpFreshRows('bundles',rows); // freshness (Sequencing=Off)
   var bundles=rows.map(function(r){
     return {
       id:(r['Bundle ID']||r['bundleId']||'').trim()||'b'+Math.random().toString(36).substr(2,5),
@@ -1224,6 +1252,7 @@ window.fpAddBundle=async function(bid,ids){
 function renderCoupons(){
   var rows=SECTION_DATA.coupons||[];
   if(!rows.length){hide('fp-sec-coupons');return;}
+  rows=fpFreshRows('coupons',rows); // freshness (Sequencing=Off)
   $('fp-coupons').innerHTML=rows.map(function(c,i){
     var brand=c['Brand Name']||c['brand']||'';
     var bg=c['Brand Background']||c['brandBg']||'#0f0f0f';
@@ -1248,6 +1277,7 @@ async function renderStaff(){
   if(!getSetting('show_staff_picks',true)){hide('fp-sec-staff');return;}
   var rows=SECTION_DATA.staffPicks||[];
   if(!rows.length){hide('fp-sec-staff');return;}
+  rows=fpFreshRows('staffPicks',rows); // freshness (Sequencing=Off)
   var staff=rows.map(function(r){
     return {
       name:r['Staff Name']||'',
@@ -1288,6 +1318,7 @@ function renderVideos(){
   if(!getSetting('show_video_section',true)){hide('fp-sec-videos');return;}
   var rows=SECTION_DATA.videoSection||[];
   if(!rows.length){hide('fp-sec-videos');return;}
+  rows=fpFreshRows('videoSection',rows); // freshness (Sequencing=Off)
   $('fp-videos').innerHTML=rows.map(function(r){
     var title=r['Title']||'';
     var url=r['Video URL']||'';
@@ -1309,6 +1340,7 @@ async function renderTrades(){
   if(!getSetting('show_shop_by_trade',true)){hide('fp-sec-trades');return;}
   var rows=SECTION_DATA.shopByTrade||[];
   if(!rows.length){hide('fp-sec-trades');return;}
+  rows=fpFreshRows('shopByTrade',rows); // freshness (Sequencing=Off)
   $('fp-trades').innerHTML=rows.map(function(r,i){
     var name=r['Trade Name']||'';
     var icon=r['Icon Image URL']||'';
@@ -1510,7 +1542,9 @@ async function renderRecent(){
   await fetchProducts(RECENT);
   // Use the same full product card as other sections (price/stock/Add to Cart),
   // no deal tag since these are simply items the visitor has viewed.
-  var html=RECENT.map(function(id){
+  // Freshness: normally recency-ordered; when Sequencing=Off, daily-shuffle instead.
+  var recentIds=SECTION_SEQUENCING['recentlyViewed']===false?fpSeededShuffle(RECENT,fpFreshSeed('recentlyViewed')):RECENT;
+  var html=recentIds.map(function(id){
     var p=PRODUCT_CACHE[id];
     if(!isShowable(p))return'';
     return richCard(p,{showTag:false,_sectionKey:'recentlyViewed'});
@@ -1893,6 +1927,7 @@ function refreshScrollArrows(grid){
 function renderEndingSoon(){
   var urgent=[];
   BRANDS_DEALS.forEach(function(b){b.deals.forEach(function(d){if(d.urgent)urgent.push(b.name+' — '+d.offer+(d.exp?' ends '+d.exp:''));});});
+  if(SECTION_SEQUENCING['endingSoon']===false)urgent=fpSeededShuffle(urgent,fpFreshSeed('endingSoon')); // rotate which surface
   var el=$('fp-ending-sub');if(el)el.textContent=urgent.length?urgent.slice(0,3).join(' · '):'Check current deals for expiry dates';
 }
 
