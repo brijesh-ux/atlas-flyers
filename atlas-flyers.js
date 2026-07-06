@@ -292,6 +292,32 @@ function fpBucket(){
   var mins=parseInt(getSetting('live_visitor_window_min',30),10)||30;
   return Math.floor(Date.now()/(mins*60*1000));
 }
+// ---- Product freshness (per-section daily rotation) ----
+// Same idea as fpBucket but in whole DAYS. days=rotation cadence (1..10) from the
+// Section Order "Rotation Days" column. Returns an integer that stays constant for
+// `days` days then ticks up — the rotating seed input for the section shuffle.
+function fpDayBucket(days){
+  var d=parseInt(days,10)||1; if(d<1)d=1; if(d>10)d=10;
+  return Math.floor(Date.now()/(d*86400000));
+}
+// Cheap deterministic string hash (djb2) → stable number per section key, so each
+// section shuffles independently (two sections don't reorder in lockstep).
+function fpStrHash(s){
+  s=String(s||''); var h=5381;
+  for(var i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;
+  return h;
+}
+// Deterministic seeded shuffle (Fisher-Yates driven by fpSeeded). Same seed → same
+// order for every visitor (no per-reload flicker); new day-bucket → fresh order.
+// Returns a NEW array; the input is left untouched.
+function fpSeededShuffle(arr,seed){
+  var a=arr.slice();
+  for(var i=a.length-1;i>0;i--){
+    var j=Math.floor(fpSeeded(seed+i*2654435761)*(i+1));
+    var t=a[i];a[i]=a[j];a[j]=t;
+  }
+  return a;
+}
 // Tiered "viewing now" count, correlated with the discount:
 //   >30% off  → 200–450 (hot deals look busy)
 //   1–30% off → 40–199
@@ -441,6 +467,14 @@ async function renderProductSection(sectionKey,gridId){
     };
   }).filter(Boolean);
   if(!items.length){hide('fp-sec-'+sectionKey);return;}
+
+  // Product freshness: Sequencing=Off (Section Order tab) randomises the order with a
+  // daily-bucket seed — reshuffles every "Rotation Days" days, but stays fixed within
+  // that window (no per-reload flicker, and the pager below stays consistent since it
+  // slices this same reordered array). Default (On/blank) keeps sheet order untouched.
+  if(SECTION_SEQUENCING[sectionKey]===false){
+    items=fpSeededShuffle(items,fpStrHash(sectionKey)+fpDayBucket(SECTION_ROTATE_DAYS[sectionKey]||1));
+  }
 
   var pagingOn=getSetting('enable_section_paging',true);
 
@@ -1301,6 +1335,11 @@ window.fpTradeFilter=function(i){
 // FAQs and sticky cart bar are LOCKED at the bottom — not reorderable.
 // Populated by applySectionOrder() from "Show Visitor Count" column. Section key -> bool.
 var SECTION_VISITOR_COUNT = {};
+// Product-freshness config from the Section Order tab, keyed by Section ID.
+// SECTION_SEQUENCING[id]: true = keep sheet order (default), false = randomise.
+// SECTION_ROTATE_DAYS[id]: 1..10, how often the randomised order reshuffles.
+var SECTION_SEQUENCING = {};
+var SECTION_ROTATE_DAYS = {};
 var SECTION_ID_TO_DOM = {
   flyerTabs:'fp-flyer-tabs-wrap',
   dealOfDay:'fp-sec-dod',
@@ -1347,6 +1386,14 @@ function applySectionOrder(){
     var svc=(r['Show Visitor Count']||r['showVisitorCount']||r['show_visitor_count']||'').toString().toLowerCase().trim();
     // Default: if blank, treat as no (opt-in)
     SECTION_VISITOR_COUNT[id]=(svc==='yes'||svc==='true');
+    // Product freshness. "Sequencing" On (default) = keep sheet order; Off = randomise.
+    // Blank → On, so freshness is opt-in and nothing changes until a section is flipped.
+    var seq=(r['Sequencing']||r['sequencing']||'').toString().toLowerCase().trim();
+    SECTION_SEQUENCING[id]=!(seq==='off'||seq==='no'||seq==='false'||seq==='0');
+    // "Rotation Days" 1..10 (blank/invalid → 1). Only used when Sequencing = Off.
+    var rot=parseInt(r['Rotation Days']||r['rotationDays']||r['rotation_days']||'',10);
+    if(isNaN(rot)||rot<1)rot=1; if(rot>10)rot=10;
+    SECTION_ROTATE_DAYS[id]=rot;
     return {id:id,name:name,order:isNaN(order)?9999:order,active:active!=='no'&&active!=='false'};
   }).filter(function(e){return e.id;});
   entries.sort(function(a,b){return a.order-b.order;});
