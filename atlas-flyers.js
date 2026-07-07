@@ -1883,10 +1883,37 @@ window.fpToggleSection=function(gid,btn){
 // reusing the flyer-arrow style. Arrows show only when the strip overflows AND is
 // collapsed; they hide when expanded (VIEW ALL) and auto-hide at each end. Runs
 // once after render and is idempotent (safe to re-run after lazy-load appends).
+//
+// FIX (right-arrow-missing-for-mouse-users): product sections render skeletons
+// first, then inject the real tiles asynchronously. The old code ran its single
+// refreshScrollArrows() while the strip was still empty/skeleton (so scrollWidth
+// didn't overflow yet → right arrow hidden), early-returned for already-wrapped
+// grids on later runs, and only re-checked on 'scroll'/'resize'. A trackpad's
+// tiny horizontal nudge fired 'scroll' and revealed the arrow, but a regular
+// mouse never did. We now (1) re-check already-wrapped strips on every run,
+// (2) watch each strip's childList so the arrows re-check the instant tiles are
+// injected/lazy-loaded, and (3) bind the resize handler once.
 function setupScrollArrows(){
   if(!getSetting('enable_scroll_arrows',true))return;
+
+  // Attach load-listeners to any not-yet-wired images so the arrows re-check as
+  // images size in (idempotent — each <img> is wired at most once).
+  function wireImgs(grid){
+    grid.querySelectorAll('img').forEach(function(img){
+      if(img.getAttribute('data-fp-arrowimg'))return;
+      img.setAttribute('data-fp-arrowimg','1');
+      if(!img.complete)img.addEventListener('load',function(){refreshScrollArrows(grid);},{once:true});
+    });
+  }
+
   document.querySelectorAll('.fp-rich-grid, .fp-countdown-grid').forEach(function(grid){
-    if(grid.parentNode&&grid.parentNode.classList.contains('fp-scroll-wrap'))return; // already wrapped
+    // Already wrapped: tiles may have been injected/lazy-loaded since the last
+    // run — re-check (and wire any new images), then bail.
+    if(grid.parentNode&&grid.parentNode.classList.contains('fp-scroll-wrap')){
+      wireImgs(grid);
+      refreshScrollArrows(grid);
+      return;
+    }
     var wrap=document.createElement('div');
     wrap.className='fp-scroll-wrap';
     grid.parentNode.insertBefore(wrap,grid);
@@ -1899,14 +1926,33 @@ function setupScrollArrows(){
     L.onclick=function(){grid.scrollBy({left:-Math.round(grid.clientWidth*0.8),behavior:'smooth'});};
     R.onclick=function(){grid.scrollBy({left:Math.round(grid.clientWidth*0.8),behavior:'smooth'});};
     grid.addEventListener('scroll',function(){refreshScrollArrows(grid);},{passive:true});
-    grid.querySelectorAll('img').forEach(function(img){
-      if(!img.complete)img.addEventListener('load',function(){refreshScrollArrows(grid);},{once:true});
-    });
+    wireImgs(grid);
+
+    // THE FIX: re-check whenever the strip's contents change. Sections render
+    // skeletons first, then inject the real tiles async, so the initial refresh
+    // ran on an empty/skeleton strip and hid the right arrow until a scroll/resize
+    // fired. Watching childList catches the tile injection directly (also lazy-load
+    // appends, brand filtering, and VIEW ALL expand/collapse).
+    if('MutationObserver' in window){
+      var mo=new MutationObserver(function(){ wireImgs(grid); refreshScrollArrows(grid); });
+      mo.observe(grid,{childList:true});
+    }
+
     refreshScrollArrows(grid);
+    // Belt-and-suspenders: re-check after the first layout/paint in case tiles
+    // were injected synchronously right before this ran.
+    if(window.requestAnimationFrame)requestAnimationFrame(function(){refreshScrollArrows(grid);});
+    setTimeout(function(){refreshScrollArrows(grid);},80);
   });
-  window.addEventListener('resize',function(){
-    document.querySelectorAll('.fp-rich-grid, .fp-countdown-grid').forEach(refreshScrollArrows);
-  });
+
+  // Bind the global resize handler ONCE (setupScrollArrows is called ~7×; the old
+  // code re-added a duplicate resize listener every time it ran).
+  if(!setupScrollArrows._resizeBound){
+    setupScrollArrows._resizeBound=true;
+    window.addEventListener('resize',function(){
+      document.querySelectorAll('.fp-rich-grid, .fp-countdown-grid').forEach(refreshScrollArrows);
+    });
+  }
 }
 
 function refreshScrollArrows(grid){
