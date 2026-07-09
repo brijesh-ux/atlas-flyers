@@ -2339,7 +2339,6 @@ function catNextUrl(doc){
 async function initCategoryTiles(rerun){
   try{
     if(document.querySelector('.flyers-page'))return;              // flyer page has its own init
-    var myRun=(window.__fpCatRun=(window.__fpCatRun||0)+1);        // invalidates older loaders
     var ssTarget=document.getElementById('searchspring-content');
     if(ssTarget){
       // search, /shop/ landing and brand pages stay SearchSpring-rendered
@@ -2384,6 +2383,7 @@ async function initCategoryTiles(rerun){
       wrap.innerHTML=cardsHtml(got);
       if(!wrap.children.length)return;
     }
+    var myRun=(window.__fpCatRun=(window.__fpCatRun||0)+1);   // this run owns the grid now
     catWidenContainer();
     grid.parentNode.replaceChild(wrap,grid);
     applyCartStateToButtons();
