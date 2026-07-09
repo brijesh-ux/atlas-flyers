@@ -2337,6 +2337,8 @@ function catNextUrl(doc){
   try{return new URL(raw,location.href).href;}catch(e){return null;}
 }
 async function initCategoryTiles(rerun){
+  if(window.__fpCatBusy)return;
+  window.__fpCatBusy=true;
   try{
     if(document.querySelector('.flyers-page'))return;              // flyer page has its own init
     var ssTarget=document.getElementById('searchspring-content');
@@ -2446,7 +2448,8 @@ async function initCategoryTiles(rerun){
       }
     }
     async function loadMore(){
-      if(loading||exhausted||myRun!==window.__fpCatRun)return;
+      if(myRun!==window.__fpCatRun){exhausted=true;return;}
+      if(loading||exhausted)return;
       loading=true;
       try{ if(newestMode)await loadNewest();else await loadNextPage(); }
       catch(e){exhausted=true;}
@@ -2457,7 +2460,9 @@ async function initCategoryTiles(rerun){
       return r.top<innerHeight+900;
     }
     async function maybeLoad(){
-      while(!exhausted&&!loading&&nearBottom())await loadMore();
+      if(exhausted||loading||!nearBottom())return;
+      await loadMore();
+      if(!exhausted&&nearBottom())setTimeout(maybeLoad,150);
     }
     document.addEventListener('scroll',maybeLoad,true);
     window.addEventListener('wheel',maybeLoad,{passive:true});
@@ -2473,6 +2478,7 @@ async function initCategoryTiles(rerun){
       await new Promise(function(r){setTimeout(r,600);});
     }
   }catch(e){console.warn('[Atlas Tiles] left native grid:',e&&e.message);}
+  finally{window.__fpCatBusy=false;}
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){initCategoryTiles(false);});else initCategoryTiles(false);
 // The theme's sort dropdown / faceted filters AJAX-replace the listing in place
