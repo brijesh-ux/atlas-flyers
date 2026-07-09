@@ -2339,11 +2339,13 @@ function catBuildFilterBar(){
   bar.innerHTML='<span class="fp-fb-label">Refine By</span>';
   var groups=0;
   [].slice.call(fs.querySelectorAll('.accordion-content')).forEach(function(content){
-    var name=(content.id||'').replace(/^facetedSearch-content--/,'').replace(/-/g,' ');
-    if(!name){
-      var tt=content.parentElement&&content.parentElement.querySelector('.accordion-title');
-      name=tt?(tt.textContent||'').replace(/\s+/g,' ').trim():'Filter';
-    }
+    // human name from the accordion heading; the machine id ("bool") only as fallback
+    var name='';
+    var block=content.closest('.accordion-block')||content.parentElement;
+    var tt=block?block.querySelector('.accordion-title'):null;
+    if(!tt&&content.previousElementSibling)tt=content.previousElementSibling.querySelector&&content.previousElementSibling.querySelector('.accordion-title');
+    if(tt)name=(tt.textContent||'').replace(/\s+/g,' ').trim();
+    if(!name)name=(content.id||'').replace(/^facetedSearch-content--/,'').replace(/-/g,' ')||'Filter';
     name=name.replace(/(^|\s)\w/g,function(c){return c.toUpperCase();});
     var links=[].slice.call(content.querySelectorAll('a[href]'));
     if(!links.length)return;
