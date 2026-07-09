@@ -2363,39 +2363,59 @@ async function initCategoryTiles(){
     console.log('[Atlas Tiles] category grid: '+wrap.children.length+' rich cards');
 
     // ---- endless scroll over BigCommerce's native pagination ----
-    var nextUrl=catNextUrl(document);
-    if(!nextUrl)return;
+    // Scroll-agnostic: the first pages load eagerly on their own, the rest load
+    // on any scroll/wheel/touch signal from any container. Next-page URLs are
+    // built from the current URL so sort/filter params are always preserved.
+    if(!catNextUrl(document))return;                              // single page
     var pag=document.querySelector('#product-listing-container .pagination');
-    if(pag)pag.style.display='none';                               // endless scroll replaces the pager
+    if(pag)pag.style.display='none';
     var sentinel=document.createElement('div');
     sentinel.style.cssText='height:1px;width:100%';
     wrap.parentNode.insertBefore(sentinel,wrap.nextSibling);
-    var loading=false;
+    var pageN=1,exhausted=false,loading=false;
     async function loadNextPage(){
-      if(loading||!nextUrl)return;
+      if(loading||exhausted)return;
       loading=true;
       try{
-        var html=await fetch(nextUrl,{credentials:'same-origin'}).then(function(r){return r.ok?r.text():null;});
+        var u=new URL(location.href);
+        u.hash='';
+        u.searchParams.set('page',String(pageN+1));
+        var html=await fetch(u.href,{credentials:'same-origin'}).then(function(r){return r.ok?r.text():null;});
         var doc=html?new DOMParser().parseFromString(html,'text/html'):null;
-        nextUrl=doc?catNextUrl(doc):null;
         var g=doc&&doc.querySelector('#product-listing-container .productGrid');
         var pageItems=g?catCollectItems(g):[];
-        if(pageItems.length){
-          await fpFetchProductsCached(pageItems.map(function(x){return x.id;}));
-          wrap.insertAdjacentHTML('beforeend',cardsHtml(pageItems));
+        if(!pageItems.length){exhausted=true;return;}
+        pageN++;
+        await fpFetchProductsCached(pageItems.map(function(x){return x.id;}));
+        var html2=cardsHtml(pageItems);
+        if(html2){
+          wrap.insertAdjacentHTML('beforeend',html2);
           applyCartStateToButtons();
-          console.log('[Atlas Tiles] +page: grid now '+wrap.children.length+' cards');
+          console.log('[Atlas Tiles] +page '+pageN+': grid now '+wrap.children.length+' cards');
         }
-      }catch(e){nextUrl=null;}
+        if(!(doc&&catNextUrl(doc)))exhausted=true;
+      }catch(e){exhausted=true;}
       finally{loading=false;}
     }
+    function nearBottom(){
+      var r=sentinel.getBoundingClientRect();
+      return r.top<innerHeight+900;
+    }
+    async function maybeLoad(){
+      while(!exhausted&&!loading&&nearBottom())await loadNextPage();
+    }
+    document.addEventListener('scroll',maybeLoad,true);           // catches ANY scroll container
+    window.addEventListener('wheel',maybeLoad,{passive:true});
+    window.addEventListener('touchmove',maybeLoad,{passive:true});
     if('IntersectionObserver' in window){
-      var io=new IntersectionObserver(function(es){
-        es.forEach(function(en){if(en.isIntersecting)loadNextPage();});
-      },{rootMargin:'900px 0px'});
-      io.observe(sentinel);
-    }else{
-      while(nextUrl)await loadNextPage();
+      new IntersectionObserver(function(es){
+        es.forEach(function(en){if(en.isIntersecting)maybeLoad();});
+      },{rootMargin:'900px 0px'}).observe(sentinel);
+    }
+    // guarantee the first ~6 pages regardless of how (or whether) scrolling works
+    for(var k=0;k<5&&!exhausted;k++){
+      await loadNextPage();
+      await new Promise(function(r){setTimeout(r,600);});
     }
   }catch(e){console.warn('[Atlas Tiles] left native grid:',e&&e.message);}
 }
