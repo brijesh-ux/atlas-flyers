@@ -2355,4 +2355,111 @@ async function initCategoryTiles(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initCategoryTiles);else initCategoryTiles();
 
+// ==================== SEARCHSPRING RECOMMENDATION RESKIN ====================
+// SearchSpring recommendation carousels (PDP "Customers Also Viewed", cart
+// "You May Also Like", etc.) keep SearchSpring's product picks but get repainted
+// as flyer-style strips: fp section header + horizontal fp-rich cards + arrows.
+// A carousel is only touched once it has rendered AND product ids are readable
+// from it; otherwise it is left exactly as-is.
+var _fpTileDataP=null;
+function fpEnsureTileData(){
+  if(_fpTileDataP)return _fpTileDataP;
+  _fpTileDataP=Promise.all([
+    fetchCSV('settings',GIDS.settings),
+    fetchCSV('brandStyles',GIDS.brandStyles),
+    fetchCSV('allCoupons',GIDS.allCoupons),
+    loadServerCart()
+  ]).then(function(rows){
+    (rows[0]||[]).forEach(function(r){
+      var k=(r['Setting Name']||r['setting']||r['key']||'').trim();
+      var v=(r['Value']||r['value']||'').trim();
+      if(k&&SETTINGS[k]===undefined)SETTINGS[k]=v;
+    });
+    (rows[1]||[]).forEach(function(r){
+      var k=(r['Brand ID']||r['brandKey']||r['key']||'').toLowerCase().trim();
+      if(!k||BRAND_STYLES[k])return;
+      BRAND_STYLES[k]={key:k,name:r['Brand Name']||r['name']||k,
+        logoUrl:r['Logo Image URL']||r['logoUrl']||'',
+        brandIconUrl:r['Brand Icon URL']||r['imageUrl']||'',
+        accentBg:r['Background Color']||r['accentBg']||'#1a1a1a',
+        accentText:r['Text Color']||r['accentText']||'#ffffff'};
+    });
+    (rows[2]||[]).forEach(function(r){
+      var idCell=(r['Big Commerce Product ID']||r['BigCommerce Product ID']||r['Product ID']||'').toString();
+      var code=(r['Coupon Code']||'').toString().trim();
+      if(!code)return;
+      idCell.split(',').forEach(function(pid){
+        pid=pid.trim();
+        if(pid&&!PRODUCT_COUPONS[pid])PRODUCT_COUPONS[pid]=code;
+      });
+    });
+  });
+  return _fpTileDataP;
+}
+
+function recExtractIds(target){
+  var ids=[],seen={};
+  target.querySelectorAll('[data-id],[data-product-id],a[href*="product_id="]').forEach(function(el){
+    var id=el.getAttribute('data-id')||el.getAttribute('data-product-id');
+    if(!id){var m=(el.getAttribute('href')||'').match(/product_id=(\d+)/);id=m?m[1]:null;}
+    id=parseInt(id,10);
+    if(id>0&&!seen[id]){seen[id]=1;ids.push(id);}
+  });
+  return ids;
+}
+
+var _fpRecsBusy=false;
+async function reskinRecTargets(){
+  if(_fpRecsBusy)return;
+  if(document.querySelector('.flyers-page'))return;   // flyer page styles itself
+  var targets=document.querySelectorAll('.ss__recommendation--target:not([data-fp-reskinned])');
+  if(!targets.length)return;
+  var work=[];
+  [].slice.call(targets).forEach(function(t){
+    var ids=recExtractIds(t);
+    if(ids.length)work.push({t:t,ids:ids});
+  });
+  if(!work.length)return;
+  _fpRecsBusy=true;
+  try{
+    STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
+    if(!STORE_TOKEN)return;
+    await fpEnsureTileData();
+    var all=[];work.forEach(function(w){all=all.concat(w.ids);});
+    await fetchProducts(all);
+    catInjectInfra();
+    var done=0;
+    work.forEach(function(w){
+      var got=w.ids.filter(function(id){return isShowable(PRODUCT_CACHE[id]);});
+      if(!got.length)return;
+      var h=w.t.querySelector('h2,h3,[class*="title"]');
+      var title=h?(h.textContent||'').trim():'You May Also Like';
+      w.t.setAttribute('data-fp-reskinned','1');
+      w.t.innerHTML='<div class="fp-section-head" style="border-top:none"><span class="fp-section-title"></span></div><div class="fp-rich-grid"></div>';
+      w.t.querySelector('.fp-section-title').textContent=title;
+      w.t.querySelector('.fp-rich-grid').innerHTML=got.map(function(id){
+        return richCard(PRODUCT_CACHE[id],{showTag:false,_sectionKey:'recsReskin'});
+      }).join('');
+      done++;
+    });
+    if(done){
+      applyCartStateToButtons();
+      if(typeof setupScrollArrows==='function')setupScrollArrows();
+      console.log('[Atlas Tiles] reskinned '+done+' recommendation carousel(s)');
+    }
+  }catch(e){console.warn('[Atlas Tiles] recs reskin skipped:',e&&e.message);}
+  finally{_fpRecsBusy=false;}
+}
+['searchspring:rendered','searchspring:results'].forEach(function(ev){
+  window.addEventListener(ev,function(){setTimeout(reskinRecTargets,150);});
+});
+(function(){
+  var tries=0;
+  var timer=setInterval(function(){
+    tries++;
+    reskinRecTargets();
+    if(tries>=40)clearInterval(timer);   // keep watching ~60s (lazy carousels)
+  },1500);
+})();
+
 })();
