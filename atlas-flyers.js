@@ -2318,15 +2318,16 @@ function catNextUrl(doc){
   if(!raw)return null;
   try{return new URL(raw,location.href).href;}catch(e){return null;}
 }
-async function initCategoryTiles(){
+async function initCategoryTiles(rerun){
   try{
     if(document.querySelector('.flyers-page'))return;              // flyer page has its own init
+    var myRun=(window.__fpCatRun=(window.__fpCatRun||0)+1);        // invalidates older loaders
     var ssTarget=document.getElementById('searchspring-content');
     if(ssTarget){
       // search, /shop/ landing and brand pages stay SearchSpring-rendered
       var path=location.pathname;
       if(path.indexOf('/shop/')===0||path.indexOf('/brands/')===0||path.indexOf('/search')===0)return;
-      if(document.body.className.indexOf('ss__loaded')>-1)return;   // Snap already painted — too late this load
+      if(!rerun&&document.body.className.indexOf('ss__loaded')>-1)return;   // Snap already painted — too late this load
       [].slice.call(document.querySelectorAll('#searchspring-content')).forEach(function(el){el.removeAttribute('id');});
       var sb=document.getElementById('searchspring-sidebar');
       if(sb)sb.removeAttribute('id');
@@ -2362,39 +2363,66 @@ async function initCategoryTiles(){
     applyCartStateToButtons();
     console.log('[Atlas Tiles] category grid: '+wrap.children.length+' rich cards');
 
-    // ---- endless scroll over BigCommerce's native pagination ----
-    // Scroll-agnostic: the first pages load eagerly on their own, the rest load
-    // on any scroll/wheel/touch signal from any container. Next-page URLs are
-    // built from the current URL so sort/filter params are always preserved.
-    if(!catNextUrl(document))return;                              // single page
+    // ---- endless loading ----
+    // Normal categories: walk BigCommerce's native pagination (sort/filter
+    // params preserved). /new-arrivals/: after the curated page, stream the
+    // genuinely NEWEST products storewide via GraphQL (the BC category only
+    // holds ~20 hand-picked items; the old SearchSpring page was dynamic).
+    var newestMode=/^\/new-arrivals\//.test(location.pathname);
+    if(!newestMode&&!catNextUrl(document))return;
     var pag=document.querySelector('#product-listing-container .pagination');
     if(pag)pag.style.display='none';
     var sentinel=document.createElement('div');
     sentinel.style.cssText='height:1px;width:100%';
     wrap.parentNode.insertBefore(sentinel,wrap.nextSibling);
-    var pageN=1,exhausted=false,loading=false;
+    var pageN=1,newestCursor=null,exhausted=false,loading=false;
     async function loadNextPage(){
-      if(loading||exhausted)return;
+      var u=new URL(location.href);
+      u.hash='';
+      u.searchParams.set('page',String(pageN+1));
+      var html=await fetch(u.href,{credentials:'same-origin'}).then(function(r){return r.ok?r.text():null;});
+      var doc=html?new DOMParser().parseFromString(html,'text/html'):null;
+      var g=doc&&doc.querySelector('#product-listing-container .productGrid');
+      var pageItems=g?catCollectItems(g):[];
+      if(!pageItems.length){exhausted=true;return;}
+      pageN++;
+      await fpFetchProductsCached(pageItems.map(function(x){return x.id;}));
+      var h=cardsHtml(pageItems);
+      if(h){
+        wrap.insertAdjacentHTML('beforeend',h);
+        applyCartStateToButtons();
+        console.log('[Atlas Tiles] +page '+pageN+': grid now '+wrap.children.length+' cards');
+      }
+      if(!(doc&&catNextUrl(doc)))exhausted=true;
+    }
+    async function loadNewest(){
+      var q='query($after:String){site{newestProducts(first:40,after:$after){pageInfo{hasNextPage endCursor}edges{node{name entityId sku brand{name path} prices{price{value}salePrice{value}retailPrice{value}} defaultImage{url(width:400)} images{edges{node{urlOriginal url(width:800) isDefault altText}}} path description inventory{isInStock} availabilityV2{status} productOptions(first:1){edges{node{entityId}}}}}}}}';
+      var d=await fetch(STORE+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+STORE_TOKEN},body:JSON.stringify({query:q,variables:{after:newestCursor}})}).then(function(r){return r.ok?r.json():null;});
+      var np=d&&d.data&&d.data.site&&d.data.site.newestProducts;
+      if(!np||!np.edges.length){exhausted=true;return;}
+      var items=[];
+      np.edges.forEach(function(ed){
+        var pr=ed.node;
+        var id=parseInt(pr.entityId,10);
+        if(!(id>0))return;
+        PRODUCT_CACHE[id]=pr;
+        var hasOpts=pr.productOptions&&pr.productOptions.edges&&pr.productOptions.edges.length>0;
+        items.push({id:id,optionsUrl:hasOpts?pr.path:null});
+      });
+      newestCursor=np.pageInfo.endCursor;
+      if(!np.pageInfo.hasNextPage)exhausted=true;
+      var h=cardsHtml(items);
+      if(h){
+        wrap.insertAdjacentHTML('beforeend',h);
+        applyCartStateToButtons();
+        console.log('[Atlas Tiles] +newest: grid now '+wrap.children.length+' cards');
+      }
+    }
+    async function loadMore(){
+      if(loading||exhausted||myRun!==window.__fpCatRun)return;
       loading=true;
-      try{
-        var u=new URL(location.href);
-        u.hash='';
-        u.searchParams.set('page',String(pageN+1));
-        var html=await fetch(u.href,{credentials:'same-origin'}).then(function(r){return r.ok?r.text():null;});
-        var doc=html?new DOMParser().parseFromString(html,'text/html'):null;
-        var g=doc&&doc.querySelector('#product-listing-container .productGrid');
-        var pageItems=g?catCollectItems(g):[];
-        if(!pageItems.length){exhausted=true;return;}
-        pageN++;
-        await fpFetchProductsCached(pageItems.map(function(x){return x.id;}));
-        var html2=cardsHtml(pageItems);
-        if(html2){
-          wrap.insertAdjacentHTML('beforeend',html2);
-          applyCartStateToButtons();
-          console.log('[Atlas Tiles] +page '+pageN+': grid now '+wrap.children.length+' cards');
-        }
-        if(!(doc&&catNextUrl(doc)))exhausted=true;
-      }catch(e){exhausted=true;}
+      try{ if(newestMode)await loadNewest();else await loadNextPage(); }
+      catch(e){exhausted=true;}
       finally{loading=false;}
     }
     function nearBottom(){
@@ -2402,9 +2430,9 @@ async function initCategoryTiles(){
       return r.top<innerHeight+900;
     }
     async function maybeLoad(){
-      while(!exhausted&&!loading&&nearBottom())await loadNextPage();
+      while(!exhausted&&!loading&&nearBottom())await loadMore();
     }
-    document.addEventListener('scroll',maybeLoad,true);           // catches ANY scroll container
+    document.addEventListener('scroll',maybeLoad,true);
     window.addEventListener('wheel',maybeLoad,{passive:true});
     window.addEventListener('touchmove',maybeLoad,{passive:true});
     if('IntersectionObserver' in window){
@@ -2414,12 +2442,25 @@ async function initCategoryTiles(){
     }
     // guarantee the first ~6 pages regardless of how (or whether) scrolling works
     for(var k=0;k<5&&!exhausted;k++){
-      await loadNextPage();
+      await loadMore();
       await new Promise(function(r){setTimeout(r,600);});
     }
   }catch(e){console.warn('[Atlas Tiles] left native grid:',e&&e.message);}
 }
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initCategoryTiles);else initCategoryTiles();
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){initCategoryTiles(false);});else initCategoryTiles(false);
+// The theme's sort dropdown / faceted filters AJAX-replace the listing in place
+// (no page load). Watch for a fresh native grid and re-convert it on the spot.
+if('MutationObserver' in window){
+  (function(){
+    var t=null;
+    new MutationObserver(function(){
+      if(!document.querySelector('#product-listing-container .productGrid'))return;   // nothing native to convert
+      if(document.querySelector('#product-listing-container .fp-cat-grid'))return;    // already ours
+      clearTimeout(t);
+      t=setTimeout(function(){initCategoryTiles(true);},120);
+    }).observe(document.body||document.documentElement,{childList:true,subtree:true});
+  })();
+}
 
 // ==================== SEARCHSPRING RECOMMENDATION RESKIN ====================
 // SearchSpring recommendation carousels (PDP "Customers Also Viewed", cart
