@@ -2301,7 +2301,18 @@ function catInjectInfra(){
 async function initCategoryTiles(){
   try{
     if(document.querySelector('.flyers-page'))return;              // flyer page has its own init
-    if(document.getElementById('searchspring-content'))return;     // SearchSpring-rendered page
+    var ssTarget=document.getElementById('searchspring-content');
+    if(ssTarget){
+      // search, /shop/ landing and brand pages stay SearchSpring-rendered
+      var path=location.pathname;
+      if(path.indexOf('/shop/')===0||path.indexOf('/brands/')===0||path.indexOf('/search')===0)return;
+      if(document.body.className.indexOf('ss__loaded')>-1)return;   // Snap already painted — too late this load
+      // De-target Snap: without its container ids it cannot take the page over,
+      // so the native BigCommerce grid (rendered underneath) stays ours.
+      [].slice.call(document.querySelectorAll('#searchspring-content')).forEach(function(el){el.removeAttribute('id');});
+      var sb=document.getElementById('searchspring-sidebar');
+      if(sb)sb.removeAttribute('id');
+    }
     var grid=document.querySelector('#product-listing-container .productGrid');
     if(!grid)return;                                               // not a product listing
     STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
@@ -2413,15 +2424,10 @@ function fpEnsureTileData(){
 }
 
 // ==================== SS RECOMMENDATIONS: DIRECT RENDER ====================
-// Fetch SearchSpring's recommendations ourselves at load and render flyer strips
-// once — no dependence on Snap timing. Covers BOTH placeholder forms the theme
-// uses, at their exact positions:
-//   A) <script type="searchspring/personalized-recommendations" profile="TAG"> seed="SKU"
-//      (also mounted late inside the cart drawer -> rescan at 4s/10s)
-//   B) <script type="searchspring/recommendations"> profiles=[{tag,selector,options:{limit}}]
-//      (trending-*, customer-recently-viewed -> render before their selector element)
-// Recently-viewed uses our own fp_recent history when SS returns nothing for it.
-// Any failure -> that carousel is left to Snap exactly as before.
+// Deterministic at load. Snap's own carousels are hidden the moment their
+// placeholders are collected (before Snap can paint the old design) and only
+// un-hidden if we end up with no data for them — so there is never a flash of
+// the old format, and never an empty hole when data is missing.
 var SS_SITE_ID='kncv3u';
 var _fpRecsSeed=null;
 function prettyTag(tag){
@@ -2436,6 +2442,14 @@ async function recProfileTitle(tag){
     return (tp&&tp.title)||null;
   }catch(e){return null;}
 }
+function fpPageBrand(){
+  var b=null;
+  [].slice.call(document.querySelectorAll('script[type="application/ld+json"]')).forEach(function(s){
+    if(b)return;
+    try{var d=JSON.parse(s.textContent);var v=d&&d.brand&&(d.brand.name||d.brand);if(v)b=String(v);}catch(e){}
+  });
+  return b;
+}
 function fpSsViewedIds(){
   try{
     var d=JSON.parse(localStorage.getItem('ssViewedProducts')||'null');
@@ -2444,13 +2458,16 @@ function fpSsViewedIds(){
     return (Array.isArray(v)?v:[]).map(function(x){return parseInt(x&&x.uid,10);}).filter(function(n){return n>0;});
   }catch(e){return [];}
 }
-function fpPageBrand(){
-  var b=null;
-  [].slice.call(document.querySelectorAll('script[type="application/ld+json"]')).forEach(function(s){
-    if(b)return;
-    try{var d=JSON.parse(s.textContent);var v=d&&d.brand&&(d.brand.name||d.brand);if(v)b=String(v);}catch(e){}
-  });
-  return b;
+function recHideNow(entry){
+  var css='#ss__recommendation--'+entry.tag+'{display:none!important}';
+  if(entry.selector)css+=entry.selector+'{display:none!important}';
+  var st=document.createElement('style');
+  st.textContent=css;
+  (document.head||document.documentElement).appendChild(st);
+  return st;
+}
+function recUnhide(entry){
+  if(entry.hideNode&&entry.hideNode.parentNode)entry.hideNode.parentNode.removeChild(entry.hideNode);
 }
 function recCollectEntries(){
   var entries=[];
@@ -2487,75 +2504,76 @@ function recRenderSection(entry,title,ids){
   var selEl=entry.selector?document.querySelector(entry.selector):null;
   if(selEl){
     selEl.parentNode.insertBefore(sec,selEl);
-    selEl.style.display='none';                     // Snap mounts in here; keep it dark
   }else{
     entry.node.parentNode.insertBefore(sec,entry.node.nextSibling);
   }
-  var st=document.createElement('style');
-  st.textContent='#ss__recommendation--'+entry.tag+'{display:none!important}';
-  document.head.appendChild(st);
+  entry._rendered=true;
 }
 async function initRecsDirect(){
+  var entries=[];
   try{
     if(document.querySelector('.flyers-page'))return;
-    var entries=recCollectEntries();
+    entries=recCollectEntries();
     if(!entries.length)return;
+    entries.forEach(function(e){e.hideNode=recHideNow(e);});   // beat Snap to the paint
     STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
-    if(!STORE_TOKEN)return;
-    var cartSkus=[];
-    try{
-      var carts=await fetch('/api/storefront/carts',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;});
-      if(carts&&carts[0]&&carts[0].lineItems)(carts[0].lineItems.physicalItems||[]).forEach(function(it){if(it.sku)cartSkus.push(it.sku);});
-    }catch(e){}
+    if(!STORE_TOKEN){entries.forEach(recUnhide);return;}
+    // fire everything concurrently
+    var pSheets=fpEnsureTileData();
+    var pTitles=Promise.all(entries.map(function(e){return recProfileTitle(e.tag);}));
+    var brand=fpPageBrand();
+    var pSearchByEntry=entries.map(function(e){
+      if(!/^trending/.test(e.tag)||!brand)return null;
+      return fetch('https://'+SS_SITE_ID+'.a.searchspring.io/api/search/search.json?siteId='+SS_SITE_ID+'&resultsFormat=native&resultsPerPage='+e.limit+'&bgfilter.brand='+encodeURIComponent(brand)+'&sort.popularity=desc&q=')
+        .then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});
+    });
+    var cartSkus=await fetch('/api/storefront/carts',{credentials:'same-origin'})
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(carts){var sk=[];if(carts&&carts[0]&&carts[0].lineItems)(carts[0].lineItems.physicalItems||[]).forEach(function(it){if(it.sku)sk.push(it.sku);});return sk;})
+      .catch(function(){return [];});
     var url='https://'+SS_SITE_ID+'.a.searchspring.io/boost/'+SS_SITE_ID+'/recommend?tags='+entries.map(function(e){return encodeURIComponent(e.tag);}).join(',')+'&limits='+entries.map(function(e){return e.limit;}).join(',');
     if(_fpRecsSeed)url+='&product='+encodeURIComponent(_fpRecsSeed);
     if(cartSkus.length)url+='&cart='+encodeURIComponent(cartSkus.slice(0,20).join(','));
     var recs=await fetch(url).then(function(r){return r.ok?r.json():null;})||[];
     var byTag={};
     recs.forEach(function(b){var t=b&&b.profile&&(b.profile.tag||b.profile);if(t)byTag[t]=b;});
-    var titles=await Promise.all(entries.map(function(e){return recProfileTitle(e.tag);}));
-    // ids per entry; recently-viewed falls back to our own fp_recent history,
-    // trending-* falls back to SS search sorted by popularity for the page brand
-    // (the trending recommendation profiles return nothing outside Snap's context).
-    var perEntry=await Promise.all(entries.map(async function(e){
+    var done=0;
+    // Each section resolves and renders INDEPENDENTLY the moment its data is
+    // ready — a slow source (recently-viewed storage poll) never delays others.
+    await Promise.all(entries.map(async function(e,i){
       var block=byTag[e.tag];
       var ids=((block&&block.results)||[]).map(function(x){return parseInt(x.mappings&&x.mappings.core&&x.mappings.core.uid,10);}).filter(function(n){return n>0;});
       if(!ids.length&&/recently-viewed/.test(e.tag)){
         var pidEl=document.querySelector('input[name="product_id"]');
         var curPid=pidEl?parseInt(pidEl.value,10):0;
-        ids=fpSsViewedIds().filter(function(n){return n!==curPid;});
+        // Snap clears+rewrites ssViewedProducts during its boot; poll up to 6s.
+        for(var t=0;t<12&&!ids.length;t++){
+          ids=fpSsViewedIds().filter(function(n){return n!==curPid;});
+          if(!ids.length)await new Promise(function(r){setTimeout(r,500);});
+        }
         if(!ids.length&&typeof RECENT!=='undefined'&&RECENT.length)ids=RECENT.filter(function(n){return n!==curPid;});
         ids=ids.slice(0,e.limit);
       }
-      if(!ids.length&&/^trending/.test(e.tag)){
-        var brand=fpPageBrand();
-        if(brand){
-          try{
-            var sr=await fetch('https://'+SS_SITE_ID+'.a.searchspring.io/api/search/search.json?siteId='+SS_SITE_ID+'&resultsFormat=native&resultsPerPage='+e.limit+'&bgfilter.brand='+encodeURIComponent(brand)+'&sort.popularity=desc&q=').then(function(r){return r.ok?r.json():null;});
-            ids=((sr&&sr.results)||[]).map(function(x){return parseInt(x.uid,10);}).filter(function(n){return n>0;});
-          }catch(err){}
-        }
+      if(!ids.length&&pSearchByEntry[i]){
+        var sr=await pSearchByEntry[i];
+        ids=((sr&&sr.results)||[]).map(function(x){return parseInt(x.uid,10);}).filter(function(n){return n>0;});
       }
-      return ids;
-    }));
-    var all=[];perEntry.forEach(function(ids){all=all.concat(ids);});
-    if(!all.length)return;
-    await fpEnsureTileData();
-    await fetchProducts(all);
-    catInjectInfra();
-    var done=0;
-    entries.forEach(function(e,i){
-      var ids=perEntry[i].filter(function(n){return isShowable(PRODUCT_CACHE[n]);});
-      if(!ids.length)return;                        // no data -> Snap keeps this one
-      recRenderSection(e,titles[i],ids);
-      done++;
-    });
-    if(done){
+      if(!ids.length){recUnhide(e);return;}
+      await pSheets;
+      await fetchProducts(ids);
+      ids=ids.filter(function(n){return isShowable(PRODUCT_CACHE[n]);});
+      if(!ids.length){recUnhide(e);return;}
+      catInjectInfra();
+      recRenderSection(e,(await pTitles)[i],ids);
       applyCartStateToButtons();
       if(typeof setupScrollArrows==='function')setupScrollArrows();
-      console.log('[Atlas Tiles] direct-rendered '+done+'/'+entries.length+' recommendation section(s)');
-    }
-  }catch(e){console.warn('[Atlas Tiles] recs direct render skipped:',e&&e.message);}
+      done++;
+    }));
+    if(done)console.log('[Atlas Tiles] direct-rendered '+done+'/'+entries.length+' recommendation section(s)');
+  }catch(err){
+    entries.forEach(function(e){if(!e._rendered)recUnhide(e);});
+    console.warn('[Atlas Tiles] recs direct render skipped:',err&&err.message);
+  }
 }
 function fpRecsBoot(){
   initRecsDirect();
