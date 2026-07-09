@@ -220,7 +220,10 @@ async function fetchCSV(key,url){
     }catch(e){}
   }
   try{
-    var r=await fetch(url);
+    var ac=('AbortController' in window)?new AbortController():null;
+    var tk=ac?setTimeout(function(){ac.abort();},8000):null;
+    var r=await fetch(url,ac?{signal:ac.signal}:{});
+    if(tk)clearTimeout(tk);
     if(!r.ok){console.warn('[Atlas] CSV fetch failed',key,r.status);return[];}
     var text=await r.text();
     if(cacheH>0){
@@ -2260,6 +2263,18 @@ window.fpScrollToSectionKey=fpScrollToSectionKey;
   },200);
 })();
 
+
+// ==================== FAIL-OPEN REVEAL ====================
+// Never leave the flyer page blank: init() only reveals the page after the
+// Google Sheets CSVs load, so a Google outage (9 Jul 2026) blanked the page.
+// If the page is still hidden 6s after this script runs, reveal it as-is.
+setTimeout(function(){
+  var fp=document.querySelector('.flyers-page');
+  if(fp&&!fp.classList.contains('fp-ready')){
+    fp.classList.add('fp-ready');
+    console.warn('[Atlas Flyers] fail-open reveal (init incomplete)');
+  }
+},6000);
 
 // ==================== CATEGORY PAGE TILES ====================
 // Renders native BigCommerce category listings with the flyer's rich product
