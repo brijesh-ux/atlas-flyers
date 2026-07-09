@@ -2301,18 +2301,19 @@ function catInjectInfra(){
 function catWidenContainer(){
   // The theme caps page content in a centered .container; the flyer page removes
   // that cap (fixContainer) and spreads edge-to-edge. Category pages get the same.
+  // category pages NEST two .container divs — widen EVERY one up the chain
   var node=document.getElementById('product-listing-container')||document.querySelector('.page');
-  for(var i=0;i<10&&node;i++){
+  var pad=window.innerWidth>=768?'30px':'10px';
+  for(var i=0;i<12&&node;i++){
     node=node.parentElement;
     if(!node||node.tagName==='BODY')break;
     if(node.classList&&node.classList.contains('container')){
       node.style.setProperty('max-width','100%','important');
+      node.style.setProperty('width','100%','important');
       node.style.setProperty('margin-left','0','important');
       node.style.setProperty('margin-right','0','important');
-      var pad=window.innerWidth>=768?'30px':'10px';
       node.style.setProperty('padding-left',pad,'important');
       node.style.setProperty('padding-right',pad,'important');
-      break;
     }
   }
 }
