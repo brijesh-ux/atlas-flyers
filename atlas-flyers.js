@@ -2316,14 +2316,7 @@ function catWidenContainer(){
       node.style.setProperty('padding-right',pad,'important');
     }
   }
-  // the grid's column (col-lg-10) is built for a left sidebar this theme
-  // doesn't use — release it to full width
-  var main=document.querySelector('.page-main-content');
-  if(main){
-    main.style.setProperty('width','100%','important');
-    main.style.setProperty('max-width','100%','important');
-    main.style.setProperty('flex','0 0 100%','important');
-  }
+
 }
 function catCollectItems(gridEl){
   var items=[];
