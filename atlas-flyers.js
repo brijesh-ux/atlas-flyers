@@ -2298,6 +2298,26 @@ function catInjectInfra(){
   }
 }
 
+function catCollectItems(gridEl){
+  var items=[];
+  [].slice.call(gridEl.children).forEach(function(li){
+    var card=li.querySelector('.card')||li;
+    var idEl=card.querySelector('[data-product-id],[data-id]');
+    var id=idEl?parseInt(idEl.getAttribute('data-product-id')||idEl.getAttribute('data-id'),10):NaN;
+    if(isNaN(id)||id<=0)return;
+    var hasAdd=!!card.querySelector('[data-button-type="add-cart"]');
+    var pdpA=card.querySelector('a.card-figure__link')||card.querySelector('.card-title a')||card.querySelector('a[href]');
+    items.push({id:id,optionsUrl:hasAdd?null:(pdpA?pdpA.getAttribute('href'):null)});
+  });
+  return items;
+}
+function catNextUrl(doc){
+  var n=doc.querySelector('link[rel="next"]')||doc.querySelector('.pagination-item--next a');
+  if(!n)return null;
+  var raw=n.getAttribute('href');
+  if(!raw)return null;
+  try{return new URL(raw,location.href).href;}catch(e){return null;}
+}
 async function initCategoryTiles(){
   try{
     if(document.querySelector('.flyers-page'))return;              // flyer page has its own init
@@ -2307,8 +2327,6 @@ async function initCategoryTiles(){
       var path=location.pathname;
       if(path.indexOf('/shop/')===0||path.indexOf('/brands/')===0||path.indexOf('/search')===0)return;
       if(document.body.className.indexOf('ss__loaded')>-1)return;   // Snap already painted — too late this load
-      // De-target Snap: without its container ids it cannot take the page over,
-      // so the native BigCommerce grid (rendered underneath) stays ours.
       [].slice.call(document.querySelectorAll('#searchspring-content')).forEach(function(el){el.removeAttribute('id');});
       var sb=document.getElementById('searchspring-sidebar');
       if(sb)sb.removeAttribute('id');
@@ -2318,65 +2336,67 @@ async function initCategoryTiles(){
     STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
     if(!STORE_TOKEN){console.warn('[Atlas Tiles] no storefront token — native grid kept');return;}
 
-    // Collect product ids + CTA state from the server-rendered cards.
-    var items=[];
-    [].slice.call(grid.children).forEach(function(li){
-      var card=li.querySelector('.card')||li;
-      var idEl=card.querySelector('[data-product-id],[data-id]');
-      var id=idEl?parseInt(idEl.getAttribute('data-product-id')||idEl.getAttribute('data-id'),10):NaN;
-      if(isNaN(id)||id<=0)return;
-      var hasAdd=!!card.querySelector('[data-button-type="add-cart"]');
-      var pdpA=card.querySelector('a.card-figure__link')||card.querySelector('.card-title a')||card.querySelector('a[href]');
-      items.push({id:id,optionsUrl:hasAdd?null:(pdpA?pdpA.getAttribute('href'):null)});
-    });
+    var items=catCollectItems(grid);
     if(!items.length)return;
 
-    // Sheet data for brand badges / coupon tickets / settings (shared cache with
-    // the flyer page) + the live cart for "IN CART (x)" labels.
-    var rows=await Promise.all([
-      fetchCSV('settings',GIDS.settings),
-      fetchCSV('brandStyles',GIDS.brandStyles),
-      fetchCSV('allCoupons',GIDS.allCoupons),
-      loadServerCart()
-    ]);
-    (rows[0]||[]).forEach(function(r){
-      var k=(r['Setting Name']||r['setting']||r['key']||'').trim();
-      var v=(r['Value']||r['value']||'').trim();
-      if(k&&SETTINGS[k]===undefined)SETTINGS[k]=v;
-    });
-    (rows[1]||[]).forEach(function(r){
-      var k=(r['Brand ID']||r['brandKey']||r['key']||'').toLowerCase().trim();
-      if(!k||BRAND_STYLES[k])return;
-      BRAND_STYLES[k]={key:k,name:r['Brand Name']||r['name']||k,
-        logoUrl:r['Logo Image URL']||r['logoUrl']||'',
-        brandIconUrl:r['Brand Icon URL']||r['imageUrl']||'',
-        accentBg:r['Background Color']||r['accentBg']||'#1a1a1a',
-        accentText:r['Text Color']||r['accentText']||'#ffffff'};
-    });
-    (rows[2]||[]).forEach(function(r){
-      var idCell=(r['Big Commerce Product ID']||r['BigCommerce Product ID']||r['Product ID']||'').toString();
-      var code=(r['Coupon Code']||'').toString().trim();
-      if(!code)return;
-      idCell.split(',').forEach(function(pid){
-        pid=pid.trim();
-        if(pid&&!PRODUCT_COUPONS[pid])PRODUCT_COUPONS[pid]=code;
-      });
-    });
-
-    await fetchProducts(items.map(function(x){return x.id;}));
+    await fpEnsureTileData();
+    await fpFetchProductsCached(items.map(function(x){return x.id;}));
     var got=items.filter(function(x){return PRODUCT_CACHE[x.id];});
     if(got.length<items.length*0.7){console.warn('[Atlas Tiles] GraphQL incomplete ('+got.length+'/'+items.length+') — native grid kept');return;}
 
     catInjectInfra();
+    var seen={};
+    function cardsHtml(list){
+      return list.filter(function(x){
+        if(!PRODUCT_CACHE[x.id]||seen[x.id])return false;
+        seen[x.id]=1;return true;
+      }).map(function(x){
+        return richCard(PRODUCT_CACHE[x.id],{showTag:false,_sectionKey:'categoryPage',optionsUrl:x.optionsUrl});
+      }).join('');
+    }
     var wrap=document.createElement('div');
     wrap.className='fp-rich-grid fp-cat-grid';
-    wrap.innerHTML=got.map(function(x){
-      return richCard(PRODUCT_CACHE[x.id],{showTag:false,_sectionKey:'categoryPage',optionsUrl:x.optionsUrl});
-    }).join('');
+    wrap.innerHTML=cardsHtml(got);
     if(!wrap.children.length)return;
     grid.parentNode.replaceChild(wrap,grid);
     applyCartStateToButtons();
-    console.log('[Atlas Tiles] category grid: '+got.length+' rich cards');
+    console.log('[Atlas Tiles] category grid: '+wrap.children.length+' rich cards');
+
+    // ---- endless scroll over BigCommerce's native pagination ----
+    var nextUrl=catNextUrl(document);
+    if(!nextUrl)return;
+    var pag=document.querySelector('#product-listing-container .pagination');
+    if(pag)pag.style.display='none';                               // endless scroll replaces the pager
+    var sentinel=document.createElement('div');
+    sentinel.style.cssText='height:1px;width:100%';
+    wrap.parentNode.insertBefore(sentinel,wrap.nextSibling);
+    var loading=false;
+    async function loadNextPage(){
+      if(loading||!nextUrl)return;
+      loading=true;
+      try{
+        var html=await fetch(nextUrl,{credentials:'same-origin'}).then(function(r){return r.ok?r.text():null;});
+        var doc=html?new DOMParser().parseFromString(html,'text/html'):null;
+        nextUrl=doc?catNextUrl(doc):null;
+        var g=doc&&doc.querySelector('#product-listing-container .productGrid');
+        var pageItems=g?catCollectItems(g):[];
+        if(pageItems.length){
+          await fpFetchProductsCached(pageItems.map(function(x){return x.id;}));
+          wrap.insertAdjacentHTML('beforeend',cardsHtml(pageItems));
+          applyCartStateToButtons();
+          console.log('[Atlas Tiles] +page: grid now '+wrap.children.length+' cards');
+        }
+      }catch(e){nextUrl=null;}
+      finally{loading=false;}
+    }
+    if('IntersectionObserver' in window){
+      var io=new IntersectionObserver(function(es){
+        es.forEach(function(en){if(en.isIntersecting)loadNextPage();});
+      },{rootMargin:'900px 0px'});
+      io.observe(sentinel);
+    }else{
+      while(nextUrl)await loadNextPage();
+    }
   }catch(e){console.warn('[Atlas Tiles] left native grid:',e&&e.message);}
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initCategoryTiles);else initCategoryTiles();
@@ -2469,6 +2489,41 @@ function recHideNow(entry){
 function recUnhide(entry){
   if(entry.hideNode&&entry.hideNode.parentNode)entry.hideNode.parentNode.removeChild(entry.hideNode);
 }
+function fpCacheGet(k,ttlMs){
+  try{var d=JSON.parse(localStorage.getItem(k)||'null');if(d&&Date.now()-d.t<ttlMs)return d.v;}catch(e){}
+  return null;
+}
+function fpCacheSet(k,v){
+  try{localStorage.setItem(k,JSON.stringify({t:Date.now(),v:v}));}catch(e){}
+}
+// GraphQL product fetch with a 15-min localStorage layer: repeat page views
+// render tiles instantly instead of waiting on the network.
+async function fpFetchProductsCached(ids){
+  var missing=[];
+  ids.forEach(function(id){
+    if(PRODUCT_CACHE[id])return;
+    var c=fpCacheGet('fp_prod_'+id,900000);
+    if(c)PRODUCT_CACHE[id]=c;else missing.push(id);
+  });
+  if(missing.length){
+    await fetchProducts(missing);
+    missing.forEach(function(id){if(PRODUCT_CACHE[id])fpCacheSet('fp_prod_'+id,PRODUCT_CACHE[id]);});
+  }
+}
+// Skeleton section rendered at 0ms in the carousel's spot — flyer-format shape
+// with shimmer tiles until the real data lands.
+function recRenderSkeleton(entry){
+  var sec=document.createElement('div');
+  sec.className='fp-section';
+  var sk='';for(var i=0;i<5;i++)sk+='<div class="fp-skel"></div>';
+  sec.innerHTML='<div class="fp-section-head" style="border-top:none"><span class="fp-section-title"></span></div><div class="fp-rich-grid">'+sk+'</div>';
+  sec.querySelector('.fp-section-title').textContent=fpCacheGet('fp_rectitle_'+entry.tag,86400000)||prettyTag(entry.tag);
+  var selEl=entry.selector?document.querySelector(entry.selector):null;
+  if(selEl)selEl.parentNode.insertBefore(sec,selEl);
+  else entry.node.parentNode.insertBefore(sec,entry.node.nextSibling);
+  entry.secNode=sec;
+  catInjectInfra();               // skeleton shimmer needs the fp CSS immediately
+}
 function recCollectEntries(){
   var entries=[];
   [].slice.call(document.querySelectorAll('script[type="searchspring/personalized-recommendations"]:not([data-fp-done])')).forEach(function(s){
@@ -2494,20 +2549,27 @@ function recCollectEntries(){
   return entries;
 }
 function recRenderSection(entry,title,ids){
-  var sec=document.createElement('div');
-  sec.className='fp-section';
-  sec.innerHTML='<div class="fp-section-head" style="border-top:none"><span class="fp-section-title"></span></div><div class="fp-rich-grid"></div>';
-  sec.querySelector('.fp-section-title').textContent=title||prettyTag(entry.tag);
+  var sec=entry.secNode;
+  if(!sec){
+    sec=document.createElement('div');
+    sec.className='fp-section';
+    sec.innerHTML='<div class="fp-section-head" style="border-top:none"><span class="fp-section-title"></span></div><div class="fp-rich-grid"></div>';
+    var selEl=entry.selector?document.querySelector(entry.selector):null;
+    if(selEl)selEl.parentNode.insertBefore(sec,selEl);
+    else entry.node.parentNode.insertBefore(sec,entry.node.nextSibling);
+    entry.secNode=sec;
+  }
+  var t=title||prettyTag(entry.tag);
+  sec.querySelector('.fp-section-title').textContent=t;
+  if(title)fpCacheSet('fp_rectitle_'+entry.tag,title);
   sec.querySelector('.fp-rich-grid').innerHTML=ids.map(function(id){
     return richCard(PRODUCT_CACHE[id],{showTag:false,_sectionKey:'recsDirect'});
   }).join('');
-  var selEl=entry.selector?document.querySelector(entry.selector):null;
-  if(selEl){
-    selEl.parentNode.insertBefore(sec,selEl);
-  }else{
-    entry.node.parentNode.insertBefore(sec,entry.node.nextSibling);
-  }
   entry._rendered=true;
+}
+function recRemoveSkeleton(entry){
+  if(entry.secNode&&entry.secNode.parentNode)entry.secNode.parentNode.removeChild(entry.secNode);
+  entry.secNode=null;
 }
 async function initRecsDirect(){
   var entries=[];
@@ -2515,7 +2577,7 @@ async function initRecsDirect(){
     if(document.querySelector('.flyers-page'))return;
     entries=recCollectEntries();
     if(!entries.length)return;
-    entries.forEach(function(e){e.hideNode=recHideNow(e);});   // beat Snap to the paint
+    entries.forEach(function(e){e.hideNode=recHideNow(e);recRenderSkeleton(e);});   // beat Snap to the paint
     STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
     if(!STORE_TOKEN){entries.forEach(recUnhide);return;}
     // fire everything concurrently
@@ -2541,8 +2603,11 @@ async function initRecsDirect(){
     // Each section resolves and renders INDEPENDENTLY the moment its data is
     // ready — a slow source (recently-viewed storage poll) never delays others.
     await Promise.all(entries.map(async function(e,i){
+      var cacheKey='fp_recs_'+e.tag+'_'+(_fpRecsSeed||'');
       var block=byTag[e.tag];
       var ids=((block&&block.results)||[]).map(function(x){return parseInt(x.mappings&&x.mappings.core&&x.mappings.core.uid,10);}).filter(function(n){return n>0;});
+      if(ids.length)fpCacheSet(cacheKey,ids);
+      if(!ids.length)ids=fpCacheGet(cacheKey,900000)||[];
       if(!ids.length&&/recently-viewed/.test(e.tag)){
         var pidEl=document.querySelector('input[name="product_id"]');
         var curPid=pidEl?parseInt(pidEl.value,10):0;
@@ -2558,11 +2623,12 @@ async function initRecsDirect(){
         var sr=await pSearchByEntry[i];
         ids=((sr&&sr.results)||[]).map(function(x){return parseInt(x.uid,10);}).filter(function(n){return n>0;});
       }
-      if(!ids.length){recUnhide(e);return;}
+      if(!ids.length){recRemoveSkeleton(e);recUnhide(e);return;}
+      fpCacheSet(cacheKey,ids);
       await pSheets;
-      await fetchProducts(ids);
+      await fpFetchProductsCached(ids);
       ids=ids.filter(function(n){return isShowable(PRODUCT_CACHE[n]);});
-      if(!ids.length){recUnhide(e);return;}
+      if(!ids.length){recRemoveSkeleton(e);recUnhide(e);return;}
       catInjectInfra();
       recRenderSection(e,(await pTitles)[i],ids);
       applyCartStateToButtons();
@@ -2571,7 +2637,7 @@ async function initRecsDirect(){
     }));
     if(done)console.log('[Atlas Tiles] direct-rendered '+done+'/'+entries.length+' recommendation section(s)');
   }catch(err){
-    entries.forEach(function(e){if(!e._rendered)recUnhide(e);});
+    entries.forEach(function(e){if(!e._rendered){recRemoveSkeleton(e);recUnhide(e);}});
     console.warn('[Atlas Tiles] recs direct render skipped:',err&&err.message);
   }
 }
