@@ -2412,6 +2412,10 @@ var _fpRecsBusy=false;
 async function reskinRecTargets(){
   if(_fpRecsBusy)return;
   if(document.querySelector('.flyers-page'))return;   // flyer page styles itself
+  // If SearchSpring re-rendered a carousel we already painted, paint it again.
+  [].slice.call(document.querySelectorAll('.ss__recommendation--target[data-fp-reskinned]')).forEach(function(t){
+    if(t.querySelector('.ss__result-tracker'))t.removeAttribute('data-fp-reskinned');
+  });
   var targets=document.querySelectorAll('.ss__recommendation--target:not([data-fp-reskinned])');
   if(!targets.length)return;
   var work=[];
@@ -2453,13 +2457,22 @@ async function reskinRecTargets(){
 ['searchspring:rendered','searchspring:results'].forEach(function(ev){
   window.addEventListener(ev,function(){setTimeout(reskinRecTargets,150);});
 });
+// Snap fills recommendation tiles only when they scroll into view — which can be
+// minutes after load — so watch the DOM permanently (debounced; the reskin
+// early-outs in microseconds when there is nothing new to paint).
 (function(){
+  var t=null;
+  function soon(){clearTimeout(t);t=setTimeout(reskinRecTargets,300);}
+  if('MutationObserver' in window){
+    new MutationObserver(soon).observe(document.body||document.documentElement,{childList:true,subtree:true});
+  }
   var tries=0;
   var timer=setInterval(function(){
     tries++;
     reskinRecTargets();
-    if(tries>=40)clearInterval(timer);   // keep watching ~60s (lazy carousels)
+    if(tries>=20)clearInterval(timer);   // startup belt-and-suspenders (~30s)
   },1500);
+  console.log('[Atlas Tiles] recs watcher armed');
 })();
 
 })();
