@@ -2413,14 +2413,17 @@ function fpEnsureTileData(){
 }
 
 // ==================== SS RECOMMENDATIONS: DIRECT RENDER ====================
-// Same philosophy as the category tiles: fetch the data ourselves at load and
-// render once. The theme server-renders placeholders
-//   <script type="searchspring/personalized-recommendations" profile="..."> seed="SKU"
-// at the exact carousel positions, and SearchSpring's recommend API answers a
-// plain GET with BigCommerce product ids. So: call it, render flyer strips
-// immediately, and hide Snap's own carousel for each profile handled. Any
-// failure -> render nothing and Snap behaves exactly as before.
+// Fetch SearchSpring's recommendations ourselves at load and render flyer strips
+// once — no dependence on Snap timing. Covers BOTH placeholder forms the theme
+// uses, at their exact positions:
+//   A) <script type="searchspring/personalized-recommendations" profile="TAG"> seed="SKU"
+//      (also mounted late inside the cart drawer -> rescan at 4s/10s)
+//   B) <script type="searchspring/recommendations"> profiles=[{tag,selector,options:{limit}}]
+//      (trending-*, customer-recently-viewed -> render before their selector element)
+// Recently-viewed uses our own fp_recent history when SS returns nothing for it.
+// Any failure -> that carousel is left to Snap exactly as before.
 var SS_SITE_ID='kncv3u';
+var _fpRecsSeed=null;
 function prettyTag(tag){
   return String(tag).replace(/-snap$/,'').replace(/-/g,' ').replace(/(^|\s)\w/g,function(c){return c.toUpperCase();});
 }
@@ -2433,66 +2436,118 @@ async function recProfileTitle(tag){
     return (tp&&tp.title)||null;
   }catch(e){return null;}
 }
+function fpPageBrand(){
+  var b=null;
+  [].slice.call(document.querySelectorAll('script[type="application/ld+json"]')).forEach(function(s){
+    if(b)return;
+    try{var d=JSON.parse(s.textContent);var v=d&&d.brand&&(d.brand.name||d.brand);if(v)b=String(v);}catch(e){}
+  });
+  return b;
+}
+function recCollectEntries(){
+  var entries=[];
+  [].slice.call(document.querySelectorAll('script[type="searchspring/personalized-recommendations"]:not([data-fp-done])')).forEach(function(s){
+    var tag=s.getAttribute('profile');
+    if(!tag)return;
+    s.setAttribute('data-fp-done','1');
+    var m=(s.textContent||'').match(/seed\s*=\s*["']([^"']+)["']/);
+    if(m&&!_fpRecsSeed)_fpRecsSeed=m[1];
+    entries.push({tag:tag,limit:15,node:s,selector:null});
+  });
+  [].slice.call(document.querySelectorAll('script[type="searchspring/recommendations"]:not([data-fp-done])')).forEach(function(s){
+    s.setAttribute('data-fp-done','1');
+    var t=s.textContent||'';
+    var objs=t.match(/\{[^{}]*tag\s*:[\s\S]*?\}\s*\}|\{[^{}]*tag[^{}]*\}/g)||[];
+    objs.forEach(function(o){
+      var tag=(o.match(/tag\s*:\s*['"]([^'"]+)['"]/)||[])[1];
+      if(!tag)return;
+      var sel=(o.match(/selector\s*:\s*['"]([^'"]+)['"]/)||[])[1]||null;
+      var lim=parseInt((o.match(/limit\s*:\s*(\d+)/)||[])[1],10)||12;
+      entries.push({tag:tag,limit:lim,node:s,selector:sel});
+    });
+  });
+  return entries;
+}
+function recRenderSection(entry,title,ids){
+  var sec=document.createElement('div');
+  sec.className='fp-section';
+  sec.innerHTML='<div class="fp-section-head" style="border-top:none"><span class="fp-section-title"></span></div><div class="fp-rich-grid"></div>';
+  sec.querySelector('.fp-section-title').textContent=title||prettyTag(entry.tag);
+  sec.querySelector('.fp-rich-grid').innerHTML=ids.map(function(id){
+    return richCard(PRODUCT_CACHE[id],{showTag:false,_sectionKey:'recsDirect'});
+  }).join('');
+  var selEl=entry.selector?document.querySelector(entry.selector):null;
+  if(selEl){
+    selEl.parentNode.insertBefore(sec,selEl);
+    selEl.style.display='none';                     // Snap mounts in here; keep it dark
+  }else{
+    entry.node.parentNode.insertBefore(sec,entry.node.nextSibling);
+  }
+  var st=document.createElement('style');
+  st.textContent='#ss__recommendation--'+entry.tag+'{display:none!important}';
+  document.head.appendChild(st);
+}
 async function initRecsDirect(){
   try{
     if(document.querySelector('.flyers-page'))return;
-    var phs=[];
-    [].slice.call(document.querySelectorAll('script[type="searchspring/personalized-recommendations"]')).forEach(function(s){
-      var tag=s.getAttribute('profile');
-      if(!tag)return;
-      var m=(s.textContent||'').match(/seed\s*=\s*["']([^"']+)["']/);
-      phs.push({tag:tag,seed:m?m[1]:null,node:s});
-    });
-    if(!phs.length)return;
+    var entries=recCollectEntries();
+    if(!entries.length)return;
     STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
     if(!STORE_TOKEN)return;
-    var tags=phs.map(function(p){return p.tag;});
-    var seed=null;phs.forEach(function(p){if(!seed&&p.seed)seed=p.seed;});
-    // cart skus feed cart-page profiles and improve personalization
     var cartSkus=[];
     try{
       var carts=await fetch('/api/storefront/carts',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;});
       if(carts&&carts[0]&&carts[0].lineItems)(carts[0].lineItems.physicalItems||[]).forEach(function(it){if(it.sku)cartSkus.push(it.sku);});
     }catch(e){}
-    var url='https://'+SS_SITE_ID+'.a.searchspring.io/boost/'+SS_SITE_ID+'/recommend?tags='+tags.map(encodeURIComponent).join(',')+'&limits='+tags.map(function(){return 15;}).join(',');
-    if(seed)url+='&product='+encodeURIComponent(seed);
+    var url='https://'+SS_SITE_ID+'.a.searchspring.io/boost/'+SS_SITE_ID+'/recommend?tags='+entries.map(function(e){return encodeURIComponent(e.tag);}).join(',')+'&limits='+entries.map(function(e){return e.limit;}).join(',');
+    if(_fpRecsSeed)url+='&product='+encodeURIComponent(_fpRecsSeed);
     if(cartSkus.length)url+='&cart='+encodeURIComponent(cartSkus.slice(0,20).join(','));
-    var recs=await fetch(url).then(function(r){return r.ok?r.json():null;});
-    if(!recs||!recs.length)return;
+    var recs=await fetch(url).then(function(r){return r.ok?r.json():null;})||[];
     var byTag={};
     recs.forEach(function(b){var t=b&&b.profile&&(b.profile.tag||b.profile);if(t)byTag[t]=b;});
-    var titles=await Promise.all(tags.map(recProfileTitle));
-    var all=[];
-    recs.forEach(function(b){(b.results||[]).forEach(function(x){var id=parseInt(x.mappings&&x.mappings.core&&x.mappings.core.uid,10);if(id>0)all.push(id);});});
+    var titles=await Promise.all(entries.map(function(e){return recProfileTitle(e.tag);}));
+    // ids per entry; recently-viewed falls back to our own fp_recent history,
+    // trending-* falls back to SS search sorted by popularity for the page brand
+    // (the trending recommendation profiles return nothing outside Snap's context).
+    var perEntry=await Promise.all(entries.map(async function(e){
+      var block=byTag[e.tag];
+      var ids=((block&&block.results)||[]).map(function(x){return parseInt(x.mappings&&x.mappings.core&&x.mappings.core.uid,10);}).filter(function(n){return n>0;});
+      if(!ids.length&&/recently-viewed/.test(e.tag)&&typeof RECENT!=='undefined'&&RECENT.length)ids=RECENT.slice(0,e.limit);
+      if(!ids.length&&/^trending/.test(e.tag)){
+        var brand=fpPageBrand();
+        if(brand){
+          try{
+            var sr=await fetch('https://'+SS_SITE_ID+'.a.searchspring.io/api/search/search.json?siteId='+SS_SITE_ID+'&resultsFormat=native&resultsPerPage='+e.limit+'&bgfilter.brand='+encodeURIComponent(brand)+'&sort.popularity=desc&q=').then(function(r){return r.ok?r.json():null;});
+            ids=((sr&&sr.results)||[]).map(function(x){return parseInt(x.uid,10);}).filter(function(n){return n>0;});
+          }catch(err){}
+        }
+      }
+      return ids;
+    }));
+    var all=[];perEntry.forEach(function(ids){all=all.concat(ids);});
     if(!all.length)return;
     await fpEnsureTileData();
     await fetchProducts(all);
     catInjectInfra();
-    var hideCss='',done=0;
-    phs.forEach(function(p,i){
-      var block=byTag[p.tag]||recs[i];
-      var ids=((block&&block.results)||[]).map(function(x){return parseInt(x.mappings&&x.mappings.core&&x.mappings.core.uid,10);})
-        .filter(function(n){return n>0&&isShowable(PRODUCT_CACHE[n]);});
-      if(!ids.length)return;
-      var sec=document.createElement('div');
-      sec.className='fp-section';
-      sec.innerHTML='<div class="fp-section-head" style="border-top:none"><span class="fp-section-title"></span></div><div class="fp-rich-grid"></div>';
-      sec.querySelector('.fp-section-title').textContent=titles[i]||prettyTag(p.tag);
-      sec.querySelector('.fp-rich-grid').innerHTML=ids.map(function(id){
-        return richCard(PRODUCT_CACHE[id],{showTag:false,_sectionKey:'recsDirect'});
-      }).join('');
-      p.node.parentNode.insertBefore(sec,p.node.nextSibling);
-      hideCss+='#ss__recommendation--'+p.tag+'{display:none!important}';
+    var done=0;
+    entries.forEach(function(e,i){
+      var ids=perEntry[i].filter(function(n){return isShowable(PRODUCT_CACHE[n]);});
+      if(!ids.length)return;                        // no data -> Snap keeps this one
+      recRenderSection(e,titles[i],ids);
       done++;
     });
-    if(hideCss){var st=document.createElement('style');st.textContent=hideCss;document.head.appendChild(st);}
     if(done){
       applyCartStateToButtons();
       if(typeof setupScrollArrows==='function')setupScrollArrows();
+      console.log('[Atlas Tiles] direct-rendered '+done+'/'+entries.length+' recommendation section(s)');
     }
-    console.log('[Atlas Tiles] direct-rendered '+done+' recommendation section(s)');
   }catch(e){console.warn('[Atlas Tiles] recs direct render skipped:',e&&e.message);}
 }
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initRecsDirect);else initRecsDirect();
+function fpRecsBoot(){
+  initRecsDirect();
+  setTimeout(initRecsDirect,4000);    // cart-drawer placeholders mount after load
+  setTimeout(initRecsDirect,10000);
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',fpRecsBoot);else fpRecsBoot();
 
 })();
