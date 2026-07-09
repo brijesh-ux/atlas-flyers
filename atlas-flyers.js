@@ -2350,9 +2350,11 @@ function catBuildFilterBar(){
     var chips=[],options=[];
     links.forEach(function(a){
       var txt=(a.textContent||'').replace(/\s+/g,' ').trim();
-      if(!txt)return;
+      if(!txt||/^show (more|less)/i.test(txt))return;
       var href=a.getAttribute('href');
-      if(a.querySelector('.navList-action-close'))chips.push({t:txt,h:href});
+      if(!href||href==='#')return;
+      // the theme puts a close-icon on EVERY facet link; only is-selected means active
+      if(/(^|\s)is-selected(\s|$)/.test(a.className||''))chips.push({t:txt,h:href});
       else options.push({t:txt,h:href});
     });
     chips.forEach(function(c){
@@ -2428,6 +2430,18 @@ async function initCategoryTiles(rerun){
     STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
     if(!STORE_TOKEN){console.warn('[Atlas Tiles] no storefront token — native grid kept');return;}
 
+    // facets picked in the REFINE bar (brand / price) — honored by the stream
+    var naFilters=(function(){
+      try{
+        var sp=new URLSearchParams(location.search);
+        var f={};
+        var brands=sp.getAll('brand').map(function(x){return parseInt(x,10);}).filter(function(n){return n>0;});
+        if(brands.length)f.brandEntityIds=brands;
+        var mn=parseFloat(sp.get('price_min')),mx=parseFloat(sp.get('price_max'));
+        if(!isNaN(mn)||!isNaN(mx)){f.price={};if(!isNaN(mn))f.price.minPrice=mn;if(!isNaN(mx))f.price.maxPrice=mx;}
+        return Object.keys(f).length?f:null;
+      }catch(e){return null;}
+    })();
     var newestModeEarly=/^\/new-arrivals\//.test(location.pathname);
     var items=newestModeEarly?[]:catCollectItems(grid);
     if(!newestModeEarly&&!items.length)return;
@@ -2497,9 +2511,17 @@ async function initCategoryTiles(rerun){
       if(!(doc&&catNextUrl(doc)))exhausted=true;
     }
     async function loadNewest(){
-      var q='query($after:String){site{newestProducts(first:40,after:$after){pageInfo{hasNextPage endCursor}edges{node{name entityId sku brand{name path} prices{price{value}salePrice{value}retailPrice{value}} defaultImage{url(width:400)} images{edges{node{urlOriginal url(width:800) isDefault altText}}} path description inventory{isInStock} availabilityV2{status} productOptions(first:1){edges{node{entityId}}}}}}}}';
-      var d=await fetch(STORE+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+STORE_TOKEN},body:JSON.stringify({query:q,variables:{after:newestCursor}})}).then(function(r){return r.ok?r.json():null;});
-      var np=d&&d.data&&d.data.site&&d.data.site.newestProducts;
+      var FIELDS='pageInfo{hasNextPage endCursor}edges{node{name entityId sku brand{name path} prices{price{value}salePrice{value}retailPrice{value}} defaultImage{url(width:400)} images{edges{node{urlOriginal url(width:800) isDefault altText}}} path description inventory{isInStock} availabilityV2{status} productOptions(first:1){edges{node{entityId}}}}}';
+      var body;
+      if(naFilters){
+        body={query:'query($after:String,$f:SearchProductsFiltersInput!){site{search{searchProducts(filters:$f,sort:NEWEST){products(first:40,after:$after){'+FIELDS+'}}}}}',variables:{after:newestCursor,f:naFilters}};
+      }else{
+        body={query:'query($after:String){site{newestProducts(first:40,after:$after){'+FIELDS+'}}}',variables:{after:newestCursor}};
+      }
+      var d=await fetch(STORE+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+STORE_TOKEN},body:JSON.stringify(body)}).then(function(r){return r.ok?r.json():null;});
+      var np=naFilters
+        ?(d&&d.data&&d.data.site&&d.data.site.search&&d.data.site.search.searchProducts&&d.data.site.search.searchProducts.products)
+        :(d&&d.data&&d.data.site&&d.data.site.newestProducts);
       if(!np||!np.edges.length){exhausted=true;return;}
       var items=[];
       np.edges.forEach(function(ed){
