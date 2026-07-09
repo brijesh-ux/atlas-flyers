@@ -2397,82 +2397,87 @@ function fpEnsureTileData(){
   return _fpTileDataP;
 }
 
-function recExtractIds(target){
-  var ids=[],seen={};
-  target.querySelectorAll('[data-id],[data-product-id],a[href*="product_id="]').forEach(function(el){
-    var id=el.getAttribute('data-id')||el.getAttribute('data-product-id');
-    if(!id){var m=(el.getAttribute('href')||'').match(/product_id=(\d+)/);id=m?m[1]:null;}
-    id=parseInt(id,10);
-    if(id>0&&!seen[id]){seen[id]=1;ids.push(id);}
-  });
-  return ids;
+// ==================== SS RECOMMENDATIONS: DIRECT RENDER ====================
+// Same philosophy as the category tiles: fetch the data ourselves at load and
+// render once. The theme server-renders placeholders
+//   <script type="searchspring/personalized-recommendations" profile="..."> seed="SKU"
+// at the exact carousel positions, and SearchSpring's recommend API answers a
+// plain GET with BigCommerce product ids. So: call it, render flyer strips
+// immediately, and hide Snap's own carousel for each profile handled. Any
+// failure -> render nothing and Snap behaves exactly as before.
+var SS_SITE_ID='kncv3u';
+function prettyTag(tag){
+  return String(tag).replace(/-snap$/,'').replace(/-/g,' ').replace(/(^|\s)\w/g,function(c){return c.toUpperCase();});
 }
-
-var _fpRecsBusy=false;
-async function reskinRecTargets(){
-  if(_fpRecsBusy)return;
-  if(document.querySelector('.flyers-page'))return;   // flyer page styles itself
-  // If SearchSpring re-rendered a carousel we already painted, paint it again.
-  [].slice.call(document.querySelectorAll('.ss__recommendation--target[data-fp-reskinned]')).forEach(function(t){
-    if(t.querySelector('.ss__result-tracker'))t.removeAttribute('data-fp-reskinned');
-  });
-  var targets=document.querySelectorAll('.ss__recommendation--target:not([data-fp-reskinned])');
-  if(!targets.length)return;
-  var work=[];
-  [].slice.call(targets).forEach(function(t){
-    var ids=recExtractIds(t);
-    if(ids.length)work.push({t:t,ids:ids});
-  });
-  if(!work.length)return;
-  _fpRecsBusy=true;
+async function recProfileTitle(tag){
   try{
+    var r=await fetch('https://'+SS_SITE_ID+'.a.searchspring.io/api/personalized-recommendations/profile.json?tag='+encodeURIComponent(tag)+'&siteId='+SS_SITE_ID+'&branch=production');
+    if(!r.ok)return null;
+    var d=await r.json();
+    var tp=d&&d.profile&&d.profile.display&&d.profile.display.templateParameters;
+    return (tp&&tp.title)||null;
+  }catch(e){return null;}
+}
+async function initRecsDirect(){
+  try{
+    if(document.querySelector('.flyers-page'))return;
+    var phs=[];
+    [].slice.call(document.querySelectorAll('script[type="searchspring/personalized-recommendations"]')).forEach(function(s){
+      var tag=s.getAttribute('profile');
+      if(!tag)return;
+      var m=(s.textContent||'').match(/seed\s*=\s*["']([^"']+)["']/);
+      phs.push({tag:tag,seed:m?m[1]:null,node:s});
+    });
+    if(!phs.length)return;
     STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
     if(!STORE_TOKEN)return;
+    var tags=phs.map(function(p){return p.tag;});
+    var seed=null;phs.forEach(function(p){if(!seed&&p.seed)seed=p.seed;});
+    // cart skus feed cart-page profiles and improve personalization
+    var cartSkus=[];
+    try{
+      var carts=await fetch('/api/storefront/carts',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;});
+      if(carts&&carts[0]&&carts[0].lineItems)(carts[0].lineItems.physicalItems||[]).forEach(function(it){if(it.sku)cartSkus.push(it.sku);});
+    }catch(e){}
+    var url='https://'+SS_SITE_ID+'.a.searchspring.io/boost/'+SS_SITE_ID+'/recommend?tags='+tags.map(encodeURIComponent).join(',')+'&limits='+tags.map(function(){return 15;}).join(',');
+    if(seed)url+='&product='+encodeURIComponent(seed);
+    if(cartSkus.length)url+='&cart='+encodeURIComponent(cartSkus.slice(0,20).join(','));
+    var recs=await fetch(url).then(function(r){return r.ok?r.json():null;});
+    if(!recs||!recs.length)return;
+    var byTag={};
+    recs.forEach(function(b){var t=b&&b.profile&&(b.profile.tag||b.profile);if(t)byTag[t]=b;});
+    var titles=await Promise.all(tags.map(recProfileTitle));
+    var all=[];
+    recs.forEach(function(b){(b.results||[]).forEach(function(x){var id=parseInt(x.mappings&&x.mappings.core&&x.mappings.core.uid,10);if(id>0)all.push(id);});});
+    if(!all.length)return;
     await fpEnsureTileData();
-    var all=[];work.forEach(function(w){all=all.concat(w.ids);});
     await fetchProducts(all);
     catInjectInfra();
-    var done=0;
-    work.forEach(function(w){
-      var got=w.ids.filter(function(id){return isShowable(PRODUCT_CACHE[id]);});
-      if(!got.length)return;
-      var h=w.t.querySelector('h2,h3,[class*="title"]');
-      var title=h?(h.textContent||'').trim():'You May Also Like';
-      w.t.setAttribute('data-fp-reskinned','1');
-      w.t.innerHTML='<div class="fp-section-head" style="border-top:none"><span class="fp-section-title"></span></div><div class="fp-rich-grid"></div>';
-      w.t.querySelector('.fp-section-title').textContent=title;
-      w.t.querySelector('.fp-rich-grid').innerHTML=got.map(function(id){
-        return richCard(PRODUCT_CACHE[id],{showTag:false,_sectionKey:'recsReskin'});
+    var hideCss='',done=0;
+    phs.forEach(function(p,i){
+      var block=byTag[p.tag]||recs[i];
+      var ids=((block&&block.results)||[]).map(function(x){return parseInt(x.mappings&&x.mappings.core&&x.mappings.core.uid,10);})
+        .filter(function(n){return n>0&&isShowable(PRODUCT_CACHE[n]);});
+      if(!ids.length)return;
+      var sec=document.createElement('div');
+      sec.className='fp-section';
+      sec.innerHTML='<div class="fp-section-head" style="border-top:none"><span class="fp-section-title"></span></div><div class="fp-rich-grid"></div>';
+      sec.querySelector('.fp-section-title').textContent=titles[i]||prettyTag(p.tag);
+      sec.querySelector('.fp-rich-grid').innerHTML=ids.map(function(id){
+        return richCard(PRODUCT_CACHE[id],{showTag:false,_sectionKey:'recsDirect'});
       }).join('');
+      p.node.parentNode.insertBefore(sec,p.node.nextSibling);
+      hideCss+='#ss__recommendation--'+p.tag+'{display:none!important}';
       done++;
     });
+    if(hideCss){var st=document.createElement('style');st.textContent=hideCss;document.head.appendChild(st);}
     if(done){
       applyCartStateToButtons();
       if(typeof setupScrollArrows==='function')setupScrollArrows();
-      console.log('[Atlas Tiles] reskinned '+done+' recommendation carousel(s)');
     }
-  }catch(e){console.warn('[Atlas Tiles] recs reskin skipped:',e&&e.message);}
-  finally{_fpRecsBusy=false;}
+    console.log('[Atlas Tiles] direct-rendered '+done+' recommendation section(s)');
+  }catch(e){console.warn('[Atlas Tiles] recs direct render skipped:',e&&e.message);}
 }
-['searchspring:rendered','searchspring:results'].forEach(function(ev){
-  window.addEventListener(ev,function(){setTimeout(reskinRecTargets,150);});
-});
-// Snap fills recommendation tiles only when they scroll into view — which can be
-// minutes after load — so watch the DOM permanently (debounced; the reskin
-// early-outs in microseconds when there is nothing new to paint).
-(function(){
-  var t=null;
-  function soon(){clearTimeout(t);t=setTimeout(reskinRecTargets,300);}
-  if('MutationObserver' in window){
-    new MutationObserver(soon).observe(document.body||document.documentElement,{childList:true,subtree:true});
-  }
-  var tries=0;
-  var timer=setInterval(function(){
-    tries++;
-    reskinRecTargets();
-    if(tries>=20)clearInterval(timer);   // startup belt-and-suspenders (~30s)
-  },1500);
-  console.log('[Atlas Tiles] recs watcher armed');
-})();
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initRecsDirect);else initRecsDirect();
 
 })();
