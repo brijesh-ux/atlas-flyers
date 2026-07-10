@@ -2424,7 +2424,7 @@ setTimeout(function(){
 (function(){
   function setPh(){
     try{
-      [].slice.call(document.querySelectorAll('input[name="search_query"],input#search_query,.header-search input[type="text"],.header-search input[type="search"]')).forEach(function(i){
+      [].slice.call(document.querySelectorAll('input[name="search_query"],input#search_query')).forEach(function(i){
         i.setAttribute('placeholder',"Search the World's Best Tool Store");
       });
     }catch(e){}
