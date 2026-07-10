@@ -3087,7 +3087,60 @@ if('MutationObserver' in window){
       });
     }catch(e){}
   }
-  [3000,6000,10000,15000].forEach(function(ms){setTimeout(tune,ms);});
+  // top up the home NEW ARRIVALS carousel to 100 products: the theme renders
+  // ~58 server-side; append the rest of the newest-first stream as richCards
+  async function fillNewArrivals(){
+    try{
+      if(window.__fpNaFill)return;
+      var target=null;
+      [].slice.call(document.querySelectorAll('ul.custom-product-carousel-slider.slick-initialized')).forEach(function(el){
+        if(target||el.querySelector('.shortcode-card'))return;
+        var anc=el,head=null;
+        for(var i=0;i<5&&anc;i++){
+          anc=anc.parentElement;
+          if(!anc)break;
+          head=anc.querySelector('.main-heading,.heading-link,h2');
+          if(head)break;
+        }
+        if(head&&/new arrival/i.test(head.textContent||''))target=el;
+      });
+      if(!target||!target.slick||typeof target.slick.slickAdd!=='function')return;
+      window.__fpNaFill=1;
+      STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
+      if(!STORE_TOKEN)return;
+      await fpEnsureTileData();
+      var FIELDS='pageInfo{hasNextPage endCursor}edges{node{name entityId sku brand{name path} prices{price{value}salePrice{value}retailPrice{value}} defaultImage{url(width:400)} images{edges{node{urlOriginal url(width:800) isDefault altText}}} path description inventory{isInStock} availabilityV2{status} productOptions(first:1){edges{node{entityId}}}}}';
+      var have={};
+      [].slice.call(target.querySelectorAll('[data-entity-id]')).forEach(function(n){have[n.getAttribute('data-entity-id')]=1;});
+      var count=target.querySelectorAll('.slick-slide:not(.slick-cloned)').length;
+      var cursor=null,guard=0;
+      while(count<100&&guard<4){
+        guard++;
+        var body={query:'query($after:String){site{newestProducts(first:50,after:$after){'+FIELDS+'}}}',variables:{after:cursor}};
+        var d=await fetch(STORE+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+STORE_TOKEN},body:JSON.stringify(body)}).then(function(r){return r.ok?r.json():null;});
+        var np=d&&d.data&&d.data.site&&d.data.site.newestProducts;
+        if(!np||!np.edges.length)break;
+        for(var i=0;i<np.edges.length&&count<100;i++){
+          var pr=np.edges[i].node;
+          var id=parseInt(pr.entityId,10);
+          if(!(id>0)||have[id])continue;
+          have[id]=1;
+          PRODUCT_CACHE[id]=pr;
+          var hasOpts=pr.productOptions&&pr.productOptions.edges&&pr.productOptions.edges.length>0;
+          try{
+            target.slick.slickAdd('<li class="product">'+richCard(pr,{showTag:false,_sectionKey:'themeCards',optionsUrl:hasOpts?pr.path:null})+'</li>');
+            count++;
+          }catch(e){}
+        }
+        cursor=np.pageInfo.endCursor;
+        if(!np.pageInfo.hasNextPage)break;
+      }
+      applyCartStateToButtons();
+      console.log('[Atlas Tiles] New Arrivals carousel filled to '+count+' products');
+    }catch(e){console.warn('[Atlas Tiles] NA fill:',e&&e.message);}
+  }
+  [800,2500,5000,10000,15000].forEach(function(ms){setTimeout(tune,ms);});
+  [3500,8000].forEach(function(ms){setTimeout(fillNewArrivals,ms);});
   var t=null;
   window.addEventListener('resize',function(){clearTimeout(t);t=setTimeout(tune,250);});
 })();
