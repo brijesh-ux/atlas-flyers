@@ -445,7 +445,7 @@ function richCard(p,m){
     (m.optionsUrl
       ? '<a class="fp-rich-add fp-rich-choose" href="'+esc(m.optionsUrl)+'">Choose Options</a>'
       : canBuy
-      ? '<button class="fp-rich-add'+(inCartLabel(p.entityId)?' added':'')+'" id="'+bid+'" data-pid="'+p.entityId+'" onclick="fpAdd('+p.entityId+','+(hasDiscount?currentPrice:pr)+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">'+(inCartLabel(p.entityId)||((p.availabilityV2&&p.availabilityV2.status)==='Preorder'?'PRE ORDER NOW':'Add to Cart'))+'</button>'
+      ? '<button class="fp-rich-add'+(inCartLabel(p.entityId)?' added':'')+'" id="'+bid+'" data-pid="'+p.entityId+'" data-lbl="'+((p.availabilityV2&&p.availabilityV2.status)==='Preorder'?'PRE ORDER NOW':'Add to Cart')+'" onclick="fpAdd('+p.entityId+','+(hasDiscount?currentPrice:pr)+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">'+(inCartLabel(p.entityId)||((p.availabilityV2&&p.availabilityV2.status)==='Preorder'?'PRE ORDER NOW':'Add to Cart'))+'</button>'
       : '<button class="fp-rich-add fp-rich-notify" onclick="fpNotifyMe('+p.entityId+',this)">Notify Me</button>')+
   '</div>';
 }
@@ -1773,7 +1773,7 @@ function refreshCartButtons(id){
   var lbl=inCartLabel(id);
   document.querySelectorAll('.fp-rich-add[data-pid="'+id+'"],.fp-cd-add[data-pid="'+id+'"]').forEach(function(b){
     if(lbl){b.textContent=lbl;b.classList.add('added');}
-    else{b.textContent='Add to Cart';b.classList.remove('added');}
+    else{b.textContent=b.getAttribute('data-lbl')||'Add to Cart';b.classList.remove('added');}
   });
 }
 // Sweep all currently-rendered add buttons and apply in-cart state.
@@ -1784,7 +1784,7 @@ function applyCartStateToButtons(){
     if(b.disabled)return; // leave out-of-stock buttons alone
     var lbl=inCartLabel(b.getAttribute('data-pid'));
     if(lbl){b.textContent=lbl;b.classList.add('added');}
-    else{b.textContent='Add to Cart';b.classList.remove('added');}
+    else{b.textContent=b.getAttribute('data-lbl')||'Add to Cart';b.classList.remove('added');}
   });
 }
 // Returns true if the item was successfully added, false otherwise.
