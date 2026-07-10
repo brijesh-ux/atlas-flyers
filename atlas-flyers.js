@@ -399,7 +399,7 @@ function richCard(p,m){
   // rotate every 30 min (see visitorCount).
   var showVisitors=globalVisitors&&sectionVisitors&&fpVisitorShow(p,savePct);
   var showHeart=getSetting('enable_wishlist_heart',true);
-  var quickView=getSetting('enable_quick_view',true);
+  var quickView=getSetting('enable_quick_view',true)&&!!document.querySelector('.flyers-page');
   // Brand resolution priority:
   //   1) Sheet Brand ID column matched in Brand Styles (m.brand)
   //   2) BC product's own brand matched in Brand Styles
@@ -435,7 +435,7 @@ function richCard(p,m){
       (brandLabel?'<span class="fp-rich-brand" style="background:'+brandBg+';color:'+brandTc+brandBorder+'">'+esc(brandLabel)+'</span>':'<span></span>')+
       tagHtml+
     '</div>'+
-    (img?'<div class="fp-rich-img-wrap"'+(quickView?' onclick="fpQuickView('+p.entityId+')"':'')+'><img src="'+img+'" alt="'+esc(p.name)+'" loading="lazy"></div>':'<div class="fp-rich-ph">🔧</div>')+
+    (img?'<div class="fp-rich-img-wrap"'+(quickView?' onclick="fpQuickView('+p.entityId+')"':(p.path?' style="cursor:pointer" onclick="fpTrackRecent('+p.entityId+');location.href=\''+esc(p.path)+'\'"':''))+'><img src="'+img+'" alt="'+esc(p.name)+'" loading="lazy"></div>':'<div class="fp-rich-ph">🔧</div>')+
     '<a class="fp-rich-name" href="'+esc(p.path||'#')+'" onclick="fpTrackRecent('+p.entityId+')">'+esc(cn)+'</a>'+
     '<div class="fp-rich-meta"><div class="fp-rich-sku">SKU# '+esc(p.sku||p.entityId)+'</div>'+stockHtml+'</div>'+
     '<div class="fp-rich-stats">'+viewingHtml+ribbonHtml+'</div>'+
@@ -445,7 +445,7 @@ function richCard(p,m){
     (m.optionsUrl
       ? '<a class="fp-rich-add fp-rich-choose" href="'+esc(m.optionsUrl)+'">Choose Options</a>'
       : canBuy
-      ? '<button class="fp-rich-add'+(inCartLabel(p.entityId)?' added':'')+'" id="'+bid+'" data-pid="'+p.entityId+'" onclick="fpAdd('+p.entityId+','+(hasDiscount?currentPrice:pr)+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">'+(inCartLabel(p.entityId)||'Add to Cart')+'</button>'
+      ? '<button class="fp-rich-add'+(inCartLabel(p.entityId)?' added':'')+'" id="'+bid+'" data-pid="'+p.entityId+'" onclick="fpAdd('+p.entityId+','+(hasDiscount?currentPrice:pr)+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">'+(inCartLabel(p.entityId)||((p.availabilityV2&&p.availabilityV2.status)==='Preorder'?'PRE ORDER NOW':'Add to Cart'))+'</button>'
       : '<button class="fp-rich-add fp-rich-notify" onclick="fpNotifyMe('+p.entityId+',this)">Notify Me</button>')+
   '</div>';
 }
@@ -1639,7 +1639,7 @@ window.fpQuickView=async function(pid){
     '<div class="fp-modal-actions">'+
       (isPurchasable(p)
         ? '<div class="fp-modal-qty"><button class="fp-modal-qty-btn" onclick="fpQtyChg(-1)">−</button><div class="fp-modal-qty-val" id="fp-qty">1</div><button class="fp-modal-qty-btn" onclick="fpQtyChg(1)">+</button></div>'+
-          '<button class="fp-modal-add'+(inCartLabel(pid)?' added':'')+'" id="fp-modal-add" onclick="fpModalAdd('+pid+','+qvCurrent+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">'+(inCartLabel(pid)||'Add to Cart')+'</button>'
+          '<button class="fp-modal-add'+(inCartLabel(pid)?' added':'')+'" id="fp-modal-add" onclick="fpModalAdd('+pid+','+qvCurrent+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">'+(inCartLabel(pid)||((p.availabilityV2&&p.availabilityV2.status)==='Preorder'?'PRE ORDER NOW':'Add to Cart'))+'</button>'
         : '<button class="fp-modal-add fp-rich-notify" onclick="fpNotifyMe('+pid+',this)">Notify Me</button>')+
     '</div>'+
     '<a class="fp-modal-view" href="'+esc(p.path||'#')+'">View full product details →</a>';
@@ -1825,6 +1825,10 @@ function updateCartBar(){
   // include items added in this session AND items already in the cart / added
   // elsewhere — not just the session-only CART object.
   var c=CART_TOTAL_QTY,t=CART_TOTAL_AMT;
+  [].slice.call(document.querySelectorAll('.cart-quantity')).forEach(function(el){
+    el.textContent=c;
+    el.classList.toggle('countPill--positive',c>0);
+  });
   $('fp-cart-count').textContent=c+(c===1?' item':' items');
   $('fp-cart-total').textContent='$'+(t||0).toFixed(2);
   $('fp-checkout').classList.toggle('visible',c>0);
