@@ -2292,6 +2292,27 @@ setTimeout(function(){
   (document.head||document.documentElement).appendChild(st);
 })();
 
+// SALE in the mobile sticky footer (user request, 10 Jul): 6th item between
+// New and Shop By -> /sale/ (301 -> the SS sale landing our takeover renders).
+// Items are flex:1 so the bar re-spaces itself; hidden >=1025px like the rest.
+// Lights up (li.on = red) when the sale view is the current page.
+(function(){
+  function addSale(){
+    try{
+      var ul=document.querySelector('.mobile-sub ul.msb-new');
+      if(!ul||ul.querySelector('.fp-msb-sale'))return;
+      var li=document.createElement('li');
+      li.className='fp-msb-sale';
+      li.innerHTML='<a href="/sale/"><span class="msb-ic"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7.5 4a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm0 2a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm9 7a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm0 2a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM18.6 3.4 3.4 18.6l2 2L20.6 5.4l-2-2z"/></svg></span><span class="msb-l">Sale</span></a>';
+      var shopBy=ul.querySelector('.shop-by-btn');
+      var ref=shopBy?shopBy.closest('li'):null;
+      if(ref)ul.insertBefore(li,ref);else ul.appendChild(li);
+      if(location.pathname.indexOf('/shop/')===0&&(location.hash.indexOf('ss_on_sale')>-1||/fsale=1|summer-site-wide-sale/.test(location.search)))li.classList.add('on');
+    }catch(e){}
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',addSale);else addSale();
+})();
+
 // ==================== CATEGORY PAGE TILES ====================
 // Renders native BigCommerce category listings with the flyer's rich product
 // cards (same richCard as /flyers-and-deals/). Runs ONLY on native-rendered
