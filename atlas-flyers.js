@@ -2427,6 +2427,11 @@ setTimeout(function(){
       [].slice.call(document.querySelectorAll('input[name="search_query"],input#search_query')).forEach(function(i){
         i.setAttribute('placeholder',"Search the World's Best Tool Store");
       });
+      // the VISIBLE hint is a theme overlay span (.title) painted over the
+      // input, not the input's placeholder — fix any span still saying "Tools"
+      [].slice.call(document.querySelectorAll('span.title')).forEach(function(s){
+        if(/World.s Best Tools Store/i.test(s.textContent||''))s.textContent="Search the World's Best Tool Store";
+      });
     }catch(e){}
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',setPh);else setPh();
