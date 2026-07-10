@@ -2295,7 +2295,7 @@ setTimeout(function(){
     // Compact twin of the desktop .atlas-flyer-chip; drops "Monthly" <=430px.
     +'#fp-mob-flyer{display:none}'
     +'@media(max-width:990px){.middle-header{position:relative}'
-    +'#fp-mob-flyer{display:inline-flex;align-items:center;gap:5px;position:absolute;right:118px;top:50%;transform:translateY(-50%);'
+    +'#fp-mob-flyer{display:inline-flex;align-items:center;gap:5px;position:absolute;right:98px;top:50%;transform:translateY(-50%);'
     +'border:1.5px solid #c10200;color:#fff;font:700 10.5px/1 Arial,sans-serif;text-transform:uppercase;letter-spacing:.3px;'
     +'padding:0 10px;height:30px;border-radius:18px!important;text-decoration:none;white-space:nowrap;z-index:60}'
     +'#fp-mob-flyer .material-icons{font-size:14px;color:#c10200}}'
