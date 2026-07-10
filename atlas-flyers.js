@@ -2475,7 +2475,18 @@ async function initCategoryTiles(rerun){
     }
     var myRun=(window.__fpCatRun=(window.__fpCatRun||0)+1);   // this run owns the grid now
     catWidenContainer();
-    catBuildFilterBar();
+    // the theme's faceted JS tears down + re-renders the filter sidebar after
+    // load — keep trying until the facets exist (and rebuild if wiped)
+    (function(){
+      var tries=0;
+      catBuildFilterBar();
+      var t=setInterval(function(){
+        tries++;
+        if(!document.getElementById('fp-filter-bar'))catBuildFilterBar();
+        if(document.getElementById('fp-filter-bar')&&tries>3)clearInterval(t);
+        if(tries>=25)clearInterval(t);
+      },800);
+    })();
     grid.parentNode.replaceChild(wrap,grid);
     applyCartStateToButtons();
     console.log('[Atlas Tiles] category grid: '+wrap.children.length+' rich cards');
