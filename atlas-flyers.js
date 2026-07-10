@@ -2276,6 +2276,17 @@ setTimeout(function(){
   }
 },6000);
 
+// The Brands mega-menu template ships its OWN "View All Brands" item
+// (li.view-all-brands -> /brands/), so the header-injected .mega-view-all pill
+// duplicated it there. Hide ours in the Brands menu only (site-wide style).
+(function(){
+  if(document.getElementById('fp-brands-vab-fix'))return;
+  var st=document.createElement('style');
+  st.id='fp-brands-vab-fix';
+  st.textContent='.navPages-item.Brands .mega-view-all{display:none!important}';
+  (document.head||document.documentElement).appendChild(st);
+})();
+
 // ==================== CATEGORY PAGE TILES ====================
 // Renders native BigCommerce category listings with the flyer's rich product
 // cards (same richCard as /flyers-and-deals/). Runs ONLY on native-rendered
@@ -2361,9 +2372,10 @@ function ssSearchUrl(catPath,f,page,perPage){
     if(pr[1]&&pr[1]!=='*')u+='&filter.calculated_price.high='+encodeURIComponent(pr[1]);
   }
   if(f.stock)u+='&filter.ss_in_stock.low=1&filter.ss_in_stock.high=1';
-  // /new-arrivals/ always streams newest-first; elsewhere honor the theme's ?sort=
-  var sort=/^\/new-arrivals\//.test(location.pathname)?'newest':'';
-  try{sort=sort||new URLSearchParams(location.search).get('sort')||'';}catch(e){}
+  // honor the theme's ?sort= everywhere; /new-arrivals/ only DEFAULTS to newest
+  var sort='';
+  try{sort=new URLSearchParams(location.search).get('sort')||'';}catch(e){}
+  if(!sort&&/^\/new-arrivals\//.test(location.pathname))sort='newest';
   var map={newest:'sort.sortable_date_created=desc',bestselling:'sort.ga_unique_purchases=desc',
     featured:'sort.is_featured=desc',priceasc:'sort.calculated_price=asc',pricedesc:'sort.calculated_price=desc'};
   if(map[sort])u+='&'+map[sort];
@@ -2500,7 +2512,12 @@ async function initCategoryTiles(rerun){
     var newestModeEarly=/^\/new-arrivals\//.test(location.pathname);
     var catPath=ssCatPath();
     var fParams=ssFParams();
-    var ssMode=fParams.any&&!!catPath;      // filters active -> SS supplies the ids
+    var themeSort='';
+    try{themeSort=new URLSearchParams(location.search).get('sort')||'';}catch(e){}
+    // filters active -> SS supplies the ids. Also /new-arrivals/ with an explicit
+    // non-newest sort: the GraphQL stream can ONLY do newest-first, so any other
+    // order comes from SS (same New Arrivals scope, mapped sort).
+    var ssMode=(fParams.any||(newestModeEarly&&themeSort&&themeSort!=='newest'))&&!!catPath;
     var items=newestModeEarly?[]:catCollectItems(grid);
     if(!newestModeEarly&&!items.length)return;
 
@@ -2561,6 +2578,22 @@ async function initCategoryTiles(rerun){
     }
     var myRun=(window.__fpCatRun=(window.__fpCatRun||0)+1);   // this run owns the grid now
     catWidenContainer();
+    // Sort By: deterministic full-reload navigation that PRESERVES our filter
+    // params — the native GET form drops everything but ?sort, and leftover
+    // Snap bindings write the sort into a dead #/sort: hash. Capture beats both.
+    if(!window.__fpSortBound){
+      window.__fpSortBound=true;
+      document.addEventListener('change',function(e){
+        var t=e.target;
+        if(!t||t.tagName!=='SELECT'||(t.id!=='sort'&&t.name!=='sort'))return;
+        e.stopImmediatePropagation();
+        var u=new URL(location.href);
+        u.hash='';
+        u.searchParams.delete('page');
+        u.searchParams.set('sort',t.value);
+        location.href=u.pathname+u.search;
+      },true);
+    }
     // REFINE bar from SearchSpring facet data scoped to this category (Snap's
     // own sidebar UI is hidden by CSS — SS is a data feed only). Non-blocking;
     // if SS is down the page just has no filter bar.
