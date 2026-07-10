@@ -2638,45 +2638,61 @@ function fpEnsureTileData(){
 // V51+ server-renders bare fp cards on home/theme carousels (neutral black
 // brand pills). Swap each for the full richCard: sheet-driven brand colors,
 // savings ribbons, viewing counts, coupon chips, IN CART labels, quick view.
+function fpCardTargets(){
+  var out=[];
+  // V51+ server cards (bare fp) in theme carousels
+  [].slice.call(document.querySelectorAll('.custom-product-carousel-slider .fp-rich[data-entity-id],.productCarousel .fp-rich[data-entity-id]')).forEach(function(el){
+    var id=parseInt(el.getAttribute('data-entity-id'),10);
+    if(!(id>0))return;
+    var choose=el.querySelector('.fp-rich-choose');
+    out.push({el:el,id:id,opt:choose?choose.getAttribute('href'):null});
+  });
+  // legacy shortcode cards (rendered by the theme module OR the inline Script
+  // Manager copies of the old renderer) — id lives in shortcode-product-<id>
+  [].slice.call(document.querySelectorAll('article.card.shortcode-card')).forEach(function(el){
+    var m=String(el.className).match(/shortcode-product-(\d+)/);
+    var id=m?parseInt(m[1],10):0;
+    if(!(id>0)){
+      var d=el.querySelector('[data-id]');
+      id=d?parseInt(d.getAttribute('data-id'),10):0;
+    }
+    if(!(id>0))return;
+    var choose=[].slice.call(el.querySelectorAll('a')).filter(function(a){return /choose options|pre-order|view details/i.test(a.textContent||'');})[0];
+    out.push({el:el,id:id,opt:choose?choose.getAttribute('href'):null});
+  });
+  return out;
+}
 async function enrichThemeCards(){
   try{
     if(document.querySelector('.flyers-page'))return;
-    var sel='.custom-product-carousel-slider .fp-rich[data-entity-id],.productCarousel .fp-rich[data-entity-id]';
-    var cards=[].slice.call(document.querySelectorAll(sel));
-    if(!cards.length)return;
+    var targets=fpCardTargets();
+    if(!targets.length)return;
     STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
     if(!STORE_TOKEN)return;
     var ids=[],seen={};
-    cards.forEach(function(el){
-      var id=parseInt(el.getAttribute('data-entity-id'),10);
-      if(id>0&&!seen[id]){seen[id]=1;ids.push(id);}
-    });
+    targets.forEach(function(t){if(!seen[t.id]){seen[t.id]=1;ids.push(t.id);}});
     await fpEnsureTileData();
     await fpFetchProductsCached(ids);
     catInjectInfra();
     var done=0;
-    cards.forEach(function(el){
-      if(!el.parentNode)return;
-      var id=parseInt(el.getAttribute('data-entity-id'),10);
-      var pr=PRODUCT_CACHE[id];
+    targets.forEach(function(t){
+      if(!t.el.parentNode)return;
+      var pr=PRODUCT_CACHE[t.id];
       if(!pr)return;
-      var choose=el.querySelector('.fp-rich-choose');
-      var opt=choose?choose.getAttribute('href'):null;
       var host=document.createElement('div');
-      host.innerHTML=richCard(pr,{showTag:false,_sectionKey:'themeCards',optionsUrl:opt});
+      host.innerHTML=richCard(pr,{showTag:false,_sectionKey:'themeCards',optionsUrl:t.opt});
       var fresh=host.firstElementChild;
-      if(fresh){el.parentNode.replaceChild(fresh,el);done++;}
+      if(fresh){t.el.parentNode.replaceChild(fresh,t.el);done++;}
     });
     if(done){
       applyCartStateToButtons();
-      console.log('[Atlas Tiles] enriched '+done+' theme card(s)');
+      console.log('[Atlas Tiles] enriched '+done+' theme/shortcode card(s)');
     }
   }catch(e){console.warn('[Atlas Tiles] theme-card enrichment skipped:',e&&e.message);}
 }
 function fpEnrichBoot(){
   enrichThemeCards();
-  setTimeout(enrichThemeCards,3000);   // slick clones mount after init
-  setTimeout(enrichThemeCards,8000);
+  [2000,4000,7000,12000,20000].forEach(function(ms){setTimeout(enrichThemeCards,ms);});
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',fpEnrichBoot);else fpEnrichBoot();
 
