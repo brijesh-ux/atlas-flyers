@@ -392,7 +392,8 @@ function richCard(p,m){
   // Master switch in Settings tab; if off, hide everywhere regardless of section column.
   var globalVisitors=getSetting('show_live_visitor_count',false);
   // Per-section column in Section Order tab.
-  var sectionVisitors=m._sectionKey?(SECTION_VISITOR_COUNT[m._sectionKey]!==false):false;
+  var _fpNoEye={categoryPage:1,themeCards:1,recsDirect:1,ssPage:1};
+  var sectionVisitors=m._sectionKey?(_fpNoEye[m._sectionKey]?false:(SECTION_VISITOR_COUNT[m._sectionKey]!==false)):false;
   // Counter shows on all discounted products; on full-price products only a
   // rotating ~1/3 subset (see fpVisitorShow). Counts are tiered by discount and
   // rotate every 30 min (see visitorCount).
