@@ -2294,6 +2294,14 @@ setTimeout(function(){
   st.id='fp-brands-vab-fix';
   st.textContent='.navPages-item.Brands .mega-view-all{display:none!important}'
     +'@media(max-width:991px){.fp-checkout{display:none!important}}'
+    // brand pages' Page Builder content ships a legacy mobile rule
+    // (.brand-title-section-container div:not(.shortcode-layout){order:1})
+    // written for the OLD tile markup — it scrambles richCard internals on
+    // mobile (name+button jump above the pill/image). Pin our tiles' children
+    // back to DOM order.
+    +'@media(max-width:1023px){.brand-title-section-container .fp-rich>div,'
+    +'.brand-title-section-container .fp-rich>a,'
+    +'.brand-title-section-container .fp-rich>button{order:0!important}}'
     // mobile header MONTHLY FLYER chip: fills the empty gap between the Atlas
     // logo and the search icon (search-mobile is absolute right:50px w:60px).
     // Compact twin of the desktop .atlas-flyer-chip; drops "Monthly" <=430px.
