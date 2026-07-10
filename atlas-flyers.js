@@ -2845,11 +2845,17 @@ if('MutationObserver' in window){
 // stay Snap-rendered untouched.
 (function(){
   var mode=null,q='';
-  if(location.pathname.indexOf('/shop/')===0&&(location.hash.indexOf('ss_on_sale')>-1||/fsale=1|summer-site-wide-sale/.test(location.search))){
+  var sp=null;
+  try{sp=new URLSearchParams(location.search);}catch(e){}
+  var tag=sp?(sp.get('tag')||''):'';
+  var onShop=location.pathname.indexOf('/shop/')===0;
+  if(onShop&&(location.hash.indexOf('ss_on_sale')>-1||tag==='summer-site-wide-sale'||(sp&&sp.get('fsale')==='1'))){
     mode='sale';
-  }else if(location.pathname.indexOf('/search')===0){
-    try{q=new URLSearchParams(location.search).get('search_query')||'';}catch(e){}
-    if(q)mode='search';
+  }else if((onShop||location.pathname.indexOf('/search')===0)&&sp&&sp.get('search_query')&&!tag){
+    // the theme lands search results on /shop/?search_query=... — campaign
+    // landings carry a tag (monthly-flyer etc.) and stay Snap-rendered
+    q=sp.get('search_query');
+    mode='search';
   }
   if(!mode)return;
   var catPath=mode==='sale'?'ss:on-sale':'ss:q:'+q;
