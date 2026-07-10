@@ -3088,9 +3088,22 @@ if('MutationObserver' in window){
         if(ssPage===1){
           [].slice.call(wrap.querySelectorAll('.fp-skel')).forEach(function(el){el.parentNode.removeChild(el);});
           try{ssBuildFilterBar(d.facets||[],wrap,sortSpec);fpFilterFloat();}catch(e){}
-          // campaign artwork (SS merchandising inline content) leads the grid
+          // campaign content: header zone first (the interactive flip-book
+          // flyer viewer iframe + its chrome styles on the Monthly Flyer
+          // landing), then inline artwork tiles inside the grid
           try{
             var mc=d.merchandising&&d.merchandising.content;
+            ((mc&&mc.header)||[]).forEach(function(en){
+              var html=(en&&(en.value||en))||'';
+              if(typeof html!=='string'||!html)return;
+              var sec=document.createElement('div');
+              sec.className='fp-merch-header';
+              sec.innerHTML=html;
+              [].slice.call(sec.querySelectorAll('script')).forEach(function(sx){sx.parentNode.removeChild(sx);});
+              var bar=document.getElementById('fp-filter-bar');
+              var anchorEl=bar||wrap;
+              anchorEl.parentNode.insertBefore(sec,anchorEl);
+            });
             ((mc&&mc.inline)||[]).forEach(function(en){
               var html=(en&&(en.value||en))||'';
               if(typeof html!=='string'||!html)return;
