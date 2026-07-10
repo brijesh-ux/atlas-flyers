@@ -446,7 +446,7 @@ function richCard(p,m){
       ? '<a class="fp-rich-add fp-rich-choose" href="'+esc(m.optionsUrl)+'">Choose Options</a>'
       : canBuy
       ? '<button class="fp-rich-add'+(inCartLabel(p.entityId)?' added':'')+'" id="'+bid+'" data-pid="'+p.entityId+'" onclick="fpAdd('+p.entityId+','+(hasDiscount?currentPrice:pr)+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">'+(inCartLabel(p.entityId)||'Add to Cart')+'</button>'
-      : '<button class="fp-rich-add fp-rich-add-oos" disabled aria-disabled="true">Out of Stock</button>')+
+      : '<button class="fp-rich-add fp-rich-notify" onclick="fpNotifyMe('+p.entityId+',this)">Notify Me</button>')+
   '</div>';
 }
 
@@ -1640,7 +1640,7 @@ window.fpQuickView=async function(pid){
       (isPurchasable(p)
         ? '<div class="fp-modal-qty"><button class="fp-modal-qty-btn" onclick="fpQtyChg(-1)">−</button><div class="fp-modal-qty-val" id="fp-qty">1</div><button class="fp-modal-qty-btn" onclick="fpQtyChg(1)">+</button></div>'+
           '<button class="fp-modal-add'+(inCartLabel(pid)?' added':'')+'" id="fp-modal-add" onclick="fpModalAdd('+pid+','+qvCurrent+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">'+(inCartLabel(pid)||'Add to Cart')+'</button>'
-        : '<button class="fp-modal-add fp-rich-add-oos" disabled aria-disabled="true">Out of Stock</button>')+
+        : '<button class="fp-modal-add fp-rich-notify" onclick="fpNotifyMe('+pid+',this)">Notify Me</button>')+
     '</div>'+
     '<a class="fp-modal-view" href="'+esc(p.path||'#')+'">View full product details →</a>';
   // Enable finger-swipe on the image gallery (touch devices)
@@ -2299,8 +2299,105 @@ setTimeout(function(){
     +'border:1.5px solid #c10200;color:#fff;font:700 10.5px/1 Arial,sans-serif;text-transform:uppercase;letter-spacing:.3px;'
     +'padding:0 10px;height:30px;border-radius:18px!important;text-decoration:none;white-space:nowrap;z-index:60}'
     +'#fp-mob-flyer .material-icons{font-size:14px;color:#c10200}}'
-    +'@media(max-width:430px){#fp-mob-flyer .fp-mf-long{display:none}}';
+    +'@media(max-width:430px){#fp-mob-flyer .fp-mf-long{display:none}}'
+    // NOTIFY ME (Klaviyo back-in-stock) button + email modal
+    +'.fp-rich-notify{background:#fff!important;color:#0f0f0f!important;border:1.5px solid #0f0f0f!important;cursor:pointer!important;opacity:1!important}'
+    +'.fp-rich-notify.done{background:#e8f5ec!important;border-color:#1a8a3c!important;color:#1a8a3c!important;cursor:default!important}'
+    +'#fp-notify-modal{position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483002;display:flex;align-items:center;justify-content:center}'
+    +'#fp-notify-modal .fp-nm-back{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5)}'
+    +'#fp-notify-modal .fp-nm-card{position:relative;background:#fff;border-radius:16px!important;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:22px;width:420px;max-width:92vw;font-family:Roboto,Arial,sans-serif}'
+    +'#fp-notify-modal h3{margin:0 0 4px;font-size:17px;font-weight:800}'
+    +'#fp-notify-modal p{margin:0 0 14px;font-size:13px;color:#555}'
+    +'#fp-notify-modal input{width:100%;padding:12px;border:1.5px solid #d5d5d2;border-radius:10px!important;font-size:14px;margin:0 0 12px;box-sizing:border-box}'
+    +'#fp-notify-modal .fp-nm-err{color:#c10200;font-size:12px;margin:-6px 0 10px;display:none}'
+    +'#fp-notify-modal .fp-nm-btns{display:flex;gap:10px;justify-content:flex-end}'
+    +'#fp-notify-modal .fp-nm-btns button{border:none;border-radius:999px!important;padding:10px 20px;font-weight:700;cursor:pointer}'
+    +'#fp-notify-modal .fp-nm-go{background:#0f0f0f;color:#fff}'
+    +'#fp-notify-modal .fp-nm-x{background:#eee;color:#333}';
   (document.head||document.documentElement).appendChild(st);
+})();
+
+// ==================== NOTIFY ME (Klaviyo Back in Stock) ====================
+// Out-of-stock tiles/quick-view/PDP get a working NOTIFY ME: email -> Klaviyo
+// client back-in-stock subscription (company M8tCJj; live "Back In Stock Flow
+// - Standard" sends the email when BigCommerce inventory returns). The
+// subscription needs the BC VARIANT entityId — resolved per click via GraphQL.
+(function(){
+  var KLAVIYO_COMPANY='M8tCJj';
+  async function bcFirstVariantId(pid){
+    STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
+    if(!STORE_TOKEN)return null;
+    try{
+      var d=await fetch(STORE+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+STORE_TOKEN},body:JSON.stringify({query:'query($p:Int!){site{product(entityId:$p){variants(first:1){edges{node{entityId}}}}}}',variables:{p:pid}})}).then(function(r){return r.ok?r.json():null;});
+      var ed=d&&d.data&&d.data.site&&d.data.site.product&&d.data.site.product.variants.edges;
+      return (ed&&ed[0])?ed[0].node.entityId:null;
+    }catch(e){return null;}
+  }
+  window.fpNotifyMe=function(pid,btn){
+    if(document.getElementById('fp-notify-modal'))return;
+    var wrap=document.createElement('div');
+    wrap.id='fp-notify-modal';
+    wrap.innerHTML='<div class="fp-nm-back"></div><div class="fp-nm-card"><h3>Get notified</h3><p>Drop your email and we&#39;ll let you know the moment this is back in stock.</p><input type="email" placeholder="you@email.com" autocomplete="email"><div class="fp-nm-err">Please enter a valid email.</div><div class="fp-nm-btns"><button type="button" class="fp-nm-x">Cancel</button><button type="button" class="fp-nm-go">Notify Me</button></div></div>';
+    document.body.appendChild(wrap);
+    var input=wrap.querySelector('input');
+    try{input.value=localStorage.getItem('fp_notify_email')||'';}catch(e){}
+    function close(){if(wrap.parentNode)wrap.parentNode.removeChild(wrap);}
+    wrap.querySelector('.fp-nm-back').addEventListener('click',close);
+    wrap.querySelector('.fp-nm-x').addEventListener('click',close);
+    try{input.focus();}catch(e){}
+    async function submit(){
+      var em=(input.value||'').trim();
+      var err=wrap.querySelector('.fp-nm-err');
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){err.textContent='Please enter a valid email.';err.style.display='block';return;}
+      var go=wrap.querySelector('.fp-nm-go');
+      go.disabled=true;go.textContent='Saving...';
+      var vid=await bcFirstVariantId(parseInt(pid,10));
+      var ok=false;
+      if(vid){
+        try{
+          var r=await fetch('https://a.klaviyo.com/client/back-in-stock-subscriptions/?company_id='+KLAVIYO_COMPANY,{
+            method:'POST',
+            headers:{'Content-Type':'application/json','revision':'2024-10-15'},
+            body:JSON.stringify({data:{type:'back-in-stock-subscription',attributes:{channels:['EMAIL'],profile:{data:{type:'profile',attributes:{email:em}}}},relationships:{variant:{data:{type:'catalog-variant',id:'$bigcommerce:::$default:::'+vid}}}}})
+          });
+          ok=(r.status===202||r.ok);
+        }catch(e){}
+      }
+      if(ok){
+        try{localStorage.setItem('fp_notify_email',em);}catch(e){}
+        close();
+        try{toast("You're on the list — we'll email you when it's back!");}catch(e){}
+        if(btn){btn.textContent="✓ We'll Notify You";btn.classList.add('done');btn.disabled=true;btn.onclick=null;}
+      }else{
+        go.disabled=false;go.textContent='Notify Me';
+        err.textContent='Something went wrong — please try again.';
+        err.style.display='block';
+      }
+    }
+    wrap.querySelector('.fp-nm-go').addEventListener('click',submit);
+    input.addEventListener('keydown',function(e){if(e.key==='Enter')submit();});
+  };
+  // PDP: swap the disabled Out of Stock add-to-cart button for NOTIFY ME
+  function pdpNotify(){
+    try{
+      var pidEl=document.querySelector('input[name="product_id"]');
+      var addBtn=document.getElementById('form-action-addToCart');
+      if(!pidEl||!addBtn||document.getElementById('fp-pdp-notify'))return;
+      var txt=((addBtn.textContent||addBtn.value)||'').trim();
+      if(!(addBtn.disabled||/out of stock|unavailable|sold out/i.test(txt)))return;
+      addBtn.style.display='none';
+      var b=document.createElement('button');
+      b.type='button';
+      b.id='fp-pdp-notify';
+      b.className='button fp-rich-notify';
+      b.style.cssText='padding:12px 26px;border-radius:18px;font-weight:700';
+      b.textContent='Notify Me When Available';
+      b.addEventListener('click',function(){window.fpNotifyMe(parseInt(pidEl.value,10),b);});
+      addBtn.parentNode.insertBefore(b,addBtn.nextSibling);
+    }catch(e){}
+  }
+  function nmBoot(){pdpNotify();setTimeout(pdpNotify,2500);setTimeout(pdpNotify,6000);}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',nmBoot);else nmBoot();
 })();
 
 // mobile header Monthly Flyer chip (element; styling above)
