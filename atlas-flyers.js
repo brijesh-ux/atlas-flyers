@@ -2420,6 +2420,19 @@ setTimeout(function(){
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',addFlyerChip);else addFlyerChip();
 })();
 
+// Search box placeholder (user, 10 Jul): "Tools Store" -> "Tool Store"
+(function(){
+  function setPh(){
+    try{
+      [].slice.call(document.querySelectorAll('input[name="search_query"],input#search_query,.header-search input[type="text"],.header-search input[type="search"]')).forEach(function(i){
+        i.setAttribute('placeholder',"Search the World's Best Tool Store");
+      });
+    }catch(e){}
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',setPh);else setPh();
+  [2000,5000].forEach(function(ms){setTimeout(setPh,ms);});
+})();
+
 // SALE in the mobile sticky footer (user request, 10 Jul): 6th item between
 // New and Shop By -> /sale/ (301 -> the SS sale landing our takeover renders).
 // Items are flex:1 so the bar re-spaces itself; hidden >=1025px like the rest.
