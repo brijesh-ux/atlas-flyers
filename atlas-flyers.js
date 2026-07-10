@@ -2325,7 +2325,10 @@ setTimeout(function(){
     +'#fp-notify-modal .fp-nm-btns{display:flex;gap:10px;justify-content:flex-end}'
     +'#fp-notify-modal .fp-nm-btns button{border:none;border-radius:999px!important;padding:10px 20px;font-weight:700;cursor:pointer}'
     +'#fp-notify-modal .fp-nm-go{background:#0f0f0f;color:#fff}'
-    +'#fp-notify-modal .fp-nm-x{background:#eee;color:#333}';
+    +'#fp-notify-modal .fp-nm-x{background:#eee;color:#333}'
+    // /our-store/ ad landing: no breadcrumb (the WYSIWYG sanitizer strips
+    // <style> from page bodies, so the hide lives here, path-scoped)
+    +(location.pathname.indexOf('/our-store/')===0?'.breadcrumbs{display:none!important}':'');
   (document.head||document.documentElement).appendChild(st);
 })();
 
