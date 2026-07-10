@@ -2392,8 +2392,11 @@ function ssFParams(){
 function ssSearchUrl(catPath,f,page,perPage){
   var u='https://'+SS_SITE_ID+'.a.searchspring.io/api/search/search.json?siteId='+SS_SITE_ID
     +'&resultsFormat=native&page='+page+'&resultsPerPage='+perPage;
-  // 'ss:on-sale' = the storewide SALE view (no category scope)
-  u+=(catPath==='ss:on-sale')?'&bgfilter.ss_on_sale=1':'&bgfilter.categories_hierarchy='+encodeURIComponent(catPath);
+  // scope: 'ss:on-sale' = storewide SALE view; 'ss:q:<term>' = search results;
+  // anything else = a category path
+  if(catPath==='ss:on-sale')u+='&bgfilter.ss_on_sale=1';
+  else if(catPath&&catPath.indexOf('ss:q:')===0)u+='&q='+encodeURIComponent(catPath.slice(5));
+  else u+='&bgfilter.categories_hierarchy='+encodeURIComponent(catPath);
   f.brands.forEach(function(b){u+='&filter.brand='+encodeURIComponent(b);});
   if(f.price){
     var pr=String(f.price).split(':');
@@ -2828,19 +2831,28 @@ if('MutationObserver' in window){
   })();
 }
 
-// ==================== SALE PAGE TAKEOVER ====================
-// SALE nav -> /sale/ -> 301 -> /shop/?tag=summer-site-wide-sale, which Snap
-// normalizes to /shop/#/filter:ss_on_sale:1:1 — an SS-rendered landing in the
-// OLD tile design. v34 tried morphing Snap's tiles in place and FAILED: Snap
-// is a Preact app, and its reconciler resurrects its own tiles next to ours
-// (every product doubled). So, same recipe as filtered categories: hide
-// Snap's output wholesale and render OUR grid from the SS API
-// (bgfilter.ss_on_sale=1, storewide), with the fp filter bar, a sort dropdown
-// and endless scroll. Monthly Flyer + every other /shop/ state, search and
-// /brands/ stay Snap-rendered untouched.
+// ==================== SALE + SEARCH TAKEOVER ====================
+// Two Snap-rendered landings get our grid: (a) SALE — /sale/ -> 301 ->
+// /shop/?tag=summer-site-wide-sale (Snap normalizes to
+// /shop/#/filter:ss_on_sale:1:1), scope = bgfilter.ss_on_sale=1 storewide;
+// (b) SEARCH — /search.php?search_query=..., scope = q=<term>, SS still does
+// relevance/synonyms/spell-correction server-side and its keyword redirects
+// are honored. NEVER morph Snap's tiles in place (v34: Preact reconciliation
+// resurrects its tiles next to ours -> every product doubles). Instead hide
+// Snap's output wholesale and render OUR grid from the SS API, with the fp
+// filter bar, a sort dropdown (Relevance default on search, Best Selling on
+// sale) and endless scroll. Monthly Flyer + other /shop/ states and /brands/
+// stay Snap-rendered untouched.
 (function(){
-  if(location.pathname.indexOf('/shop/')!==0)return;
-  if(!(location.hash.indexOf('ss_on_sale')>-1||/fsale=1|summer-site-wide-sale/.test(location.search)))return;
+  var mode=null,q='';
+  if(location.pathname.indexOf('/shop/')===0&&(location.hash.indexOf('ss_on_sale')>-1||/fsale=1|summer-site-wide-sale/.test(location.search))){
+    mode='sale';
+  }else if(location.pathname.indexOf('/search')===0){
+    try{q=new URLSearchParams(location.search).get('search_query')||'';}catch(e){}
+    if(q)mode='search';
+  }
+  if(!mode)return;
+  var catPath=mode==='sale'?'ss:on-sale':'ss:q:'+q;
   var hideSt=document.createElement('style');
   hideSt.id='fp-sale-hide';
   hideSt.textContent='#searchspring-content{display:none!important}'
@@ -2895,9 +2907,12 @@ if('MutationObserver' in window){
       function addSortGroup(){
         var bar=document.getElementById('fp-filter-bar');
         if(!bar||bar.querySelector('.fp-fb-sort'))return;
-        var names={bestselling:'Best Selling',newest:'Newest',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'};
-        var cur='bestselling';
-        try{cur=new URLSearchParams(location.search).get('sort')||'bestselling';}catch(e){}
+        var names=mode==='search'
+          ?{relevance:'Relevance',bestselling:'Best Selling',newest:'Newest',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'}
+          :{bestselling:'Best Selling',newest:'Newest',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'};
+        var def=mode==='search'?'relevance':'bestselling';
+        var cur=def;
+        try{cur=new URLSearchParams(location.search).get('sort')||def;}catch(e){}
         var g=document.createElement('div');
         g.className='fp-fb-group fp-fb-sort';
         var btn=document.createElement('button');
@@ -2907,7 +2922,7 @@ if('MutationObserver' in window){
         menu.className='fp-fb-menu';
         Object.keys(names).forEach(function(k){
           var a=document.createElement('a');
-          a.href=ssUrlWith(function(sp){sp.set('sort',k);});
+          a.href=ssUrlWith(function(sp){if(k==='relevance')sp.delete('sort');else sp.set('sort',k);});
           a.textContent=names[k];
           menu.appendChild(a);
         });
@@ -2923,15 +2938,21 @@ if('MutationObserver' in window){
       async function loadSS(){
         if(ssPage>=ssTotalPages){exhausted=true;return;}
         ssPage++;
-        var d=await fetch(ssSearchUrl('ss:on-sale',fParams,ssPage,40)).then(function(r){return r.ok?r.json():null;});
+        var d=await fetch(ssSearchUrl(catPath,fParams,ssPage,40)).then(function(r){return r.ok?r.json():null;});
         var res=(d&&Array.isArray(d.results))?d.results:null;
         if(!res){exhausted=true;if(ssPage===1)saleFail(wrap);return;}
+        if(ssPage===1&&mode==='search'){
+          // honor SS-configured keyword redirects (e.g. brand terms -> pages)
+          var red=d.merchandising&&d.merchandising.redirect;
+          if(red){location.replace(red);return;}
+        }
         ssTotalPages=(d.pagination&&d.pagination.totalPages)||ssTotalPages;
         if(ssPage===1){
           [].slice.call(wrap.querySelectorAll('.fp-skel')).forEach(function(el){el.parentNode.removeChild(el);});
           try{ssBuildFilterBar(d.facets||[],wrap);addSortGroup();fpFilterFloat();}catch(e){}
           if(!res.length){
-            wrap.insertAdjacentHTML('beforeend','<div class="fp-fb-none">No products match these filters.</div>');
+            var noneMsg=mode==='search'?'No results for "'+q.replace(/</g,'&lt;').replace(/"/g,'&quot;')+'".':'No products match these filters.';
+            wrap.insertAdjacentHTML('beforeend','<div class="fp-fb-none">'+noneMsg+'</div>');
             exhausted=true;return;
           }
         }
@@ -2947,7 +2968,7 @@ if('MutationObserver' in window){
         if(h){
           wrap.insertAdjacentHTML('beforeend',h);
           applyCartStateToButtons();
-          console.log('[Atlas Tiles] sale: +page '+ssPage+' — '+wrap.children.length+' cards');
+          console.log('[Atlas Tiles] '+mode+': +page '+ssPage+' — '+wrap.children.length+' cards');
         }
         if(ssPage>=ssTotalPages)exhausted=true;
       }
