@@ -2649,7 +2649,8 @@ function fpCardTargets(){
   });
   // legacy shortcode cards (rendered by the theme module OR the inline Script
   // Manager copies of the old renderer) — id lives in shortcode-product-<id>
-  [].slice.call(document.querySelectorAll('article.card.shortcode-card')).forEach(function(el){
+  [].slice.call(document.querySelectorAll('article.card.shortcode-card,article.fp-slide-wrap')).forEach(function(el){
+    if(el.querySelector('.fp-rich'))return;              // already converted
     var m=String(el.className).match(/shortcode-product-(\d+)/);
     var id=m?parseInt(m[1],10):0;
     if(!(id>0)){
@@ -2658,7 +2659,7 @@ function fpCardTargets(){
     }
     if(!(id>0))return;
     var choose=[].slice.call(el.querySelectorAll('a')).filter(function(a){return /choose options|pre-order|view details/i.test(a.textContent||'');})[0];
-    out.push({el:el,id:id,opt:choose?choose.getAttribute('href'):null});
+    out.push({el:el,id:id,opt:choose?choose.getAttribute('href'):null,legacy:true});
   });
   return out;
 }
@@ -2682,10 +2683,31 @@ async function enrichThemeCards(){
       var host=document.createElement('div');
       host.innerHTML=richCard(pr,{showTag:false,_sectionKey:'themeCards',optionsUrl:t.opt});
       var fresh=host.firstElementChild;
-      if(fresh){t.el.parentNode.replaceChild(fresh,t.el);done++;}
+      if(!fresh)return;
+      if(t.legacy){
+        // the old card IS the slick slide — keep the element (slick owns its
+        // classes/inline width) and mount the new card inside it
+        var keep=(String(t.el.className).match(/slick-[\w-]+/g)||[]).join(' ');
+        t.el.className=('fp-slide-wrap shortcode-product-'+t.id+' '+keep).trim();
+        t.el.style.padding='6px 8px';
+        t.el.style.boxSizing='border-box';
+        while(t.el.firstChild)t.el.removeChild(t.el.firstChild);
+        t.el.appendChild(fresh);
+      }else{
+        t.el.parentNode.replaceChild(fresh,t.el);
+      }
+      done++;
     });
     if(done){
       applyCartStateToButtons();
+      // slick measured the OLD cards — force affected carousels to re-measure
+      if(window.jQuery&&window.jQuery.fn&&window.jQuery.fn.slick){
+        window.jQuery('.slick-initialized').each(function(){
+          if(this.querySelector('.fp-rich')){
+            try{window.jQuery(this).slick('setPosition');}catch(e){}
+          }
+        });
+      }
       console.log('[Atlas Tiles] enriched '+done+' theme/shortcode card(s)');
     }
   }catch(e){console.warn('[Atlas Tiles] theme-card enrichment skipped:',e&&e.message);}
@@ -2693,6 +2715,11 @@ async function enrichThemeCards(){
 function fpEnrichBoot(){
   enrichThemeCards();
   [2000,4000,7000,12000,20000].forEach(function(ms){setTimeout(enrichThemeCards,ms);});
+  window.addEventListener('resize',function(){
+    if(window.jQuery&&window.jQuery.fn&&window.jQuery.fn.slick){
+      try{window.jQuery('.slick-initialized').slick('setPosition');}catch(e){}
+    }
+  });
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',fpEnrichBoot);else fpEnrichBoot();
 
