@@ -2397,8 +2397,8 @@ function catCollectItems(gridEl){
   var items=[];
   [].slice.call(gridEl.children).forEach(function(li){
     var card=li.querySelector('.card')||li;
-    var idEl=card.querySelector('[data-product-id],[data-id]');
-    var id=idEl?parseInt(idEl.getAttribute('data-product-id')||idEl.getAttribute('data-id'),10):NaN;
+    var idEl=card.querySelector('[data-product-id],[data-id],[data-entity-id]')||(card.getAttribute&&card.getAttribute('data-entity-id')?card:null);
+    var id=idEl?parseInt(idEl.getAttribute('data-product-id')||idEl.getAttribute('data-id')||idEl.getAttribute('data-entity-id'),10):NaN;
     if(isNaN(id)||id<=0)return;
     var hasAdd=!!card.querySelector('[data-button-type="add-cart"]');
     var pdpA=card.querySelector('a.card-figure__link')||card.querySelector('.card-title a')||card.querySelector('a[href]');
@@ -2633,6 +2633,52 @@ function fpEnsureTileData(){
   });
   return _fpTileDataP;
 }
+
+// ==================== THEME CARD ENRICHMENT ====================
+// V51+ server-renders bare fp cards on home/theme carousels (neutral black
+// brand pills). Swap each for the full richCard: sheet-driven brand colors,
+// savings ribbons, viewing counts, coupon chips, IN CART labels, quick view.
+async function enrichThemeCards(){
+  try{
+    if(document.querySelector('.flyers-page'))return;
+    var sel='.custom-product-carousel-slider .fp-rich[data-entity-id],.productCarousel .fp-rich[data-entity-id]';
+    var cards=[].slice.call(document.querySelectorAll(sel));
+    if(!cards.length)return;
+    STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
+    if(!STORE_TOKEN)return;
+    var ids=[],seen={};
+    cards.forEach(function(el){
+      var id=parseInt(el.getAttribute('data-entity-id'),10);
+      if(id>0&&!seen[id]){seen[id]=1;ids.push(id);}
+    });
+    await fpEnsureTileData();
+    await fpFetchProductsCached(ids);
+    catInjectInfra();
+    var done=0;
+    cards.forEach(function(el){
+      if(!el.parentNode)return;
+      var id=parseInt(el.getAttribute('data-entity-id'),10);
+      var pr=PRODUCT_CACHE[id];
+      if(!pr)return;
+      var choose=el.querySelector('.fp-rich-choose');
+      var opt=choose?choose.getAttribute('href'):null;
+      var host=document.createElement('div');
+      host.innerHTML=richCard(pr,{showTag:false,_sectionKey:'themeCards',optionsUrl:opt});
+      var fresh=host.firstElementChild;
+      if(fresh){el.parentNode.replaceChild(fresh,el);done++;}
+    });
+    if(done){
+      applyCartStateToButtons();
+      console.log('[Atlas Tiles] enriched '+done+' theme card(s)');
+    }
+  }catch(e){console.warn('[Atlas Tiles] theme-card enrichment skipped:',e&&e.message);}
+}
+function fpEnrichBoot(){
+  enrichThemeCards();
+  setTimeout(enrichThemeCards,3000);   // slick clones mount after init
+  setTimeout(enrichThemeCards,8000);
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',fpEnrichBoot);else fpEnrichBoot();
 
 // ==================== SS RECOMMENDATIONS: DIRECT RENDER ====================
 // Deterministic at load. Snap's own carousels are hidden the moment their
