@@ -2788,6 +2788,11 @@ if('MutationObserver' in window){
     try{
       var anchor=document.getElementById('searchspring-content')||document.querySelector('#product-listing-container')||document.querySelector('.page');
       if(!anchor){saleFail(null);return;}
+      // the flyer core evaluates before footer.html's global_bct on /shop/, so
+      // STORE_TOKEN is empty at load — re-resolve BEFORE any GraphQL hydration
+      // (v35 skipped this: cold-cache visitors got a 40-card dead grid / blank
+      // sorted pages while pages 1-4 hydrated against an empty token)
+      STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
       await fpEnsureTileData();
       catInjectInfra();
       catWidenContainer();
@@ -2859,6 +2864,12 @@ if('MutationObserver' in window){
         }
         var its=res.map(ssResultItem).filter(Boolean);
         await fpFetchProductsCached(its.map(function(x){return x.id;}));
+        if(its.length&&!its.some(function(x){return PRODUCT_CACHE[x.id];})){
+          // whole batch failed to hydrate (token race) — re-resolve, retry once
+          STORE_TOKEN=window.BC_STOREFRONT_TOKEN||window.global_bct||STORE_TOKEN||'';
+          await fpFetchProductsCached(its.map(function(x){return x.id;}));
+          if(!its.some(function(x){return PRODUCT_CACHE[x.id];}))console.warn('[Atlas Tiles] sale: page '+ssPage+' hydration failed');
+        }
         var h=cardsHtml(its);
         if(h){
           wrap.insertAdjacentHTML('beforeend',h);
