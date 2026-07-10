@@ -2369,8 +2369,9 @@ function ssFParams(){
 }
 function ssSearchUrl(catPath,f,page,perPage){
   var u='https://'+SS_SITE_ID+'.a.searchspring.io/api/search/search.json?siteId='+SS_SITE_ID
-    +'&resultsFormat=native&page='+page+'&resultsPerPage='+perPage
-    +'&bgfilter.categories_hierarchy='+encodeURIComponent(catPath);
+    +'&resultsFormat=native&page='+page+'&resultsPerPage='+perPage;
+  // 'ss:on-sale' = the storewide SALE view (no category scope)
+  u+=(catPath==='ss:on-sale')?'&bgfilter.ss_on_sale=1':'&bgfilter.categories_hierarchy='+encodeURIComponent(catPath);
   f.brands.forEach(function(b){u+='&filter.brand='+encodeURIComponent(b);});
   if(f.price){
     var pr=String(f.price).split(':');
@@ -2378,10 +2379,12 @@ function ssSearchUrl(catPath,f,page,perPage){
     if(pr[1]&&pr[1]!=='*')u+='&filter.calculated_price.high='+encodeURIComponent(pr[1]);
   }
   if(f.stock)u+='&filter.ss_in_stock.low=1&filter.ss_in_stock.high=1';
-  // honor the theme's ?sort= everywhere; /new-arrivals/ only DEFAULTS to newest
+  // honor the theme's ?sort= everywhere; /new-arrivals/ only DEFAULTS to newest,
+  // the SALE view to best-selling (parity with the old Snap landing)
   var sort='';
   try{sort=new URLSearchParams(location.search).get('sort')||'';}catch(e){}
   if(!sort&&/^\/new-arrivals\//.test(location.pathname))sort='newest';
+  if(!sort&&catPath==='ss:on-sale')sort='bestselling';
   var map={newest:'sort.sortable_date_created=desc',bestselling:'sort.ga_unique_purchases=desc',
     featured:'sort.is_featured=desc',priceasc:'sort.calculated_price=asc',pricedesc:'sort.calculated_price=desc'};
   if(map[sort])u+='&'+map[sort];
@@ -2391,12 +2394,15 @@ function ssUrlWith(mod){
   var u=new URL(location.href);
   u.hash='';
   u.searchParams.delete('page');
+  // the /shop/ SALE view's state lives in Snap's hash — normalize it to
+  // ?fsale=1 so filter/sort reloads land back in the takeover
+  if(location.pathname.indexOf('/shop/')===0&&(location.hash.indexOf('ss_on_sale')>-1||/fsale=1|summer-site-wide-sale/.test(location.search)))u.searchParams.set('fsale','1');
   mod(u.searchParams);
   return u.pathname+(u.search||'');
 }
-function ssBuildFilterBar(facets){
+function ssBuildFilterBar(facets,hostEl){
   if(document.getElementById('fp-filter-bar'))return;
-  var host=document.querySelector('#product-listing-container');
+  var host=hostEl||document.querySelector('#product-listing-container');
   if(!host)return;
   var f=ssFParams();
   var bar=document.createElement('div');
@@ -2750,91 +2756,153 @@ if('MutationObserver' in window){
   })();
 }
 
-// ==================== SEARCHSPRING PAGE TILE MORPH ====================
-// /shop/ (Monthly Flyer + SALE landing), /brands/ and search stay
-// SNAP-RENDERED — its landing campaigns, filters, sort and infinite scroll all
-// work there — but the tiles it paints are the theme's OLD card markup,
-// compiled into the Snap Preact bundle (snapui.searchspring.io/bundle.js, NOT
-// console-editable; the Angular "Results - Items" template in Athos is dead
-// legacy). So: morph each tile into the fp richCard as Snap renders it.
-// Id from the tile's [data-product-id] / cart.php link; product data from the
-// same GraphQL cache as everywhere else. Unmorphed old tiles stay invisible
-// (no old->new flash); per-tile and global fail-opens reveal them on trouble.
+// ==================== SALE PAGE TAKEOVER ====================
+// SALE nav -> /sale/ -> 301 -> /shop/?tag=summer-site-wide-sale, which Snap
+// normalizes to /shop/#/filter:ss_on_sale:1:1 — an SS-rendered landing in the
+// OLD tile design. v34 tried morphing Snap's tiles in place and FAILED: Snap
+// is a Preact app, and its reconciler resurrects its own tiles next to ours
+// (every product doubled). So, same recipe as filtered categories: hide
+// Snap's output wholesale and render OUR grid from the SS API
+// (bgfilter.ss_on_sale=1, storewide), with the fp filter bar, a sort dropdown
+// and endless scroll. Monthly Flyer + every other /shop/ state, search and
+// /brands/ stay Snap-rendered untouched.
 (function(){
-  var path=location.pathname;
-  if(!(path.indexOf('/shop/')===0||path.indexOf('/brands/')===0||path.indexOf('/search')===0))return;
-  if(document.querySelector('.flyers-page'))return;
-  var hideStyle=document.createElement('style');
-  hideStyle.id='fp-ssmorph-hide';
-  hideStyle.textContent='#searchspring-content ul.productGrid li:not([data-fp-morphed]) article.card{visibility:hidden}';
-  (document.head||document.documentElement).appendChild(hideStyle);
-  function lift(){
-    if(hideStyle&&hideStyle.parentNode)hideStyle.parentNode.removeChild(hideStyle);
-    hideStyle=null;
+  if(location.pathname.indexOf('/shop/')!==0)return;
+  if(!(location.hash.indexOf('ss_on_sale')>-1||/fsale=1|summer-site-wide-sale/.test(location.search)))return;
+  var hideSt=document.createElement('style');
+  hideSt.id='fp-sale-hide';
+  hideSt.textContent='#searchspring-content{display:none!important}'
+    +'#searchspring-sidebar,#facetedSearch,.facetedSearch,.ss__sidebar{display:none!important}';
+  (document.head||document.documentElement).appendChild(hideSt);
+  function saleFail(wrap){
+    if(hideSt&&hideSt.parentNode)hideSt.parentNode.removeChild(hideSt);
+    if(wrap&&wrap.parentNode)wrap.parentNode.removeChild(wrap);
+    var b=document.getElementById('fp-filter-bar');
+    if(b&&b.parentNode)b.parentNode.removeChild(b);
+    console.warn('[Atlas Tiles] sale takeover failed open — Snap view restored');
   }
-  var failOpen=setTimeout(lift,8000);       // module never converted anything -> show old tiles
-  var busy=false,pending=false,converted=0;
-  function tileId(li){
-    var el=li.querySelector('[data-product-id],[data-entity-id]');
-    var id=el?parseInt(el.getAttribute('data-product-id')||el.getAttribute('data-entity-id'),10):NaN;
-    if(!(id>0)){
-      var a=li.querySelector('a[href*="product_id="]');
-      if(a){var m=(a.getAttribute('href')||'').match(/product_id=(\d+)/);if(m)id=parseInt(m[1],10);}
-    }
-    return id>0?id:null;
-  }
-  async function morph(){
-    if(busy){pending=true;return;}
-    busy=true;
+  async function initSale(){
+    if(window.__fpSaleRun)return;
+    window.__fpSaleRun=1;
+    var wrap=null;
     try{
-      var sc=document.getElementById('searchspring-content');
-      var lis=sc?[].slice.call(sc.querySelectorAll('ul.productGrid > li')).filter(function(li){
-        return !li.getAttribute('data-fp-morphed')&&!li.querySelector('.ss__inline-banner')&&li.querySelector('article');
-      }):[];
-      var jobs=[];
-      lis.forEach(function(li){
-        var id=tileId(li);
-        if(id)jobs.push({li:li,id:id});
-        else li.setAttribute('data-fp-morphed','skip');   // lifts the per-tile hide
-      });
-      if(jobs.length){
-        await fpEnsureTileData();
-        catInjectInfra();
-        await fpFetchProductsCached(jobs.map(function(j){return j.id;}));
-        var done=0;
-        jobs.forEach(function(j){
-          var pr=PRODUCT_CACHE[j.id];
-          j.li.setAttribute('data-fp-morphed',pr?'1':'fail');
-          if(!pr)return;
-          var hasOpts=pr.productOptions&&pr.productOptions.edges&&pr.productOptions.edges.length>0;
-          j.li.innerHTML=richCard(pr,{showTag:false,_sectionKey:'ssPage',optionsUrl:hasOpts?pr.path:null});
-          done++;
-        });
-        if(done){
-          converted+=done;
-          clearTimeout(failOpen);
-          applyCartStateToButtons();
-          console.log('[Atlas Tiles] SS page morph: +'+done+' rich cards ('+converted+' total)');
-        }
+      var anchor=document.getElementById('searchspring-content')||document.querySelector('#product-listing-container')||document.querySelector('.page');
+      if(!anchor){saleFail(null);return;}
+      await fpEnsureTileData();
+      catInjectInfra();
+      catWidenContainer();
+      var fParams=ssFParams();
+      var seen={};
+      function cardsHtml(list){
+        return list.filter(function(x){
+          if(!PRODUCT_CACHE[x.id]||seen[x.id])return false;
+          seen[x.id]=1;return true;
+        }).map(function(x){
+          return richCard(PRODUCT_CACHE[x.id],{showTag:false,_sectionKey:'salePage',optionsUrl:x.optionsUrl});
+        }).join('');
       }
-    }catch(e){console.warn('[Atlas Tiles] SS morph error:',e&&e.message);lift();}
-    finally{
-      busy=false;
-      if(pending){pending=false;setTimeout(morph,80);}
+      function ssResultItem(x){
+        var id=parseInt(x&&x.uid,10);
+        if(!(id>0))return null;
+        var opt=null;
+        if(String(x.ss_has_options)==='1'&&x.url){try{opt=new URL(x.url,location.href).pathname;}catch(e){}}
+        return {id:id,optionsUrl:opt};
+      }
+      wrap=document.createElement('div');
+      wrap.className='fp-rich-grid fp-cat-grid';
+      var sk='';for(var i=0;i<10;i++)sk+='<div class="fp-skel"></div>';
+      wrap.innerHTML=sk;
+      anchor.parentNode.insertBefore(wrap,anchor);
+      var ssPage=0,ssTotalPages=1,exhausted=false,loading=false;
+      function addSortGroup(){
+        var bar=document.getElementById('fp-filter-bar');
+        if(!bar||bar.querySelector('.fp-fb-sort'))return;
+        var names={bestselling:'Best Selling',newest:'Newest',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'};
+        var cur='bestselling';
+        try{cur=new URLSearchParams(location.search).get('sort')||'bestselling';}catch(e){}
+        var g=document.createElement('div');
+        g.className='fp-fb-group fp-fb-sort';
+        var btn=document.createElement('button');
+        btn.className='fp-fb-btn';btn.type='button';
+        btn.textContent='Sort: '+(names[cur]||names.bestselling);
+        var menu=document.createElement('div');
+        menu.className='fp-fb-menu';
+        Object.keys(names).forEach(function(k){
+          var a=document.createElement('a');
+          a.href=ssUrlWith(function(sp){sp.set('sort',k);});
+          a.textContent=names[k];
+          menu.appendChild(a);
+        });
+        btn.addEventListener('click',function(ev){
+          ev.stopPropagation();
+          var was=g.classList.contains('open');
+          [].slice.call(bar.querySelectorAll('.fp-fb-group.open')).forEach(function(x){x.classList.remove('open');});
+          if(!was)g.classList.add('open');
+        });
+        g.appendChild(btn);g.appendChild(menu);
+        bar.appendChild(g);
+      }
+      async function loadSS(){
+        if(ssPage>=ssTotalPages){exhausted=true;return;}
+        ssPage++;
+        var d=await fetch(ssSearchUrl('ss:on-sale',fParams,ssPage,40)).then(function(r){return r.ok?r.json():null;});
+        var res=(d&&Array.isArray(d.results))?d.results:null;
+        if(!res){exhausted=true;if(ssPage===1)saleFail(wrap);return;}
+        ssTotalPages=(d.pagination&&d.pagination.totalPages)||ssTotalPages;
+        if(ssPage===1){
+          [].slice.call(wrap.querySelectorAll('.fp-skel')).forEach(function(el){el.parentNode.removeChild(el);});
+          try{ssBuildFilterBar(d.facets||[],wrap);addSortGroup();}catch(e){}
+          if(!res.length){
+            wrap.insertAdjacentHTML('beforeend','<div class="fp-fb-none">No products match these filters.</div>');
+            exhausted=true;return;
+          }
+        }
+        var its=res.map(ssResultItem).filter(Boolean);
+        await fpFetchProductsCached(its.map(function(x){return x.id;}));
+        var h=cardsHtml(its);
+        if(h){
+          wrap.insertAdjacentHTML('beforeend',h);
+          applyCartStateToButtons();
+          console.log('[Atlas Tiles] sale: +page '+ssPage+' — '+wrap.children.length+' cards');
+        }
+        if(ssPage>=ssTotalPages)exhausted=true;
+      }
+      var sentinel=document.createElement('div');
+      sentinel.style.cssText='height:1px;width:100%';
+      wrap.parentNode.insertBefore(sentinel,wrap.nextSibling);
+      async function loadMore(){
+        if(loading||exhausted)return;
+        loading=true;
+        try{await loadSS();}catch(e){exhausted=true;}
+        finally{loading=false;}
+      }
+      function nearBottom(){
+        var r=sentinel.getBoundingClientRect();
+        return r.top<innerHeight+900;
+      }
+      async function maybeLoad(){
+        if(exhausted||loading||!nearBottom())return;
+        await loadMore();
+        if(!exhausted&&nearBottom())setTimeout(maybeLoad,150);
+      }
+      document.addEventListener('scroll',maybeLoad,true);
+      window.addEventListener('wheel',maybeLoad,{passive:true});
+      window.addEventListener('touchmove',maybeLoad,{passive:true});
+      if('IntersectionObserver' in window){
+        new IntersectionObserver(function(es){
+          es.forEach(function(en){if(en.isIntersecting)maybeLoad();});
+        },{rootMargin:'900px 0px'}).observe(sentinel);
+      }
+      for(var k=0;k<5&&!exhausted;k++){
+        await loadMore();
+        await new Promise(function(r){setTimeout(r,600);});
+      }
+    }catch(e){
+      console.warn('[Atlas Tiles] sale takeover error:',e&&e.message);
+      saleFail(wrap);
     }
   }
-  function ssMorphBoot(){
-    morph();
-    if('MutationObserver' in window){
-      var t=null;
-      new MutationObserver(function(){
-        clearTimeout(t);
-        t=setTimeout(morph,150);
-      }).observe(document.body||document.documentElement,{childList:true,subtree:true});
-    }
-    [2000,5000,10000].forEach(function(ms){setTimeout(morph,ms);});
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ssMorphBoot);else ssMorphBoot();
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initSale);else initSale();
 })();
 
 // ==================== SEARCHSPRING RECOMMENDATION RESKIN ====================
