@@ -3060,8 +3060,6 @@ if('MutationObserver' in window){
 (function(){
   function tune(){
     try{
-      var $=window.jQuery;
-      if(!$||!$.fn||!$.fn.slick)return;
       // fixed tiers (user spec): mobile/tablet 2, desktop 5, ultrawide (>=2200) 8
       var vw=window.innerWidth;
       var n=vw>=2200?8:(vw>=1025?5:2);
@@ -3069,9 +3067,21 @@ if('MutationObserver' in window){
         if(el.querySelector('.shortcode-card'))return;
         if(!el.querySelector('.fp-rich'))return;
         try{
-          if($(el).slick('slickGetOption','slidesToShow')!==n){
-            $(el).slick('slickSetOption',{slidesToShow:n,slidesToScroll:n},true);
-            console.log('[Atlas Tiles] carousel re-tuned to '+n+' slides');
+          // the page carries multiple jQuery copies and window.jQuery is NOT
+          // the one with the slick plugin — drive the instance on the element
+          var s=el.slick;
+          if(s&&typeof s.slickSetOption==='function'){
+            if(s.options.slidesToShow!==n){
+              s.slickSetOption('slidesToShow',n,false);
+              s.slickSetOption('slidesToScroll',n,true);
+              console.log('[Atlas Tiles] carousel re-tuned to '+n+' slides');
+            }
+          }else{
+            var $=window.jQuery;
+            if($&&$.fn&&$.fn.slick&&$(el).slick('slickGetOption','slidesToShow')!==n){
+              $(el).slick('slickSetOption',{slidesToShow:n,slidesToScroll:n},true);
+              console.log('[Atlas Tiles] carousel re-tuned to '+n+' slides');
+            }
           }
         }catch(e){}
       });
