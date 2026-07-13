@@ -2328,7 +2328,7 @@ setTimeout(function(){
     +'#fp-notify-modal .fp-nm-x{background:#eee;color:#333}'
     // /our-store/ ad landing: no breadcrumb (the WYSIWYG sanitizer strips
     // <style> from page bodies, so the hide lives here, path-scoped)
-    +(location.pathname.indexOf('/our-store/')===0?'.breadcrumbs{display:none!important}':'');
+    +(location.pathname.indexOf('/our-store/')===0?'.breadcrumbs{display:none!important}.body{margin-top:8px!important}main.page{margin-top:0!important}':'');
   (document.head||document.documentElement).appendChild(st);
 })();
 
@@ -2395,6 +2395,34 @@ setTimeout(function(){
   // PDP: swap the disabled Out of Stock add-to-cart button for NOTIFY ME
   function pdpNotify(){
     try{
+      // variant products get Klaviyo's OWN variant-aware "Notify Me When
+      // Available" button — ours must stand down (and remove itself) there,
+      // else the PDP stacks three CTAs (seen on THE FRAMERR belt, 10 Jul)
+      var kl=document.querySelector('.klaviyo-bis-trigger,[id*="klaviyo-bis"],button[class*="klaviyo"]');
+      var mine=document.getElementById('fp-pdp-notify');
+      if(kl){
+        if(mine&&mine.parentNode)mine.parentNode.removeChild(mine);
+        // user rule (10 Jul): while Klaviyo's variant notify is SHOWING
+        // (selected size unavailable), Add to Cart hides; picking an
+        // available size hides Klaviyo's button and brings Add back
+        if(!window.__fpPdpSync){
+          window.__fpPdpSync=1;
+          var sync=function(){
+            try{
+              var k=document.querySelector('.klaviyo-bis-trigger,[id*="klaviyo-bis"],button[class*="klaviyo"]');
+              var ab=document.getElementById('form-action-addToCart');
+              if(!k||!ab)return;
+              var vis=getComputedStyle(k).display!=='none'&&k.offsetParent!==null;
+              ab.style.display=vis?'none':'';
+            }catch(e){}
+          };
+          sync();
+          try{new MutationObserver(sync).observe(kl,{attributes:true});}catch(e){}
+          document.addEventListener('change',function(){setTimeout(sync,150);setTimeout(sync,600);},true);
+          setTimeout(sync,1500);setTimeout(sync,4000);
+        }
+        return;
+      }
       var pidEl=document.querySelector('input[name="product_id"]');
       var addBtn=document.getElementById('form-action-addToCart');
       if(!pidEl||!addBtn||document.getElementById('fp-pdp-notify'))return;
@@ -2411,7 +2439,7 @@ setTimeout(function(){
       addBtn.parentNode.insertBefore(b,addBtn.nextSibling);
     }catch(e){}
   }
-  function nmBoot(){pdpNotify();setTimeout(pdpNotify,2500);setTimeout(pdpNotify,6000);}
+  function nmBoot(){pdpNotify();setTimeout(pdpNotify,2500);setTimeout(pdpNotify,6000);setTimeout(pdpNotify,12000);}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',nmBoot);else nmBoot();
 })();
 
