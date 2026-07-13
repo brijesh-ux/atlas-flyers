@@ -2327,6 +2327,7 @@ setTimeout(function(){
     +'#fp-notify-modal .fp-nm-go{background:#0f0f0f;color:#fff}'
     +'#fp-notify-modal .fp-nm-x{background:#eee;color:#333}'
     +'.klaviyo-bis-trigger,[class*="klaviyo-bis"]{display:none!important}'
+    +'body.fp-pdp-unavail #form-action-addToCart{display:none!important}'
     // /our-store/ ad landing: no breadcrumb (the WYSIWYG sanitizer strips
     // <style> from page bodies, so the hide lives here, path-scoped)
     +(location.pathname.indexOf('/our-store/')===0?'.breadcrumbs{display:none!important}.body{margin-top:8px!important}main.page{margin-top:0!important}':'');
@@ -2425,27 +2426,35 @@ setTimeout(function(){
   // button covers every case. Unavailable = the theme's own "combination
   // unavailable" alert (variant products) or a disabled/OOS add button
   // (simple products). Subscriptions go to the SELECTED variant.
+  // v70 (console-proven on THE FRAMERR, 13 Jul): the theme renders THREE add
+  // buttons with the same id (main + sticky clones), re-shows them from JS,
+  // and styles them display:flex!important at ID specificity — so the hide is
+  // a body class + `body.fp-pdp-unavail #form-action-addToCart{display:none
+  // !important}` (wins the cascade, covers every clone, survives re-renders).
+  function pdpAddButtons(){
+    return [].slice.call(document.querySelectorAll('[id="form-action-addToCart"]'));
+  }
   function pdpUnavailable(){
-    var alertEl=[].slice.call(document.querySelectorAll('.productView .alertBox,.productView [class*="ttributes-message"],.productView .alertMessage')).filter(function(el){
+    var alertEl=[].slice.call(document.querySelectorAll('.alertBox,[class*="ttributes-message"],.alertMessage')).filter(function(el){
       return /currently unavailable/i.test(el.textContent||'')&&el.offsetParent!==null&&getComputedStyle(el).display!=='none';
     })[0];
     if(alertEl)return true;
-    var ab=document.getElementById('form-action-addToCart');
-    if(ab){
-      var t=((ab.textContent||ab.value)||'').trim();
-      if(ab.disabled||/out of stock|unavailable|sold out/i.test(t))return true;
+    var abs=pdpAddButtons();
+    for(var i=0;i<abs.length;i++){
+      var t=((abs[i].textContent||abs[i].value)||'').trim();
+      if(abs[i].disabled||/out of stock|unavailable|sold out/i.test(t))return true;
     }
     return false;
   }
   function pdpSync(){
     try{
       var pidEl=document.querySelector('input[name="product_id"]');
-      var addBtn=document.getElementById('form-action-addToCart');
-      if(!pidEl||!addBtn)return;
+      var abs=pdpAddButtons();
+      if(!pidEl||!abs.length)return;
       var un=pdpUnavailable();
+      document.body.classList.toggle('fp-pdp-unavail',un);
       var mine=document.getElementById('fp-pdp-notify');
       if(un){
-        addBtn.style.display='none';
         if(!mine){
           var b=document.createElement('button');
           b.type='button';
@@ -2458,23 +2467,23 @@ setTimeout(function(){
               window.fpNotifyMe(parseInt(pidEl.value,10),b,vid);
             });
           });
-          addBtn.parentNode.insertBefore(b,addBtn.nextSibling);
+          abs[0].parentNode.insertBefore(b,abs[0].nextSibling);
         }
-      }else{
-        addBtn.style.display='';
-        if(mine&&mine.parentNode)mine.parentNode.removeChild(mine);
+      }else if(mine&&mine.parentNode){
+        mine.parentNode.removeChild(mine);
       }
     }catch(e){}
   }
   function nmBoot(){
+    if(!document.querySelector('input[name="product_id"]'))return;   // PDPs only
     pdpSync();
-    [800,2000,4000,8000].forEach(function(ms){setTimeout(pdpSync,ms);});
+    [800,2000,4000].forEach(function(ms){setTimeout(pdpSync,ms);});
     document.addEventListener('change',function(){setTimeout(pdpSync,150);setTimeout(pdpSync,700);},true);
-    var pv=document.querySelector('.productView');
-    if(pv&&'MutationObserver' in window){
+    if('MutationObserver' in window){
       var t=null;
-      new MutationObserver(function(){clearTimeout(t);t=setTimeout(pdpSync,120);}).observe(pv,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style','disabled']});
+      new MutationObserver(function(){clearTimeout(t);t=setTimeout(pdpSync,150);}).observe(document.body||document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style','disabled']});
     }
+    setInterval(pdpSync,700);   // enforcement heartbeat (class toggle is cheap)
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',nmBoot);else nmBoot();
 })();
