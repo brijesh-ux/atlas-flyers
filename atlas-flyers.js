@@ -445,8 +445,8 @@ function richCard(p,m){
     (m.optionsUrl
       ? '<a class="fp-rich-add fp-rich-choose" href="'+esc(m.optionsUrl)+'">Choose Options</a>'
       : canBuy
-      ? '<button class="fp-rich-add'+(inCartLabel(p.entityId)?' added':'')+'" id="'+bid+'" data-pid="'+p.entityId+'" data-lbl="'+((p.availabilityV2&&p.availabilityV2.status)==='Preorder'?'PRE ORDER NOW':'Add to Cart')+'" onclick="fpAdd('+p.entityId+','+(hasDiscount?currentPrice:pr)+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">'+(inCartLabel(p.entityId)||((p.availabilityV2&&p.availabilityV2.status)==='Preorder'?'PRE ORDER NOW':'Add to Cart'))+'</button>'
-      : '<button class="fp-rich-add fp-rich-notify" onclick="fpNotifyMe('+p.entityId+',this)">Notify Me</button>')+
+      ? '<button type="button" class="fp-rich-add'+(inCartLabel(p.entityId)?' added':'')+'" id="'+bid+'" data-pid="'+p.entityId+'" data-lbl="'+((p.availabilityV2&&p.availabilityV2.status)==='Preorder'?'PRE ORDER NOW':'Add to Cart')+'" onclick="fpAdd('+p.entityId+','+(hasDiscount?currentPrice:pr)+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">'+(inCartLabel(p.entityId)||((p.availabilityV2&&p.availabilityV2.status)==='Preorder'?'PRE ORDER NOW':'Add to Cart'))+'</button>'
+      : '<button type="button" class="fp-rich-add fp-rich-notify" onclick="fpNotifyMe('+p.entityId+',this)">Notify Me</button>')+
   '</div>';
 }
 
@@ -1639,8 +1639,8 @@ window.fpQuickView=async function(pid){
     '<div class="fp-modal-actions">'+
       (isPurchasable(p)
         ? '<div class="fp-modal-qty"><button class="fp-modal-qty-btn" onclick="fpQtyChg(-1)">−</button><div class="fp-modal-qty-val" id="fp-qty">1</div><button class="fp-modal-qty-btn" onclick="fpQtyChg(1)">+</button></div>'+
-          '<button class="fp-modal-add'+(inCartLabel(pid)?' added':'')+'" id="fp-modal-add" onclick="fpModalAdd('+pid+','+qvCurrent+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">'+(inCartLabel(pid)||((p.availabilityV2&&p.availabilityV2.status)==='Preorder'?'PRE ORDER NOW':'Add to Cart'))+'</button>'
-        : '<button class="fp-modal-add fp-rich-notify" onclick="fpNotifyMe('+pid+',this)">Notify Me</button>')+
+          '<button type="button" class="fp-modal-add'+(inCartLabel(pid)?' added':'')+'" id="fp-modal-add" onclick="fpModalAdd('+pid+','+qvCurrent+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">'+(inCartLabel(pid)||((p.availabilityV2&&p.availabilityV2.status)==='Preorder'?'PRE ORDER NOW':'Add to Cart'))+'</button>'
+        : '<button type="button" class="fp-modal-add fp-rich-notify" onclick="fpNotifyMe('+pid+',this)">Notify Me</button>')+
     '</div>'+
     '<a class="fp-modal-view" href="'+esc(p.path||'#')+'">View full product details →</a>';
   // Enable finger-swipe on the image gallery (touch devices)
@@ -2326,6 +2326,7 @@ setTimeout(function(){
     +'#fp-notify-modal .fp-nm-btns button{border:none;border-radius:999px!important;padding:10px 20px;font-weight:700;cursor:pointer}'
     +'#fp-notify-modal .fp-nm-go{background:#0f0f0f;color:#fff}'
     +'#fp-notify-modal .fp-nm-x{background:#eee;color:#333}'
+    +'.klaviyo-bis-trigger,[class*="klaviyo-bis"]{display:none!important}'
     // /our-store/ ad landing: no breadcrumb (the WYSIWYG sanitizer strips
     // <style> from page bodies, so the hide lives here, path-scoped)
     +(location.pathname.indexOf('/our-store/')===0?'.breadcrumbs{display:none!important}.body{margin-top:8px!important}main.page{margin-top:0!important}':'');
@@ -2348,7 +2349,33 @@ setTimeout(function(){
       return (ed&&ed[0])?ed[0].node.entityId:null;
     }catch(e){return null;}
   }
-  window.fpNotifyMe=function(pid,btn){
+  // resolve the SELECTED variant on a PDP: selected option-value ids from the
+  // form, matched against the product's variants via GraphQL
+  async function fpSelectedVariantId(pid){
+    try{
+      STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
+      if(!STORE_TOKEN)return null;
+      var sel=[];
+      [].slice.call(document.querySelectorAll('[name^="attribute["]')).forEach(function(inp){
+        if(inp.tagName==='SELECT'){if(inp.value&&/^\d+$/.test(inp.value))sel.push(parseInt(inp.value,10));}
+        else if(inp.type==='radio'||inp.type==='checkbox'){if(inp.checked&&/^\d+$/.test(inp.value))sel.push(parseInt(inp.value,10));}
+      });
+      sel=sel.filter(function(n){return n>0;});
+      if(!sel.length)return null;
+      var q='query($p:Int!){site{product(entityId:$p){variants(first:250){edges{node{entityId options{edges{node{values{edges{node{entityId}}}}}}}}}}}}';
+      var d=await fetch(STORE+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+STORE_TOKEN},body:JSON.stringify({query:q,variables:{p:pid}})}).then(function(r){return r.ok?r.json():null;});
+      var eds=(d&&d.data&&d.data.site&&d.data.site.product&&d.data.site.product.variants.edges)||[];
+      var selSet={};
+      sel.forEach(function(v){selSet[v]=1;});
+      for(var i=0;i<eds.length;i++){
+        var v=eds[i].node,vals=[];
+        (v.options.edges||[]).forEach(function(o){(o.node.values.edges||[]).forEach(function(x){vals.push(x.node.entityId);});});
+        if(vals.length&&vals.every(function(id){return selSet[id];}))return v.entityId;
+      }
+      return null;
+    }catch(e){return null;}
+  }
+  window.fpNotifyMe=function(pid,btn,vidOverride){
     if(document.getElementById('fp-notify-modal'))return;
     var wrap=document.createElement('div');
     wrap.id='fp-notify-modal';
@@ -2366,7 +2393,7 @@ setTimeout(function(){
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){err.textContent='Please enter a valid email.';err.style.display='block';return;}
       var go=wrap.querySelector('.fp-nm-go');
       go.disabled=true;go.textContent='Saving...';
-      var vid=await bcFirstVariantId(parseInt(pid,10));
+      var vid=vidOverride||await bcFirstVariantId(parseInt(pid,10));
       var ok=false;
       if(vid){
         try{
@@ -2392,54 +2419,63 @@ setTimeout(function(){
     wrap.querySelector('.fp-nm-go').addEventListener('click',submit);
     input.addEventListener('keydown',function(e){if(e.key==='Enter')submit();});
   };
-  // PDP: swap the disabled Out of Stock add-to-cart button for NOTIFY ME
-  function pdpNotify(){
+  // PDP notify — ONE owner, driven purely by BigCommerce state (v68):
+  // Klaviyo's onsite button proved flaky (renders on some variant PDPs, not
+  // others, disappears between loads), so its UI is hidden via CSS and OUR
+  // button covers every case. Unavailable = the theme's own "combination
+  // unavailable" alert (variant products) or a disabled/OOS add button
+  // (simple products). Subscriptions go to the SELECTED variant.
+  function pdpUnavailable(){
+    var alertEl=[].slice.call(document.querySelectorAll('.productView .alertBox,.productView [class*="ttributes-message"],.productView .alertMessage')).filter(function(el){
+      return /currently unavailable/i.test(el.textContent||'')&&el.offsetParent!==null&&getComputedStyle(el).display!=='none';
+    })[0];
+    if(alertEl)return true;
+    var ab=document.getElementById('form-action-addToCart');
+    if(ab){
+      var t=((ab.textContent||ab.value)||'').trim();
+      if(ab.disabled||/out of stock|unavailable|sold out/i.test(t))return true;
+    }
+    return false;
+  }
+  function pdpSync(){
     try{
-      // variant products get Klaviyo's OWN variant-aware "Notify Me When
-      // Available" button — ours must stand down (and remove itself) there,
-      // else the PDP stacks three CTAs (seen on THE FRAMERR belt, 10 Jul)
-      var kl=document.querySelector('.klaviyo-bis-trigger,[id*="klaviyo-bis"],button[class*="klaviyo"]');
-      var mine=document.getElementById('fp-pdp-notify');
-      if(kl){
-        if(mine&&mine.parentNode)mine.parentNode.removeChild(mine);
-        // user rule (10 Jul): while Klaviyo's variant notify is SHOWING
-        // (selected size unavailable), Add to Cart hides; picking an
-        // available size hides Klaviyo's button and brings Add back
-        if(!window.__fpPdpSync){
-          window.__fpPdpSync=1;
-          var sync=function(){
-            try{
-              var k=document.querySelector('.klaviyo-bis-trigger,[id*="klaviyo-bis"],button[class*="klaviyo"]');
-              var ab=document.getElementById('form-action-addToCart');
-              if(!k||!ab)return;
-              var vis=getComputedStyle(k).display!=='none'&&k.offsetParent!==null;
-              ab.style.display=vis?'none':'';
-            }catch(e){}
-          };
-          sync();
-          try{new MutationObserver(sync).observe(kl,{attributes:true});}catch(e){}
-          document.addEventListener('change',function(){setTimeout(sync,150);setTimeout(sync,600);},true);
-          setTimeout(sync,1500);setTimeout(sync,4000);
-        }
-        return;
-      }
       var pidEl=document.querySelector('input[name="product_id"]');
       var addBtn=document.getElementById('form-action-addToCart');
-      if(!pidEl||!addBtn||document.getElementById('fp-pdp-notify'))return;
-      var txt=((addBtn.textContent||addBtn.value)||'').trim();
-      if(!(addBtn.disabled||/out of stock|unavailable|sold out/i.test(txt)))return;
-      addBtn.style.display='none';
-      var b=document.createElement('button');
-      b.type='button';
-      b.id='fp-pdp-notify';
-      b.className='button fp-rich-notify';
-      b.style.cssText='padding:12px 26px;border-radius:18px;font-weight:700';
-      b.textContent='Notify Me When Available';
-      b.addEventListener('click',function(){window.fpNotifyMe(parseInt(pidEl.value,10),b);});
-      addBtn.parentNode.insertBefore(b,addBtn.nextSibling);
+      if(!pidEl||!addBtn)return;
+      var un=pdpUnavailable();
+      var mine=document.getElementById('fp-pdp-notify');
+      if(un){
+        addBtn.style.display='none';
+        if(!mine){
+          var b=document.createElement('button');
+          b.type='button';
+          b.id='fp-pdp-notify';
+          b.className='button fp-rich-notify';
+          b.style.cssText='padding:12px 26px;border-radius:18px;font-weight:700';
+          b.textContent='Notify Me When Available';
+          b.addEventListener('click',function(){
+            fpSelectedVariantId(parseInt(pidEl.value,10)).then(function(vid){
+              window.fpNotifyMe(parseInt(pidEl.value,10),b,vid);
+            });
+          });
+          addBtn.parentNode.insertBefore(b,addBtn.nextSibling);
+        }
+      }else{
+        addBtn.style.display='';
+        if(mine&&mine.parentNode)mine.parentNode.removeChild(mine);
+      }
     }catch(e){}
   }
-  function nmBoot(){pdpNotify();setTimeout(pdpNotify,2500);setTimeout(pdpNotify,6000);setTimeout(pdpNotify,12000);}
+  function nmBoot(){
+    pdpSync();
+    [800,2000,4000,8000].forEach(function(ms){setTimeout(pdpSync,ms);});
+    document.addEventListener('change',function(){setTimeout(pdpSync,150);setTimeout(pdpSync,700);},true);
+    var pv=document.querySelector('.productView');
+    if(pv&&'MutationObserver' in window){
+      var t=null;
+      new MutationObserver(function(){clearTimeout(t);t=setTimeout(pdpSync,120);}).observe(pv,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style','disabled']});
+    }
+  }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',nmBoot);else nmBoot();
 })();
 
