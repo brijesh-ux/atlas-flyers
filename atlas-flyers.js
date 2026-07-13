@@ -2328,6 +2328,9 @@ setTimeout(function(){
     +'#fp-notify-modal .fp-nm-x{background:#eee;color:#333}'
     +'.klaviyo-bis-trigger,[class*="klaviyo-bis"]{display:none!important}'
     +'body.fp-pdp-unavail #form-action-addToCart{display:none!important}'
+    // the theme's OWN legacy notify button (custom-notification-btn) also pops
+    // in the unavailable state — ours is the only notify UI (console-proven)
+    +'.notify-me-btn-wrapper,.custom-notification-btn{display:none!important}'
     // /our-store/ ad landing: no breadcrumb (the WYSIWYG sanitizer strips
     // <style> from page bodies, so the hide lives here, path-scoped)
     +(location.pathname.indexOf('/our-store/')===0?'.breadcrumbs{display:none!important}.body{margin-top:8px!important}main.page{margin-top:0!important}':'');
