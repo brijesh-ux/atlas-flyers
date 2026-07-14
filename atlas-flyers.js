@@ -2491,61 +2491,6 @@ setTimeout(function(){
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',nmBoot);else nmBoot();
 })();
 
-// mobile header Monthly Flyer chip (element; styling above)
-(function(){
-  function addFlyerChip(){
-    try{
-      var hdr=document.querySelector('.middle-header');
-      if(!hdr||document.getElementById('fp-mob-flyer'))return;
-      var a=document.createElement('a');
-      a.id='fp-mob-flyer';
-      a.href='/shop/?search_query&tag=monthly-flyer';
-      a.innerHTML='<i class="material-icons" aria-hidden="true">local_offer</i><span class="fp-mf-long">Monthly&nbsp;</span><span>Flyer</span>';
-      hdr.appendChild(a);
-    }catch(e){}
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',addFlyerChip);else addFlyerChip();
-})();
-
-// Search box placeholder (user, 10 Jul): "Tools Store" -> "Tool Store"
-(function(){
-  function setPh(){
-    try{
-      [].slice.call(document.querySelectorAll('input[name="search_query"],input#search_query')).forEach(function(i){
-        i.setAttribute('placeholder',"Search the World's Best Tool Store");
-      });
-      // the VISIBLE hint is a theme overlay span (.title) painted over the
-      // input, not the input's placeholder — fix any span still saying "Tools"
-      [].slice.call(document.querySelectorAll('span.title')).forEach(function(s){
-        if(/World.s Best Tools Store/i.test(s.textContent||''))s.textContent="Search the World's Best Tool Store";
-      });
-    }catch(e){}
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',setPh);else setPh();
-  [2000,5000].forEach(function(ms){setTimeout(setPh,ms);});
-})();
-
-// SALE in the mobile sticky footer (user request, 10 Jul): 6th item between
-// New and Shop By -> /sale/ (301 -> the SS sale landing our takeover renders).
-// Items are flex:1 so the bar re-spaces itself; hidden >=1025px like the rest.
-// Lights up (li.on = red) when the sale view is the current page.
-(function(){
-  function addSale(){
-    try{
-      var ul=document.querySelector('.mobile-sub ul.msb-new');
-      if(!ul||ul.querySelector('.fp-msb-sale'))return;
-      var li=document.createElement('li');
-      li.className='fp-msb-sale';
-      li.innerHTML='<a href="/sale/"><span class="msb-ic"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7.5 4a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm0 2a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm9 7a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm0 2a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM18.6 3.4 3.4 18.6l2 2L20.6 5.4l-2-2z"/></svg></span><span class="msb-l">Sale</span></a>';
-      var shopBy=ul.querySelector('.shop-by-btn');
-      var ref=shopBy?shopBy.closest('li'):null;
-      if(ref)ul.insertBefore(li,ref);else ul.appendChild(li);
-      if(location.pathname.indexOf('/shop/')===0&&(location.hash.indexOf('ss_on_sale')>-1||/fsale=1|summer-site-wide-sale/.test(location.search)))li.classList.add('on');
-    }catch(e){}
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',addSale);else addSale();
-})();
-
 // ==================== CATEGORY PAGE TILES ====================
 // Renders native BigCommerce category listings with the flyer's rich product
 // cards (same richCard as /flyers-and-deals/). Runs ONLY on native-rendered
@@ -3275,117 +3220,94 @@ if('MutationObserver' in window){
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initSale);else initSale();
 })();
 
-// ==================== HOME CAROUSELS -> AUTO-SCROLL STRIPS ====================
-// User (13 Jul): ALL home product sections (Featured, New Arrivals, Shop
-// Deals, Outdoor Cleaning/Power, Featured Brand) render as recs-style flat
-// strips instead of slick carousels with giant arrows — AUTO-SCROLLING slowly
-// on >=768px screens only (phones swipe manually), pausing on hover/touch.
-// Theme carousels unslick cleanly; the inline-renderer shortcode ones throw on
-// unslick, so those get clone-aware extraction + husk hiding (console-proven).
+// ==================== STRIP AUTO-SCROLL DRIVER (v75) ====================
+// V63 renders the home sections as native fp strips ([data-fp-autoscroll]).
+// This drives the slow drift: >=768px only (phones swipe), pause on hover /
+// touch over the WHOLE SECTION (arrows included — the v74 bug was grid-only
+// pause, so hovering an arrow resumed the drift and stomped its smooth
+// scroll), plus a grace period after arrow clicks.
+(function(){
+  var mq=window.matchMedia('(min-width:768px)');
+  function wire(){
+    [].slice.call(document.querySelectorAll('.fp-rich-grid[data-fp-autoscroll]')).forEach(function(grid){
+      if(grid.getAttribute('data-fp-scrolling'))return;
+      grid.setAttribute('data-fp-scrolling','1');
+      var sec=grid.closest('.fp-section')||grid.parentElement;
+      var paused=false,pauseUntil=0;
+      sec.addEventListener('mouseenter',function(){paused=true;});
+      sec.addEventListener('mouseleave',function(){paused=false;pauseUntil=Date.now()+400;});
+      sec.addEventListener('touchstart',function(){pauseUntil=Date.now()+4000;},{passive:true});
+      sec.addEventListener('click',function(e){
+        if(e.target.closest('.fp-scroll-arrow'))pauseUntil=Date.now()+1800;
+      },true);
+      (function tick(){
+        if(!paused&&Date.now()>=pauseUntil&&mq.matches&&grid.scrollWidth>grid.clientWidth){
+          grid.scrollLeft+=0.7;
+          if(grid.scrollLeft>=grid.scrollWidth-grid.clientWidth-1)grid.scrollLeft=0;
+        }
+        requestAnimationFrame(tick);
+      })();
+    });
+    if(typeof setupScrollArrows==='function'){try{setupScrollArrows();}catch(e){}}
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();
+  [1500,4000,8000,12000,16000].forEach(function(ms){setTimeout(wire,ms);});
+})();
+
+// ============ LEGACY SHORTCODE CAROUSELS -> STRIPS (transitional) ============
+// SHOP DEALS / OUTDOOR / Featured Brand are still painted as slick carousels
+// by the INLINE Script Manager copies of the old shortcode renderer (theme
+// can't reach them). Convert them to strips via clone-aware extraction and
+// hand the grid to the auto-scroll driver. Self-retiring: once the inline
+// renderer copies are deleted from Script Manager, nothing matches here.
 (function(){
   if(!(location.pathname==='/'||location.pathname==='/index.php'))return;
-  var mq=window.matchMedia('(min-width:768px)');
   function convert(){
-    [].slice.call(document.querySelectorAll('ul.custom-product-carousel-slider.slick-initialized, .product-carousel.slick-initialized, ul.productGrid.slick-initialized')).forEach(function(el){
+    [].slice.call(document.querySelectorAll('.product-carousel.slick-initialized, ul.custom-product-carousel-slider.slick-initialized, ul.productGrid.slick-initialized')).forEach(function(el){
       try{
         if(el.getAttribute('data-fp-stripped'))return;
         if(el.closest('.fp-home-strip'))return;
         var cards=[].slice.call(el.querySelectorAll('.slick-slide:not(.slick-cloned) .fp-rich'));
-        if(!cards.length)return;                     // not enriched yet — retry catches it
+        if(!cards.length)return;
         el.setAttribute('data-fp-stripped','1');
-        try{el.slick.unslick();cards=[].slice.call(el.querySelectorAll('.fp-rich'));}catch(e){}
         var sec=document.createElement('div');
         sec.className='fp-section fp-home-strip';
-        sec.innerHTML='<div class="fp-rich-grid"></div>';
+        sec.innerHTML='<div class="fp-rich-grid" data-fp-autoscroll="1"></div>';
         var grid=sec.querySelector('.fp-rich-grid');
         cards.forEach(function(c){grid.appendChild(c);});
-        el.__fpStripGrid=grid;                       // NA fill appends here post-conversion
         var host=el.closest('.custom-product-carousel')||el;
         host.parentNode.insertBefore(sec,host);
         host.style.setProperty('display','none','important');
-        var paused=false;
-        grid.addEventListener('mouseenter',function(){paused=true;});
-        grid.addEventListener('mouseleave',function(){paused=false;});
-        grid.addEventListener('touchstart',function(){paused=true;},{passive:true});
-        (function tick(){
-          if(!paused&&mq.matches&&grid.scrollWidth>grid.clientWidth){
-            grid.scrollLeft+=0.7;
-            if(grid.scrollLeft>=grid.scrollWidth-grid.clientWidth-1)grid.scrollLeft=0;
-          }
-          requestAnimationFrame(tick);
-        })();
-        console.log('[Atlas Tiles] home strip: '+cards.length+' cards');
+        console.log('[Atlas Tiles] legacy carousel -> strip ('+cards.length+' cards)');
       }catch(e){}
     });
-    if(typeof setupScrollArrows==='function'){try{setupScrollArrows();}catch(e){}}
   }
-  [4000,7000,11000,16000,22000].forEach(function(ms){setTimeout(convert,ms);});
+  [2500,5000,9000,14000].forEach(function(ms){setTimeout(convert,ms);});
 })();
 
-// ==================== THEME CAROUSEL RE-TUNE ====================
-// The home "Shop Featured" carousel is HARDCODED in the theme (not Page
-// Builder) with slidesToShow:5 at every width -> ~650px cells around ~260px
-// tiles = huge gaps on wide screens. Re-tune slick to ~280px cells (6 across
-// at 1920, up to 10 on ultrawides). Page Builder shortcode carousels (their
-// cards carry .shortcode-card) are SKIPPED — they keep the user's cols_*.
+// ==================== NEW ARRIVALS STRIP FILL (to 100) ====================
+// Tops the native NA strip up to 100 newest products via GraphQL. Dedupe by
+// entity id (server cards + enriched cards' add-button data-pid) and by SKU
+// (covers OOS/options cards that carry neither id attribute post-enrichment).
 (function(){
-  function tune(){
-    try{
-      // fixed tiers (user spec): mobile/tablet 2, desktop 5, ultrawide (>=2200) 8
-      var vw=window.innerWidth;
-      var n=vw>=2200?8:(vw>=1025?5:2);
-      [].slice.call(document.querySelectorAll('ul.custom-product-carousel-slider.slick-initialized')).forEach(function(el){
-        if(el.querySelector('.shortcode-card'))return;
-        if(!el.querySelector('.fp-rich'))return;
-        try{
-          // the page carries multiple jQuery copies and window.jQuery is NOT
-          // the one with the slick plugin — drive the instance on the element
-          var s=el.slick;
-          if(s&&typeof s.slickSetOption==='function'){
-            if(s.options.slidesToShow!==n){
-              s.slickSetOption('slidesToShow',n,false);
-              s.slickSetOption('slidesToScroll',n,true);
-              console.log('[Atlas Tiles] carousel re-tuned to '+n+' slides');
-            }
-          }else{
-            var $=window.jQuery;
-            if($&&$.fn&&$.fn.slick&&$(el).slick('slickGetOption','slidesToShow')!==n){
-              $(el).slick('slickSetOption',{slidesToShow:n,slidesToScroll:n},true);
-              console.log('[Atlas Tiles] carousel re-tuned to '+n+' slides');
-            }
-          }
-        }catch(e){}
-      });
-    }catch(e){}
-  }
-  // top up the home NEW ARRIVALS carousel to 100 products: the theme renders
-  // ~58 server-side; append the rest of the newest-first stream as richCards
-  async function fillNewArrivals(){
+  async function fill(){
     try{
       if(window.__fpNaFill)return;
-      var target=null;
-      [].slice.call(document.querySelectorAll('ul.custom-product-carousel-slider')).forEach(function(el){
-        if(target||el.querySelector('.shortcode-card'))return;
-        var anc=el,head=null;
-        for(var i=0;i<5&&anc;i++){
-          anc=anc.parentElement;
-          if(!anc)break;
-          head=anc.querySelector('.main-heading,.heading-link,h2');
-          if(head)break;
-        }
-        if(head&&/new arrival/i.test(head.textContent||''))target=el;
-      });
-      if(!target)return;
-      if(!target.__fpStripGrid&&(!target.slick||typeof target.slick.slickAdd!=='function'))return;
+      var grid=document.querySelector('.fp-rich-grid[data-product-type="new"]');
+      if(!grid||!grid.children.length)return;
       window.__fpNaFill=1;
       STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
-      if(!STORE_TOKEN)return;
+      if(!STORE_TOKEN){window.__fpNaFill=0;return;}
       await fpEnsureTileData();
       var FIELDS='pageInfo{hasNextPage endCursor}edges{node{name entityId sku brand{name path} prices{price{value}salePrice{value}retailPrice{value}} defaultImage{url(width:400)} images{edges{node{urlOriginal url(width:800) isDefault altText}}} path description inventory{isInStock} availabilityV2{status} productOptions(first:1){edges{node{entityId}}}}}';
-      var have={};
-      [].slice.call(target.querySelectorAll('[data-entity-id]')).forEach(function(n){have[n.getAttribute('data-entity-id')]=1;});
-      var count=target.__fpStripGrid?target.__fpStripGrid.children.length:target.querySelectorAll('.slick-slide:not(.slick-cloned)').length;
-      var cursor=null,guard=0;
+      var haveId={},haveSku={};
+      [].slice.call(grid.querySelectorAll('[data-entity-id],[data-pid]')).forEach(function(n){
+        haveId[n.getAttribute('data-entity-id')||n.getAttribute('data-pid')]=1;
+      });
+      [].slice.call(grid.querySelectorAll('.fp-rich-sku')).forEach(function(n){
+        haveSku[(n.textContent||'').replace(/^SKU#\s*/,'').trim()]=1;
+      });
+      var count=grid.children.length,cursor=null,guard=0;
       while(count<100&&guard<4){
         guard++;
         var body={query:'query($after:String){site{newestProducts(first:50,after:$after){'+FIELDS+'}}}',variables:{after:cursor}};
@@ -3395,28 +3317,22 @@ if('MutationObserver' in window){
         for(var i=0;i<np.edges.length&&count<100;i++){
           var pr=np.edges[i].node;
           var id=parseInt(pr.entityId,10);
-          if(!(id>0)||have[id])continue;
-          have[id]=1;
+          if(!(id>0)||haveId[id]||haveSku[(pr.sku||'').trim()])continue;
+          haveId[id]=1;
           PRODUCT_CACHE[id]=pr;
           var hasOpts=pr.productOptions&&pr.productOptions.edges&&pr.productOptions.edges.length>0;
-          try{
-            var sg=target.__fpStripGrid;
-            if(sg){sg.insertAdjacentHTML('beforeend',richCard(pr,{showTag:false,_sectionKey:'themeCards',optionsUrl:hasOpts?pr.path:null}));}
-            else{target.slick.slickAdd('<li class="product">'+richCard(pr,{showTag:false,_sectionKey:'themeCards',optionsUrl:hasOpts?pr.path:null})+'</li>');}
-            count++;
-          }catch(e){}
+          grid.insertAdjacentHTML('beforeend',richCard(pr,{showTag:false,_sectionKey:'themeCards',optionsUrl:hasOpts?pr.path:null}));
+          count++;
         }
         cursor=np.pageInfo.endCursor;
         if(!np.pageInfo.hasNextPage)break;
       }
       applyCartStateToButtons();
-      console.log('[Atlas Tiles] New Arrivals carousel filled to '+count+' products');
+      if(typeof setupScrollArrows==='function'){try{setupScrollArrows();}catch(e){}}
+      console.log('[Atlas Tiles] New Arrivals strip filled to '+count+' products');
     }catch(e){console.warn('[Atlas Tiles] NA fill:',e&&e.message);}
   }
-  [800,2500,5000,10000,15000].forEach(function(ms){setTimeout(tune,ms);});
-  [3500,8000].forEach(function(ms){setTimeout(fillNewArrivals,ms);});
-  var t=null;
-  window.addEventListener('resize',function(){clearTimeout(t);t=setTimeout(tune,250);});
+  [2500,6000,10000].forEach(function(ms){setTimeout(fill,ms);});
 })();
 
 // ==================== SEARCHSPRING RECOMMENDATION RESKIN ====================
@@ -3468,7 +3384,7 @@ function fpEnsureTileData(){
 function fpCardTargets(){
   var out=[];
   // V51+ server cards (bare fp) in theme carousels
-  [].slice.call(document.querySelectorAll('.custom-product-carousel-slider .fp-rich[data-entity-id],.productCarousel .fp-rich[data-entity-id]')).forEach(function(el){
+  [].slice.call(document.querySelectorAll('.custom-product-carousel-slider .fp-rich[data-entity-id],.productCarousel .fp-rich[data-entity-id],.fp-home-strip .fp-rich[data-entity-id]')).forEach(function(el){
     var id=parseInt(el.getAttribute('data-entity-id'),10);
     if(!(id>0))return;
     var choose=el.querySelector('.fp-rich-choose');
