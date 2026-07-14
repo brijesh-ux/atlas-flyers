@@ -2292,7 +2292,11 @@ setTimeout(function(){
   if(document.getElementById('fp-brands-vab-fix'))return;
   var st=document.createElement('style');
   st.id='fp-brands-vab-fix';
-  st.textContent='.navPages-item.Brands .mega-view-all{display:none!important}'
+  // mobile right-sway fix (console-proven 14 Jul): the hero slick's next
+  // arrow sits 80px past the right edge (uncontained ancestors), letting the
+  // page pan right. Belongs in theme fp-tile-css at the next theme rev.
+  st.textContent='@media(max-width:767px){html,body{overflow-x:hidden}}'
+    +'.navPages-item.Brands .mega-view-all{display:none!important}'
     +'@media(max-width:991px){.fp-checkout{display:none!important}}'
     // brand pages' Page Builder content ships a legacy mobile rule
     // (.brand-title-section-container div:not(.shortcode-layout){order:1})
