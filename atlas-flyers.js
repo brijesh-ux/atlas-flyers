@@ -3275,6 +3275,53 @@ if('MutationObserver' in window){
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initSale);else initSale();
 })();
 
+// ==================== HOME CAROUSELS -> AUTO-SCROLL STRIPS ====================
+// User (13 Jul): ALL home product sections (Featured, New Arrivals, Shop
+// Deals, Outdoor Cleaning/Power, Featured Brand) render as recs-style flat
+// strips instead of slick carousels with giant arrows — AUTO-SCROLLING slowly
+// on >=768px screens only (phones swipe manually), pausing on hover/touch.
+// Theme carousels unslick cleanly; the inline-renderer shortcode ones throw on
+// unslick, so those get clone-aware extraction + husk hiding (console-proven).
+(function(){
+  if(!(location.pathname==='/'||location.pathname==='/index.php'))return;
+  var mq=window.matchMedia('(min-width:768px)');
+  function convert(){
+    [].slice.call(document.querySelectorAll('ul.custom-product-carousel-slider.slick-initialized, .product-carousel.slick-initialized, ul.productGrid.slick-initialized')).forEach(function(el){
+      try{
+        if(el.getAttribute('data-fp-stripped'))return;
+        if(el.closest('.fp-home-strip'))return;
+        var cards=[].slice.call(el.querySelectorAll('.slick-slide:not(.slick-cloned) .fp-rich'));
+        if(!cards.length)return;                     // not enriched yet — retry catches it
+        el.setAttribute('data-fp-stripped','1');
+        try{el.slick.unslick();cards=[].slice.call(el.querySelectorAll('.fp-rich'));}catch(e){}
+        var sec=document.createElement('div');
+        sec.className='fp-section fp-home-strip';
+        sec.innerHTML='<div class="fp-rich-grid"></div>';
+        var grid=sec.querySelector('.fp-rich-grid');
+        cards.forEach(function(c){grid.appendChild(c);});
+        el.__fpStripGrid=grid;                       // NA fill appends here post-conversion
+        var host=el.closest('.custom-product-carousel')||el;
+        host.parentNode.insertBefore(sec,host);
+        host.style.setProperty('display','none','important');
+        var paused=false;
+        grid.addEventListener('mouseenter',function(){paused=true;});
+        grid.addEventListener('mouseleave',function(){paused=false;});
+        grid.addEventListener('touchstart',function(){paused=true;},{passive:true});
+        (function tick(){
+          if(!paused&&mq.matches&&grid.scrollWidth>grid.clientWidth){
+            grid.scrollLeft+=0.7;
+            if(grid.scrollLeft>=grid.scrollWidth-grid.clientWidth-1)grid.scrollLeft=0;
+          }
+          requestAnimationFrame(tick);
+        })();
+        console.log('[Atlas Tiles] home strip: '+cards.length+' cards');
+      }catch(e){}
+    });
+    if(typeof setupScrollArrows==='function'){try{setupScrollArrows();}catch(e){}}
+  }
+  [4000,7000,11000,16000,22000].forEach(function(ms){setTimeout(convert,ms);});
+})();
+
 // ==================== THEME CAROUSEL RE-TUNE ====================
 // The home "Shop Featured" carousel is HARDCODED in the theme (not Page
 // Builder) with slidesToShow:5 at every width -> ~650px cells around ~260px
@@ -3317,7 +3364,7 @@ if('MutationObserver' in window){
     try{
       if(window.__fpNaFill)return;
       var target=null;
-      [].slice.call(document.querySelectorAll('ul.custom-product-carousel-slider.slick-initialized')).forEach(function(el){
+      [].slice.call(document.querySelectorAll('ul.custom-product-carousel-slider')).forEach(function(el){
         if(target||el.querySelector('.shortcode-card'))return;
         var anc=el,head=null;
         for(var i=0;i<5&&anc;i++){
@@ -3328,7 +3375,8 @@ if('MutationObserver' in window){
         }
         if(head&&/new arrival/i.test(head.textContent||''))target=el;
       });
-      if(!target||!target.slick||typeof target.slick.slickAdd!=='function')return;
+      if(!target)return;
+      if(!target.__fpStripGrid&&(!target.slick||typeof target.slick.slickAdd!=='function'))return;
       window.__fpNaFill=1;
       STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
       if(!STORE_TOKEN)return;
@@ -3336,7 +3384,7 @@ if('MutationObserver' in window){
       var FIELDS='pageInfo{hasNextPage endCursor}edges{node{name entityId sku brand{name path} prices{price{value}salePrice{value}retailPrice{value}} defaultImage{url(width:400)} images{edges{node{urlOriginal url(width:800) isDefault altText}}} path description inventory{isInStock} availabilityV2{status} productOptions(first:1){edges{node{entityId}}}}}';
       var have={};
       [].slice.call(target.querySelectorAll('[data-entity-id]')).forEach(function(n){have[n.getAttribute('data-entity-id')]=1;});
-      var count=target.querySelectorAll('.slick-slide:not(.slick-cloned)').length;
+      var count=target.__fpStripGrid?target.__fpStripGrid.children.length:target.querySelectorAll('.slick-slide:not(.slick-cloned)').length;
       var cursor=null,guard=0;
       while(count<100&&guard<4){
         guard++;
@@ -3352,7 +3400,9 @@ if('MutationObserver' in window){
           PRODUCT_CACHE[id]=pr;
           var hasOpts=pr.productOptions&&pr.productOptions.edges&&pr.productOptions.edges.length>0;
           try{
-            target.slick.slickAdd('<li class="product">'+richCard(pr,{showTag:false,_sectionKey:'themeCards',optionsUrl:hasOpts?pr.path:null})+'</li>');
+            var sg=target.__fpStripGrid;
+            if(sg){sg.insertAdjacentHTML('beforeend',richCard(pr,{showTag:false,_sectionKey:'themeCards',optionsUrl:hasOpts?pr.path:null}));}
+            else{target.slick.slickAdd('<li class="product">'+richCard(pr,{showTag:false,_sectionKey:'themeCards',optionsUrl:hasOpts?pr.path:null})+'</li>');}
             count++;
           }catch(e){}
         }
