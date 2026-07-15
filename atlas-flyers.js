@@ -2486,7 +2486,8 @@ setTimeout(function(){
           b.type='button';
           b.id='fp-pdp-notify';
           b.className='button fp-rich-notify';
-          b.style.cssText='padding:12px 26px;border-radius:18px;font-weight:700;background:#0f0f0f;color:#fff;border:none;cursor:pointer';
+          var st={'padding':'14px 28px','border-radius':'18px','font-weight':'700','font-size':'15px','background':'#0f0f0f','color':'#fff','border':'none','cursor':'pointer','text-decoration':'none','text-transform':'uppercase','letter-spacing':'0.4px','line-height':'1.2','display':'inline-block','width':'auto','box-shadow':'none'};
+          Object.keys(st).forEach(function(k){b.style.setProperty(k,st[k],'important');});   // v80: theme styles form buttons with !important — ours must too
           b.textContent='Notify Me When Available';
           b.addEventListener('click',function(){
             fpSelectedVariantId(parseInt(pidEl.value,10)).then(function(vid){
