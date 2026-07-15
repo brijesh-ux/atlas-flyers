@@ -2255,17 +2255,23 @@ window.fpScrollToSectionKey=fpScrollToSectionKey;
 (function initSectionDeepLink(){
   var m=/[?&]section=([^&#]+)/.exec(location.search); if(!m) return;
   var bk=decodeURIComponent(m[1].replace(/\+/g,' '));
-  try{ sessionStorage.removeItem('fp_scroll'); }catch(e){}   // don't let scroll-restore fight the deep link
-  var aligned=0, tries=0;
-  var t=setInterval(function(){
-    tries++;
-    var el=fpResolveSection(bk);
-    if(!el){ if(tries>=90) clearInterval(t); return; }        // give up after ~18s if it never renders
-    var want=Math.max(0, el.getBoundingClientRect().top+window.pageYOffset-fpSectionOffset()-8);
-    if(Math.abs(window.pageYOffset-want)<=4){ aligned++; }
-    else { aligned=0; window.scrollTo({top:want, behavior:'auto'}); }  // re-align as content shifts / restore fires
-    if((aligned>=4 && tries>=6) || tries>=90) clearInterval(t);        // held ~0.8s & past the 800ms restore
-  },200);
+  try{ sessionStorage.removeItem('fp_scroll'); }catch(e){}
+  var userTook=false,done=false,t0=Date.now(),lastRun=0,mo=null,ro=null;
+  ['wheel','touchstart','keydown'].forEach(function(ev){window.addEventListener(ev,function(){userTook=true;},{passive:true,once:true});});
+  function align(){
+    if(done||userTook||Date.now()-t0>30000){done=true;if(mo)mo.disconnect();if(ro)ro.disconnect();return;}
+    var n=performance.now(); if(n-lastRun<50)return; lastRun=n;
+    var el=fpResolveSection(bk); if(!el)return;
+    var r=el.getBoundingClientRect(); if(r.height<40)return;
+    var maxY=Math.max(0,(document.documentElement.scrollHeight||0)-window.innerHeight);
+    var want=Math.min(maxY,Math.max(0,r.top+window.pageYOffset-fpSectionOffset()-8));
+    if(Math.abs(window.pageYOffset-want)>4)window.scrollTo({top:want,behavior:'auto'});
+  }
+  mo=new MutationObserver(align);
+  mo.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class','hidden']});
+  if('ResizeObserver' in window){ro=new ResizeObserver(align);ro.observe(document.body||document.documentElement);}
+  document.addEventListener('load',align,true);
+  align();
 })();
 
 
