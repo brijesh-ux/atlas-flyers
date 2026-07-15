@@ -2469,8 +2469,10 @@ setTimeout(function(){
     try{
       var pidEl=document.querySelector('input[name="product_id"]');
       var abs=pdpAddButtons();
-      if(!pidEl||!abs.length)return;
-      var un=pdpUnavailable();
+      if(!pidEl)return;
+      var addForm=document.querySelector('form[data-cart-item-add]');
+      if(!abs.length&&!addForm)return;
+      var un=!abs.length||pdpUnavailable();   // v79: no add button rendered = 0 inventory
       if(un&&!document.body.classList.contains('fp-pdp-unavail')){
         var nowT=Date.now();
         if(!fpUnFirst){fpUnFirst=nowT;un=false;}
@@ -2484,14 +2486,14 @@ setTimeout(function(){
           b.type='button';
           b.id='fp-pdp-notify';
           b.className='button fp-rich-notify';
-          b.style.cssText='padding:12px 26px;border-radius:18px;font-weight:700';
+          b.style.cssText='padding:12px 26px;border-radius:18px;font-weight:700;background:#0f0f0f;color:#fff;border:none;cursor:pointer';
           b.textContent='Notify Me When Available';
           b.addEventListener('click',function(){
             fpSelectedVariantId(parseInt(pidEl.value,10)).then(function(vid){
               window.fpNotifyMe(parseInt(pidEl.value,10),b,vid);
             });
           });
-          abs[0].parentNode.insertBefore(b,abs[0].nextSibling);
+          if(abs.length)abs[0].parentNode.insertBefore(b,abs[0].nextSibling);else addForm.appendChild(b);
         }
       }else if(mine&&mine.parentNode){
         mine.parentNode.removeChild(mine);
