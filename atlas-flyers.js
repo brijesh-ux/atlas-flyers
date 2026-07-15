@@ -2130,6 +2130,7 @@ async function init(){
   // fill in via their skeletons/lazy-load; brand deals still arrive last by design.
   var fpPage=document.querySelector('.flyers-page');
   if(fpPage)fpPage.classList.add('fp-ready');
+  try{window.__fpDeepAlign&&window.__fpDeepAlign(true);}catch(e){}
 
   // 5) Render product-heavy sections (above-fold first, lazy rest)
   await Promise.all([
@@ -2243,7 +2244,7 @@ function fpSectionOffset(){
       }
     }
   }
-  return offset;
+  return Math.max(0,Math.min(offset,300));
 }
 function fpScrollToSectionKey(bk){
   var t=fpResolveSection(bk); if(!t) return false;
@@ -2256,22 +2257,24 @@ window.fpScrollToSectionKey=fpScrollToSectionKey;
   var m=/[?&]section=([^&#]+)/.exec(location.search); if(!m) return;
   var bk=decodeURIComponent(m[1].replace(/\+/g,' '));
   try{ sessionStorage.removeItem('fp_scroll'); }catch(e){}
-  var userTook=false,done=false,t0=Date.now(),lastRun=0,mo=null,ro=null;
-  ['wheel','touchstart','keydown'].forEach(function(ev){window.addEventListener(ev,function(){userTook=true;},{passive:true,once:true});});
-  function align(){
-    if(done||userTook||Date.now()-t0>30000){done=true;if(mo)mo.disconnect();if(ro)ro.disconnect();return;}
-    var n=performance.now(); if(n-lastRun<50)return; lastRun=n;
+  var done=false,t0=Date.now(),lastRun=0,lastInputAt=0,ourWriteAt=0,userScrolled=false,mo=null,ro=null;
+  ['wheel','touchstart','keydown'].forEach(function(ev){window.addEventListener(ev,function(){lastInputAt=Date.now();},{passive:true});});
+  window.addEventListener('scroll',function(){var now=Date.now();if(now-ourWriteAt<120)return;if(now-lastInputAt<800)userScrolled=true;},{passive:true});
+  function align(force){
+    if(userScrolled||(!force&&(done||Date.now()-t0>45000))){done=true;if(mo)mo.disconnect();if(ro)ro.disconnect();return;}
+    if(!force){var n=performance.now();if(n-lastRun<50)return;lastRun=n;}
     var el=fpResolveSection(bk); if(!el)return;
     var r=el.getBoundingClientRect(); if(r.height<40)return;
     var maxY=Math.max(0,(document.documentElement.scrollHeight||0)-window.innerHeight);
     var want=Math.min(maxY,Math.max(0,r.top+window.pageYOffset-fpSectionOffset()-8));
-    if(Math.abs(window.pageYOffset-want)>4)window.scrollTo({top:want,behavior:'auto'});
+    if(Math.abs(window.pageYOffset-want)>4){ourWriteAt=Date.now();window.scrollTo({top:want,behavior:'auto'});}
   }
-  mo=new MutationObserver(align);
+  window.__fpDeepAlign=align;
+  mo=new MutationObserver(function(){align(false);});
   mo.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class','hidden']});
-  if('ResizeObserver' in window){ro=new ResizeObserver(align);ro.observe(document.body||document.documentElement);}
-  document.addEventListener('load',align,true);
-  align();
+  if('ResizeObserver' in window){ro=new ResizeObserver(function(){align(false);});ro.observe(document.body||document.documentElement);}
+  document.addEventListener('load',function(){align(false);},true);
+  align(false);
 })();
 
 
