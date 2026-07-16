@@ -3273,11 +3273,17 @@ if('MutationObserver' in window){
       sec.addEventListener('click',function(e){
         if(e.target.closest('.fp-scroll-arrow'))pauseUntil=Date.now()+1800;
       },true);
+      // v84: WebKit truncates fractional scrollLeft writes (0.7 -> 0, forever
+      // frozen on Safari), so accumulate the position in JS and hand the
+      // browser absolute values; resync when the user or arrows move the strip.
+      var pos=null;
       (function tick(){
         if(!paused&&Date.now()>=pauseUntil&&mq.matches&&grid.scrollWidth>grid.clientWidth){
-          grid.scrollLeft+=0.7;
-          if(grid.scrollLeft>=grid.scrollWidth-grid.clientWidth-1)grid.scrollLeft=0;
-        }
+          if(pos===null||Math.abs(grid.scrollLeft-pos)>2)pos=grid.scrollLeft;
+          pos+=0.7;
+          if(pos>=grid.scrollWidth-grid.clientWidth-1)pos=0;
+          grid.scrollLeft=pos;
+        }else{pos=null;}
         requestAnimationFrame(tick);
       })();
     });
