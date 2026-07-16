@@ -2581,6 +2581,36 @@ function catWidenContainer(){
 // was Snap's), so facets come from search.json scoped to the current category.
 // Filter state lives in our own query params (a reload applies them):
 //   fbrand=<Brand Name> (repeatable)   fprice=<low:high>   fstock=1
+// v85: V63 removed breadcrumbs from category pages, starving ssCatPath's DOM
+// read — every category page silently lost the filter bar/pill and URL-filter
+// application (NA survived via its hardcode). Resolve the hierarchy from the
+// GraphQL categoryTree instead (one query, 24h-cached per path).
+async function fpCatPathFromTree(){
+  try{
+    var ck='fp_catpath_'+location.pathname;
+    var hit=fpCacheGet(ck,86400000);
+    if(hit)return hit;
+    STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
+    if(!STORE_TOKEN)return null;
+    var d=await fetch(STORE+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+STORE_TOKEN},body:JSON.stringify({query:'{site{categoryTree{name path children{name path children{name path children{name path}}}}}}'})}).then(function(r){return r.ok?r.json():null;});
+    var tree=d&&d.data&&d.data.site&&d.data.site.categoryTree;
+    if(!tree)return null;
+    function find(nodes,trail){
+      for(var i=0;i<(nodes||[]).length;i++){
+        var n=nodes[i],t2=trail.concat(n.name);
+        if(n.path===location.pathname)return t2;
+        var r=find(n.children,t2);
+        if(r)return r;
+      }
+      return null;
+    }
+    var names=find(tree,[]);
+    if(!names||!names.length)return null;
+    var p=names.join('>');
+    fpCacheSet(ck,p);
+    return p;
+  }catch(e){return null;}
+}
 function ssCatPath(){
   if(/^\/new-arrivals\//.test(location.pathname))return 'New Arrivals';
   var names=[].slice.call(document.querySelectorAll('.breadcrumbs li')).map(function(li){
@@ -2834,6 +2864,7 @@ async function initCategoryTiles(rerun){
     }
     var newestModeEarly=/^\/new-arrivals\//.test(location.pathname);
     var catPath=ssCatPath();
+    if(!catPath)catPath=await fpCatPathFromTree();
     var fParams=ssFParams();
     var themeSort='';
     try{themeSort=new URLSearchParams(location.search).get('sort')||'';}catch(e){}
