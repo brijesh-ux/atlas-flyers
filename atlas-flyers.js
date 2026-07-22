@@ -246,14 +246,17 @@ async function fetchProducts(ids){
     console.warn('[Atlas] No BC_STOREFRONT_TOKEN set');
     var o={};ids.forEach(function(id){o[id]=null;});return o;
   }
-  // Batch in chunks of 20 (BC GraphQL rejects very large aliased queries with a
-  // 400 — large brand lists like BOSCH were silently dropping products).
+  // Batch in chunks of 15. BC GraphQL enforces a complexity cap of 10,000 per
+  // query and silently 400s above it (no data, only an errors array). With the
+  // productOptions field each aliased product costs 539 complexity, so 18 is the
+  // hard max (19+ = 400, ALL products in the chunk silently dropped); 15 leaves
+  // headroom for future field additions.
   var chunks=[];
-  for(var i=0;i<unique.length;i+=20)chunks.push(unique.slice(i,i+20));
+  for(var i=0;i<unique.length;i+=15)chunks.push(unique.slice(i,i+15));
   for(var c=0;c<chunks.length;c++){
     var chunk=chunks[c];
     var fields=chunk.map(function(id,i){
-      return 'p'+i+':product(entityId:'+id+'){name entityId sku brand{name path} prices{price{value}salePrice{value}retailPrice{value}}defaultImage{url(width:400)} images{edges{node{urlOriginal url(width:800) isDefault altText}}} path description inventory{isInStock} availabilityV2{status}}';
+      return 'p'+i+':product(entityId:'+id+'){name entityId sku brand{name path} prices{price{value}salePrice{value}retailPrice{value}}defaultImage{url(width:400)} images{edges{node{urlOriginal url(width:800) isDefault altText}}} path description inventory{isInStock} availabilityV2{status} productOptions(first:1){edges{node{entityId}}}}';
     }).join(' ');
     var query='{site{'+fields+'}}';
     try{
@@ -430,6 +433,13 @@ function richCard(p,m){
   var stockHtml=!canBuy
     ? '<div class="fp-rich-stock fp-rich-stock-oos">Out of Stock</div>'
     : ((bcStatus==='Preorder')?'<div class="fp-rich-stock fp-rich-stock-ord">✓ Available to Order</div>':'<div class="fp-rich-stock">✓ In Stock</div>');
+  // A scraped/heuristic optionsUrl (native card had no add-cart button) must not
+  // override a CONFIRMED no-options preorder: those quick-add fine via fpAdd and
+  // the button should read PRE ORDER NOW, matching the PDP. Only fires when
+  // GraphQL productOptions data is present and says zero options — cached
+  // products without the field keep today's behavior.
+  var optionsUrl=m.optionsUrl;
+  if(optionsUrl&&bcStatus==='Preorder'&&p.productOptions&&p.productOptions.edges&&p.productOptions.edges.length===0)optionsUrl=null;
   return '<div class="fp-rich" data-bk="'+esc((b&&b.key)||'')+'">'+
     '<div class="fp-rich-top">'+
       (brandLabel?'<span class="fp-rich-brand" style="background:'+brandBg+';color:'+brandTc+brandBorder+'">'+esc(brandLabel)+'</span>':'<span></span>')+
@@ -442,8 +452,8 @@ function richCard(p,m){
     couponRowHtml+
     '<div class="fp-rich-prices">'+(hasDiscount?'<div class="fp-rich-sale">$'+currentPrice.toFixed(2)+'</div><div class="fp-rich-was">$'+wasPrice.toFixed(2)+'</div>':'<div class="fp-rich-reg">'+(pr?'$'+pr.toFixed(2):'See price')+'</div>')+'</div>'+
     (m.code?'<div class="fp-rich-code"><span class="fp-rich-code-lbl">Code:</span><span class="fp-rich-code-val">'+esc(m.code)+'</span></div>':'')+
-    (m.optionsUrl
-      ? '<a class="fp-rich-add fp-rich-choose" href="'+esc(m.optionsUrl)+'">Choose Options</a>'
+    (optionsUrl
+      ? '<a class="fp-rich-add fp-rich-choose" href="'+esc(optionsUrl)+'">Choose Options</a>'
       : canBuy
       ? '<button type="button" class="fp-rich-add'+(inCartLabel(p.entityId)?' added':'')+'" id="'+bid+'" data-pid="'+p.entityId+'" data-lbl="'+((p.availabilityV2&&p.availabilityV2.status)==='Preorder'?'PRE ORDER NOW':'Add to Cart')+'" onclick="fpAdd('+p.entityId+','+(hasDiscount?currentPrice:pr)+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">'+(inCartLabel(p.entityId)||((p.availabilityV2&&p.availabilityV2.status)==='Preorder'?'PRE ORDER NOW':'Add to Cart'))+'</button>'
       : '<button type="button" class="fp-rich-add fp-rich-notify" onclick="fpNotifyMe('+p.entityId+',this)">Notify Me</button>')+
@@ -1808,7 +1818,7 @@ window.fpAdd=async function(id,price,name,bid){
   var b=$(bid);if(b){b.disabled=true;b.textContent='Adding...';}
   var ok=await addToCartSilent(id);
   if(!ok){
-    if(b){b.textContent='Add to Cart';b.disabled=false;}
+    if(b){b.textContent=b.getAttribute('data-lbl')||'Add to Cart';b.disabled=false;}
     toast('Couldn’t add to cart — item may be unavailable');
     return;
   }
@@ -3595,12 +3605,12 @@ async function fpFetchProductsCached(ids){
   var missing=[];
   ids.forEach(function(id){
     if(PRODUCT_CACHE[id])return;
-    var c=fpCacheGet('fp_prod_'+id,900000);
+    var c=fpCacheGet('fp_prod2_'+id,900000);   // v2: entries now carry productOptions (preorder-tile fix)
     if(c)PRODUCT_CACHE[id]=c;else missing.push(id);
   });
   if(missing.length){
     await fetchProducts(missing);
-    missing.forEach(function(id){if(PRODUCT_CACHE[id])fpCacheSet('fp_prod_'+id,PRODUCT_CACHE[id]);});
+    missing.forEach(function(id){if(PRODUCT_CACHE[id])fpCacheSet('fp_prod2_'+id,PRODUCT_CACHE[id]);});
   }
 }
 // Skeleton section rendered at 0ms in the carousel's spot — flyer-format shape
