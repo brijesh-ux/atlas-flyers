@@ -453,7 +453,11 @@ function richCard(p,m){
     '<div class="fp-rich-prices">'+(hasDiscount?'<div class="fp-rich-sale">$'+currentPrice.toFixed(2)+'</div><div class="fp-rich-was">$'+wasPrice.toFixed(2)+'</div>':'<div class="fp-rich-reg">'+(pr?'$'+pr.toFixed(2):'See price')+'</div>')+'</div>'+
     (m.code?'<div class="fp-rich-code"><span class="fp-rich-code-lbl">Code:</span><span class="fp-rich-code-val">'+esc(m.code)+'</span></div>':'')+
     (optionsUrl
-      ? '<a class="fp-rich-add fp-rich-choose" href="'+esc(optionsUrl)+'">Choose Options</a>'
+      ? (bcStatus==='Unavailable'
+          /* has variants but ALL are out of stock -> Notify Me (links to PDP where the
+             per-variant back-in-stock subscribes to the size the shopper picks) */
+          ? '<a class="fp-rich-add fp-rich-notify" href="'+esc(optionsUrl)+'">Notify Me</a>'
+          : '<a class="fp-rich-add fp-rich-choose" href="'+esc(optionsUrl)+'">Choose Options</a>')
       : canBuy
       ? '<button type="button" class="fp-rich-add'+(inCartLabel(p.entityId)?' added':'')+'" id="'+bid+'" data-pid="'+p.entityId+'" data-lbl="'+((p.availabilityV2&&p.availabilityV2.status)==='Preorder'?'PRE ORDER NOW':'Add to Cart')+'" onclick="fpAdd('+p.entityId+','+(hasDiscount?currentPrice:pr)+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">'+(inCartLabel(p.entityId)||((p.availabilityV2&&p.availabilityV2.status)==='Preorder'?'PRE ORDER NOW':'Add to Cart'))+'</button>'
       : '<button type="button" class="fp-rich-add fp-rich-notify" onclick="fpNotifyMe('+p.entityId+',this)">Notify Me</button>')+
@@ -2532,6 +2536,53 @@ setTimeout(function(){
     setInterval(pdpSync,700);   // enforcement heartbeat (class toggle is cheap)
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',nmBoot);else nmBoot();
+})();
+
+// ==================== PDP AVAILABILITY TEXT ====================
+// The theme authors the product's "Availability Text" (BC availability_description)
+// inside a hidden `dl.productView-info` ("Availability:" row) but never shows it.
+// Surface it right AFTER the two in-store-location boxes (ul.stock-status-list),
+// as a plain muted line. Shows only when the field is filled (blank => nothing).
+(function(){
+  function availText(){
+    var dts=document.querySelectorAll('dt.productView-info-name');
+    for(var i=0;i<dts.length;i++){
+      if(/^availability\s*:?\s*$/i.test((dts[i].textContent||'').trim())){
+        var dd=dts[i].nextElementSibling;
+        if(dd&&/productView-info-value/.test(dd.className||'')) return (dd.textContent||'').trim();
+      }
+    }
+    return '';
+  }
+  function inject(){
+    var ul=document.querySelector('ul.stock-status-list');
+    if(!ul) return;                                        // store-box list not rendered yet
+    if(document.getElementById('fp-avail-note')) return;   // already placed (idempotent)
+    var txt=availText();
+    if(!txt) return;                                       // no availability text on this product
+    if(!document.getElementById('fp-avail-note-css')){
+      var st=document.createElement('style'); st.id='fp-avail-note-css';
+      st.textContent='#fp-avail-note{margin:10px 0 0;font:500 13.5px/1.45 Roboto,Arial,sans-serif;color:#5a5a5a;display:flex;gap:7px;align-items:flex-start}'
+        +'#fp-avail-note svg{flex:0 0 auto;width:15px;height:15px;margin-top:1px;fill:#8a8a8a}';
+      document.head.appendChild(st);
+    }
+    var note=document.createElement('div');
+    note.id='fp-avail-note';
+    note.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg><span></span>';
+    note.querySelector('span').textContent=txt;           // textContent -> no escaping needed
+    ul.insertAdjacentElement('afterend', note);            // directly after the two store boxes
+  }
+  function boot(){
+    if(!document.querySelector('input[name="product_id"]')) return;  // PDPs only
+    inject();
+    var tries=0, iv=setInterval(function(){ inject(); if(document.getElementById('fp-avail-note')||++tries>30) clearInterval(iv); },400); // store boxes may render late
+    if('MutationObserver' in window){
+      var pend=false;
+      new MutationObserver(function(){ if(pend)return; pend=true; requestAnimationFrame(function(){pend=false; inject();}); })
+        .observe(document.body||document.documentElement,{childList:true,subtree:true});  // re-inject if the section re-renders
+    }
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
 
 // ==================== CATEGORY PAGE TILES ====================
