@@ -440,11 +440,15 @@ function richCard(p,m){
   // products without the field keep today's behavior.
   var optionsUrl=m.optionsUrl;
   if(optionsUrl&&bcStatus==='Preorder'&&p.productOptions&&p.productOptions.edges&&p.productOptions.edges.length===0)optionsUrl=null;
-  // Contact-for-Pricing (BigCommerce availability=disabled, flagged via m.cfp
-  // from the SearchSpring `availability` field / native card): no price, no
-  // ribbon, no stock/viewing — just a CONTACT FOR PRICING button that opens the
-  // Klaviyo Special Order form. Matches the PDP + native category card.
-  if(m.cfp===true){
+  // Contact-for-Pricing = BigCommerce Purchasability "cannot be purchased in my
+  // online store" -> availabilityV2.status === 'Unavailable'. Read from LIVE
+  // BigCommerce (bcStatus), NOT SearchSpring's `availability` field: SS
+  // re-indexes on a lag, so right after a backend change the tile would be stale
+  // (e.g. show CONTACT FOR PRICING for a product just switched to Pre-Order)
+  // while the PDP is instant. bcStatus tracks the PDP with no SS dependency.
+  // Renders: no price, no ribbon, no stock/viewing — just a CONTACT FOR PRICING
+  // button that opens the Klaviyo Special Order form.
+  if(bcStatus==='Unavailable'){
     return '<div class="fp-rich" data-bk="'+esc((b&&b.key)||'')+'">'+
       '<div class="fp-rich-top">'+
         (brandLabel?'<span class="fp-rich-brand" style="background:'+brandBg+';color:'+brandTc+brandBorder+'">'+esc(brandLabel)+'</span>':'<span></span>')+
@@ -2945,7 +2949,7 @@ function catCollectItems(gridEl){
     if(isNaN(id)||id<=0)return;
     var hasAdd=!!card.querySelector('[data-button-type="add-cart"]');
     var pdpA=card.querySelector('a.card-figure__link')||card.querySelector('.card-title a')||card.querySelector('a[href]');
-    items.push({id:id,optionsUrl:hasAdd?null:(pdpA?pdpA.getAttribute('href'):null),cfp:/contact\s*for\s*pric/i.test(card.textContent||'')});
+    items.push({id:id,optionsUrl:hasAdd?null:(pdpA?pdpA.getAttribute('href'):null)});
   });
   return items;
 }
@@ -3009,7 +3013,7 @@ async function initCategoryTiles(rerun){
         if(!PRODUCT_CACHE[x.id]||seen[x.id])return false;
         seen[x.id]=1;return true;
       }).map(function(x){
-        return richCard(PRODUCT_CACHE[x.id],{showTag:false,_sectionKey:'categoryPage',optionsUrl:x.optionsUrl,cfp:x.cfp});
+        return richCard(PRODUCT_CACHE[x.id],{showTag:false,_sectionKey:'categoryPage',optionsUrl:x.optionsUrl});
       }).join('');
     }
     var wrap=document.createElement('div');
@@ -3020,7 +3024,7 @@ async function initCategoryTiles(rerun){
       if(!(id>0))return null;
       var opt=null;
       if(String(x.ss_has_options)==='1'&&x.url){try{opt=new URL(x.url,location.href).pathname;}catch(e){}}
-      return {id:id,optionsUrl:opt,cfp:String(x.availability||'').toLowerCase()==='disabled'};
+      return {id:id,optionsUrl:opt};
     }
     if(ssMode){
       // filters active: SS supplies the filtered/sorted product ids for this
@@ -3293,7 +3297,7 @@ if('MutationObserver' in window){
           if(!PRODUCT_CACHE[x.id]||seen[x.id])return false;
           seen[x.id]=1;return true;
         }).map(function(x){
-          return richCard(PRODUCT_CACHE[x.id],{showTag:false,_sectionKey:'salePage',optionsUrl:x.optionsUrl,cfp:x.cfp});
+          return richCard(PRODUCT_CACHE[x.id],{showTag:false,_sectionKey:'salePage',optionsUrl:x.optionsUrl});
         }).join('');
       }
       function ssResultItem(x){
@@ -3301,7 +3305,7 @@ if('MutationObserver' in window){
         if(!(id>0))return null;
         var opt=null;
         if(String(x.ss_has_options)==='1'&&x.url){try{opt=new URL(x.url,location.href).pathname;}catch(e){}}
-        return {id:id,optionsUrl:opt,cfp:String(x.availability||'').toLowerCase()==='disabled'};
+        return {id:id,optionsUrl:opt};
       }
       wrap=document.createElement('div');
       wrap.className='fp-rich-grid fp-cat-grid';
