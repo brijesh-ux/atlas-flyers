@@ -440,6 +440,22 @@ function richCard(p,m){
   // products without the field keep today's behavior.
   var optionsUrl=m.optionsUrl;
   if(optionsUrl&&bcStatus==='Preorder'&&p.productOptions&&p.productOptions.edges&&p.productOptions.edges.length===0)optionsUrl=null;
+  // Contact-for-Pricing (BigCommerce availability=disabled, flagged via m.cfp
+  // from the SearchSpring `availability` field / native card): no price, no
+  // ribbon, no stock/viewing — just a CONTACT FOR PRICING button that opens the
+  // Klaviyo Special Order form. Matches the PDP + native category card.
+  if(m.cfp===true){
+    return '<div class="fp-rich" data-bk="'+esc((b&&b.key)||'')+'">'+
+      '<div class="fp-rich-top">'+
+        (brandLabel?'<span class="fp-rich-brand" style="background:'+brandBg+';color:'+brandTc+brandBorder+'">'+esc(brandLabel)+'</span>':'<span></span>')+
+        tagHtml+
+      '</div>'+
+      (img?'<div class="fp-rich-img-wrap"'+(quickView?' onclick="fpQuickView('+p.entityId+')"':(p.path?' style="cursor:pointer" onclick="fpTrackRecent('+p.entityId+');location.href=\''+esc(p.path)+'\'"':''))+'><img src="'+img+'" alt="'+esc(p.name)+'" loading="lazy"></div>':'<div class="fp-rich-ph">🔧</div>')+
+      '<a class="fp-rich-name" href="'+esc(p.path||'#')+'" onclick="fpTrackRecent('+p.entityId+')">'+esc(cn)+'</a>'+
+      '<div class="fp-rich-meta"><div class="fp-rich-sku">SKU# '+esc(p.sku||p.entityId)+'</div></div>'+
+      '<button type="button" class="fp-rich-add fp-rich-choose" onclick="fpContactForPricing('+p.entityId+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+esc(String(p.sku||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">CONTACT FOR PRICING</button>'+
+    '</div>';
+  }
   return '<div class="fp-rich" data-bk="'+esc((b&&b.key)||'')+'">'+
     '<div class="fp-rich-top">'+
       (brandLabel?'<span class="fp-rich-brand" style="background:'+brandBg+';color:'+brandTc+brandBorder+'">'+esc(brandLabel)+'</span>':'<span></span>')+
@@ -1848,6 +1864,47 @@ function updateCartBar(){
   $('fp-checkout').classList.toggle('visible',c>0);
 }
 function toast(msg){var t=$('fp-toast');t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2200);}
+// ==================== CONTACT FOR PRICING ====================
+// Call-for-pricing products (BigCommerce availability=disabled) get a "CONTACT
+// FOR PRICING" tile/PDP button that opens the Klaviyo "Special Order" form
+// (form id YyRARa — the SAME form the theme's .klaviyo_form_trigger uses).
+// Best-effort prefill of the form's "Product Name and SKU" field from the
+// clicked product (on a PDP the theme also prefills it, harmless if both run).
+window.fpContactForPricing=function(pid,name,sku){
+  window._klOnsite=window._klOnsite||[];
+  window._klOnsite.push(['openForm','YyRARa']);
+  var val=((sku?sku+' - ':'')+(name||'')).trim();
+  if(!val)return;
+  var tries=0,iv=setInterval(function(){
+    if(++tries>25){clearInterval(iv);return;}
+    var form=[].slice.call(document.querySelectorAll('form.klaviyo-form')).filter(function(f){
+      return /product\s*name/i.test(f.innerText||'')&&f.offsetParent!==null;
+    })[0];
+    if(!form)return;
+    var input=form.querySelector('input[type="text"],input[type="search"],input:not([type])');
+    if(!input)return;
+    try{
+      var setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+      setter.call(input,val);
+      input.dispatchEvent(new Event('input',{bubbles:true}));
+      input.dispatchEvent(new Event('change',{bubbles:true}));
+    }catch(e){input.value=val;}
+    clearInterval(iv);
+  },150);
+};
+// The theme's PDP "Contact For Pricing" button is a DEAD mailto: link
+// (a.custom-contact-us-btn) — clicking it does nothing on desktops with no mail
+// handler. Intercept it (plus the hidden "Special Order" trigger) and open the
+// Klaviyo Special Order form instead. Delegated + capture so it wins the click.
+document.addEventListener('click',function(e){
+  var t=e.target.closest&&e.target.closest('a.custom-contact-us-btn');
+  if(!t)return;
+  if(!/contact\s*for\s*pric|special\s*order/i.test((t.textContent||'').replace(/\s+/g,' ')))return;
+  e.preventDefault();
+  var skuEl=document.querySelector('.title-sku span,.productView-info [data-product-sku],.productView .sku');
+  var nameEl=document.querySelector('h1.productView-title,.productView-title');
+  window.fpContactForPricing(0,(nameEl?nameEl.textContent:''),(skuEl?skuEl.textContent:''));
+},true);
 // Copy a product's coupon code to the clipboard with brief "Copied!" feedback.
 window.fpCopyProductCoupon=function(e,el){
   e.stopPropagation();           // don't trigger the tile's quick-view
@@ -2888,7 +2945,7 @@ function catCollectItems(gridEl){
     if(isNaN(id)||id<=0)return;
     var hasAdd=!!card.querySelector('[data-button-type="add-cart"]');
     var pdpA=card.querySelector('a.card-figure__link')||card.querySelector('.card-title a')||card.querySelector('a[href]');
-    items.push({id:id,optionsUrl:hasAdd?null:(pdpA?pdpA.getAttribute('href'):null)});
+    items.push({id:id,optionsUrl:hasAdd?null:(pdpA?pdpA.getAttribute('href'):null),cfp:/contact\s*for\s*pric/i.test(card.textContent||'')});
   });
   return items;
 }
@@ -2952,7 +3009,7 @@ async function initCategoryTiles(rerun){
         if(!PRODUCT_CACHE[x.id]||seen[x.id])return false;
         seen[x.id]=1;return true;
       }).map(function(x){
-        return richCard(PRODUCT_CACHE[x.id],{showTag:false,_sectionKey:'categoryPage',optionsUrl:x.optionsUrl});
+        return richCard(PRODUCT_CACHE[x.id],{showTag:false,_sectionKey:'categoryPage',optionsUrl:x.optionsUrl,cfp:x.cfp});
       }).join('');
     }
     var wrap=document.createElement('div');
@@ -2963,7 +3020,7 @@ async function initCategoryTiles(rerun){
       if(!(id>0))return null;
       var opt=null;
       if(String(x.ss_has_options)==='1'&&x.url){try{opt=new URL(x.url,location.href).pathname;}catch(e){}}
-      return {id:id,optionsUrl:opt};
+      return {id:id,optionsUrl:opt,cfp:String(x.availability||'').toLowerCase()==='disabled'};
     }
     if(ssMode){
       // filters active: SS supplies the filtered/sorted product ids for this
@@ -3236,7 +3293,7 @@ if('MutationObserver' in window){
           if(!PRODUCT_CACHE[x.id]||seen[x.id])return false;
           seen[x.id]=1;return true;
         }).map(function(x){
-          return richCard(PRODUCT_CACHE[x.id],{showTag:false,_sectionKey:'salePage',optionsUrl:x.optionsUrl});
+          return richCard(PRODUCT_CACHE[x.id],{showTag:false,_sectionKey:'salePage',optionsUrl:x.optionsUrl,cfp:x.cfp});
         }).join('');
       }
       function ssResultItem(x){
@@ -3244,7 +3301,7 @@ if('MutationObserver' in window){
         if(!(id>0))return null;
         var opt=null;
         if(String(x.ss_has_options)==='1'&&x.url){try{opt=new URL(x.url,location.href).pathname;}catch(e){}}
-        return {id:id,optionsUrl:opt};
+        return {id:id,optionsUrl:opt,cfp:String(x.availability||'').toLowerCase()==='disabled'};
       }
       wrap=document.createElement('div');
       wrap.className='fp-rich-grid fp-cat-grid';
