@@ -1,3 +1,4 @@
+/* v90 (30JULY2026): + HomeSections controller (sheet gid 108791889). Base: live 43f7e39. */
 (function(){
 'use strict';
 
@@ -3863,4 +3864,266 @@ function fpRecsBoot(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',fpRecsBoot);else fpRecsBoot();
 
+})();
+
+
+
+/* ============================================================================
+   v90: HOME SECTIONS CONTROLLER — show/hide, reorder, retitle sections, apply
+   per-section SOURCE overrides, define Explore tabs (EXPLORETAB rows) and add
+   CATSTRIP product strips on the home page — all driven by the flyer sheet
+   "HomeSections" tab (ORDER | SECTION | ACTIVE | TITLE | SOURCE).
+   SOURCE semantics:
+     TOPDEALS / CLEARANCE / TENOFF  → target link URL
+     FEATUREDBRAND                  → brand/category path or SearchSpring URL for the strip
+     FEATUREDVIDEO                  → "productURL | videoURL" (pipe-separated)
+     CATSTRIP                       → category path or SearchSpring URL (new strip per row)
+     EXPLORETAB                     → tab source (TITLE = tab label), replaces client tabs
+   Requires theme V72+ (ath-* home). Safe no-op on older themes / unreachable sheet.
+   ============================================================================ */
+(function(){
+  var pth=location.pathname;
+  if(pth!=='/'&&pth!=='/index.php')return;
+  var SHEET='https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=108791889';
+  var SEL={
+    HERO:'#ath-hero', TRENDING:'.ath-trendsec', TOPDEALS:'#atlas-top-deals', CLEARANCE:'.ath-clrsec',
+    EVENTS:'.ath-evsec', TENOFF:'.ath-slimsec', EXPLORE:'.ath-xp',
+    CATEGORIES:'.ath-mega-sec', BRANDS:'.ath-brands', HAMMERS:'.hammer-section',
+    FEATUREDBRAND:'.ath-fbrand', INDUSTRIAL:'.ath-indus', WHYATLAS:'.ath-why',
+    REVIEWS:'.ath-revs', FEATUREDVIDEO:'#atlas-featured-video', HOWTO:'.ath-howto',
+    RECOMMENDED:'#ath-recs', ABOUT:'.ath-about', SOCIAL:'.social-media-section'
+  };
+  function rootOf(key){
+    var el=document.querySelector(SEL[key]);
+    if(!el)return null;
+    if(key==='HAMMERS')el=el.closest('.container-wide')||el;
+    return el;
+  }
+  function extraNodes(key){
+    if(key!=='SOCIAL')return [];
+    var out=[]; var e=document.querySelector('[class*="elfsight-app-"]');
+    if(e)out.push(e);
+    return out;
+  }
+  function parseCSV(t){
+    var rows=[],row=[],cur='',q=false;
+    for(var i=0;i<t.length;i++){var c=t[i];
+      if(q){ if(c==='"'){ if(t[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
+      else if(c==='"')q=true;
+      else if(c===','){row.push(cur);cur='';}
+      else if(c==='\n'||c==='\r'){ if(c==='\r'&&t[i+1]==='\n')i++; row.push(cur);cur=''; if(row.length>1||row[0]!=='')rows.push(row); row=[]; }
+      else cur+=c;
+    }
+    if(cur!==''||row.length){row.push(cur);rows.push(row);}
+    return rows;
+  }
+  function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function safeUrl(u){u=String(u||'').trim();return /^(https?:\/\/|\/|#|mailto:)/i.test(u)?u:'';}
+  function money(v){return '$'+Number(v).toFixed(2);}
+  function tok(){return window.BC_STOREFRONT_TOKEN||window.global_bct||'';}
+  var GQL_FIELDS='entityId name sku path addToCartUrl availabilityV2{status} inventory{isInStock} prices{price{value}basePrice{value}retailPrice{value}} brand{name} defaultImage{url(width:400)} productOptions(first:1){edges{node{entityId}}}';
+  function gql(q,vars){
+    return fetch(location.origin+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok()},body:JSON.stringify({query:q,variables:vars})}).then(function(r){return r.ok?r.json():null;});
+  }
+  function catTile(p){
+    /* prefer the shared theme renderer if the Explore section registered one */
+    if(window.__athTile)return window.__athTile(p);
+    var pr=p.prices&&p.prices.price?p.prices.price.value:null;
+    var base=p.prices&&p.prices.basePrice?p.prices.basePrice.value:null;
+    var rp=p.prices&&p.prices.retailPrice?p.prices.retailPrice.value:null;
+    var was=null;
+    if(base&&pr&&base>pr)was=base; else if(rp&&pr&&rp>pr)was=rp;
+    var st=p.availabilityV2&&p.availabilityV2.status;
+    var inStock=p.inventory?p.inventory.isInStock!==false:true;
+    var stock = st==='Preorder' ? '<div class="fp-rich-stock fp-rich-stock-ord">&#10003; Available to Order</div>'
+      : (st==='Unavailable'||!inStock) ? '<div class="fp-rich-stock fp-rich-stock-oos">Out of Stock</div>'
+      : '<div class="fp-rich-stock">&#10003; In Stock</div>';
+    var img=p.defaultImage?p.defaultImage.url:'';
+    var hasOpts=p.productOptions&&p.productOptions.edges&&p.productOptions.edges.length>0;
+    var add;
+    if(st==='Unavailable'||!inStock){ add='<a href="'+esc(p.path)+'" class="fp-rich-add fp-rich-add-oos">Out of Stock</a>'; }
+    else if(st==='Preorder'){ add='<a href="'+esc(p.path)+'" class="fp-rich-add fp-rich-choose">Pre-Order Now</a>'; }
+    else if(hasOpts){ add='<a href="'+esc(p.path)+'" class="fp-rich-add fp-rich-choose">Choose Options</a>'; }
+    else if(p.addToCartUrl){ add='<a href="'+esc(p.addToCartUrl)+'" class="fp-rich-add">Add to Cart</a>'; }
+    else { add='<a href="'+esc(p.path)+'" class="fp-rich-add fp-rich-choose">View Details</a>'; }
+    return '<article class="fp-rich fp-theme-card" data-entity-id="'+p.entityId+'">'
+      +'<div class="fp-rich-top">'+(p.brand&&p.brand.name?'<span class="fp-rich-brand" data-fp-brand="'+esc(p.brand.name)+'">'+esc(p.brand.name)+'</span>':'<span></span>')+'<span></span></div>'
+      +'<a href="'+esc(p.path)+'" class="fp-rich-img-wrap" aria-label="'+esc(p.name)+'">'+(img?'<img src="'+esc(img)+'" alt="'+esc(p.name)+'" loading="lazy">':'')+'</a>'
+      +'<a class="fp-rich-name" href="'+esc(p.path)+'">'+esc(p.name)+'</a>'
+      +'<div class="fp-rich-meta"><div class="fp-rich-sku">SKU# '+esc(p.sku||'')+'</div>'+stock+'</div>'
+      +'<div class="fp-rich-prices">'+(was!=null?'<div class="fp-rich-was">'+money(was)+'</div><div class="fp-rich-sale">'+money(pr)+'</div>':'<div class="fp-rich-reg">'+(pr!=null?money(pr):'')+'</div>')+'</div>'
+      +add+'</article>';
+  }
+  function fromRoute(path){
+    /* Category OR Brand path → products, live BC data */
+    return gql('query($p:String!){site{route(path:$p){node{__typename ... on Category{products(first:12){edges{node{'+GQL_FIELDS+'}}}} ... on Brand{products(first:12){edges{node{'+GQL_FIELDS+'}}}}}}}}',{p:path})
+      .then(function(d){var n=d&&d.data&&d.data.site&&d.data.site.route&&d.data.site.route.node;
+        return (n&&n.products&&n.products.edges||[]).map(function(e){return e.node;});});
+  }
+  function fromSearchspring(src){
+    var params='siteId=kncv3u&resultsFormat=native&resultsPerPage=12';
+    var m; var re=/filter:([\w.]+):([^:\/]*)(?::([^:\/]*))?/g;
+    while((m=re.exec(src))){
+      if(m[3]!==undefined&&m[3]!==''&&m[2]!==m[3]){ params+='&filter.'+m[1]+'.low='+encodeURIComponent(m[2])+'&filter.'+m[1]+'.high='+encodeURIComponent(m[3]); }
+      else { params+='&filter.'+m[1]+'='+encodeURIComponent(m[2]); }
+    }
+    var q=(src.match(/search_query=([^&#]*)/)||[])[1];
+    if(q)params+='&q='+q;
+    var tg=(src.match(/[?&]tag=([^&#]*)/)||[])[1];
+    if(tg)params+='&filter.tags='+tg;
+    return fetch('https://kncv3u.a.searchspring.io/api/search/search.json?'+params)
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(d){
+        var ids=(d&&d.results||[]).map(function(r){return parseInt(r.uid,10);}).filter(Boolean).slice(0,12);
+        if(!ids.length)return [];
+        /* stock & prices must come from live BigCommerce, never SearchSpring */
+        return gql('query($ids:[Int!]){site{products(entityIds:$ids first:12){edges{node{'+GQL_FIELDS+'}}}}}',{ids:ids})
+          .then(function(g){
+            var nodes=(g&&g.data&&g.data.site&&g.data.site.products&&g.data.site.products.edges||[]).map(function(e){return e.node;});
+            var by={}; nodes.forEach(function(n){by[n.entityId]=n;});
+            return ids.map(function(i){return by[i];}).filter(Boolean);
+          });
+      });
+  }
+  function isSSUrl(src){return /\/shop\/|search_query|filter:|[?&]tag=/.test(src);}
+  function makeCatstrip(row,idx){
+    var sec=document.createElement('div');
+    sec.className='container-wide alternative-background ath-catstrip-dyn';
+    sec.setAttribute('data-ath-key','CATSTRIP'+idx);
+    sec.hidden=true;
+    var href=safeUrl(row.source)||'#';
+    sec.innerHTML='<div><a href="'+esc(href)+'" class="heading-link"><h2 class="main-heading">'+esc(row.title||'Shop Products')+'</h2></a>'
+      +'<div class="fp-scroll-wrap"><div class="fp-rich-grid" data-fp-autoscroll="1"></div></div></div>';
+    var grid=sec.querySelector('.fp-rich-grid');
+    (isSSUrl(href)?fromSearchspring(href):fromRoute(href)).then(function(items){
+      if(items&&items.length){grid.innerHTML=items.map(catTile).join('');sec.hidden=false;}
+    }).catch(function(){});
+    return sec;
+  }
+  /* ---- per-section SOURCE overrides ---- */
+  function applySource(it){
+    var src=safeUrl(it.source); if(!src&&it.key!=='FEATUREDVIDEO')return;
+    if(it.key==='TOPDEALS'){ var a=document.querySelector('#atlas-top-deals .ath-go'); if(a&&src)a.setAttribute('href',src); }
+    else if(it.key==='CLEARANCE'){ var c=document.querySelector('.ath-clr'); if(c&&src)c.setAttribute('href',src); }
+    else if(it.key==='TENOFF'){ var s=document.querySelector('.ath-slim'); if(s&&src)s.setAttribute('href',src); }
+    else if(it.key==='FEATUREDBRAND'){
+      if(!src)return;
+      var sec=document.querySelector('.ath-fbrand');
+      if(sec&&sec.getAttribute('data-source')===src)return; /* already the baked source */
+      if(window.__athFbLoad){ window.__athFbLoad(src); return; } /* theme V80+ hook */
+      /* older theme: refill the grid directly */
+      var grid=document.getElementById('ath-fbgrid'); if(!grid)return;
+      (isSSUrl(src)?fromSearchspring(src):fromRoute(src)).then(function(items){
+        if(items&&items.length>=3){grid.innerHTML=items.map(catTile).join('');if(sec)sec.setAttribute('data-source',src);}
+      }).catch(function(){});
+    }
+    else if(it.key==='FEATUREDVIDEO'){
+      var parts=String(it.source||'').split('|');
+      var purl=(parts[0]||'').trim(), vurl=(parts[1]||'').trim();
+      if((purl||vurl)&&window.__athVideoSet)window.__athVideoSet(purl,vurl); /* theme V80+ hook */
+    }
+  }
+  /* ---- EXPLORETAB rows replace the client-side Explore tabs ---- */
+  function applyExploreTabs(list){
+    var tabs=document.getElementById('ath-xtabs'); if(!tabs)return;
+    var wrap=tabs.parentNode;
+    /* drop previously-generated dynamic tabs/panels */
+    tabs.querySelectorAll('button[data-panel^="ath-xp-dyn"]').forEach(function(b){b.remove();});
+    wrap.querySelectorAll('.ath-xpanel[id^="ath-xp-dyn"]').forEach(function(p){p.remove();});
+    /* drop the baked client tabs (keep SSR Featured / New Arrivals) */
+    tabs.querySelectorAll('button[data-src]').forEach(function(b){
+      var p=document.getElementById(b.getAttribute('data-panel'));
+      if(p)p.remove(); b.remove();
+    });
+    list.forEach(function(it,i){
+      var src=safeUrl(it.source); if(!src)return;
+      var id='ath-xp-dyn'+(i+1);
+      var b=document.createElement('button');
+      b.type='button'; b.setAttribute('data-panel',id); b.setAttribute('data-src',src);
+      b.textContent=it.title||('Tab '+(i+1));
+      tabs.appendChild(b);
+      var p=document.createElement('div');
+      p.className='ath-xpanel'; p.id=id; p.hidden=true;
+      p.innerHTML='<div class="fp-scroll-wrap"><div class="fp-rich-grid" data-fp-autoscroll="1"></div></div>';
+      wrap.appendChild(p);
+    });
+    /* if the active tab vanished, fall back to Featured */
+    if(!tabs.querySelector('button.on')){
+      var f=tabs.querySelector('button'); if(f){f.classList.add('on');
+        var fp=document.getElementById(f.getAttribute('data-panel')); if(fp)fp.hidden=false;}
+    }
+  }
+  function apply(rows){
+    if(!rows||rows.length<2)return;
+    var head=rows[0].map(function(h){return h.trim().toUpperCase();});
+    function col(r,n){var i=head.indexOf(n);return i<0?'':String(r[i]||'').trim();}
+    var items=[];
+    rows.slice(1).forEach(function(r){
+      var key=col(r,'SECTION').toUpperCase(); if(!key)return;
+      items.push({key:key,order:parseFloat(col(r,'ORDER'))||9999,
+        active:/^(YES|Y|TRUE|1)$/i.test(col(r,'ACTIVE')),
+        title:col(r,'TITLE'),source:col(r,'SOURCE')});
+    });
+    if(!items.length)return;
+    /* re-applying (fresh CSV after cached): remove strips added by the last pass */
+    document.querySelectorAll('.ath-catstrip-dyn').forEach(function(n){n.remove();});
+    var exploreTabs=items.filter(function(it){return it.key==='EXPLORETAB'&&it.active;})
+                         .sort(function(a,b){return a.order-b.order;});
+    /* 1) visibility + titles + sources */
+    items.forEach(function(it){
+      if(it.key==='CATSTRIP'||it.key==='EXPLORETAB')return;
+      var el=rootOf(it.key); if(!el)return;
+      var nodes=[el].concat(extraNodes(it.key));
+      nodes.forEach(function(n){n.style.display=it.active?'':'none';});
+      if(!it.active)return;
+      if(it.title){
+        var h=el.querySelector('.ath-hd')||el.querySelector('h2.main-heading');
+        if(h){
+          var keepLink=h.querySelector('.ath-go');
+          h.textContent=it.title;
+          if(keepLink)h.appendChild(keepLink);
+        }
+      }
+      if(it.source)applySource(it);
+      else if(it.key==='FEATUREDVIDEO')applySource(it);
+    });
+    if(exploreTabs.length)applyExploreTabs(exploreTabs);
+    /* 2) reorder (HERO stays put — it lives in the theme hero region) */
+    var ci=0;
+    var ordered=items.filter(function(it){return it.key!=='HERO'&&it.key!=='EXPLORETAB';})
+                     .sort(function(a,b){return a.order-b.order;});
+    var parent=null;
+    var probe=rootOf('TOPDEALS')||rootOf('EXPLORE')||rootOf('ABOUT');
+    if(probe)parent=probe.parentNode;
+    if(parent){
+      ordered.forEach(function(it){
+        var el;
+        if(it.key==='CATSTRIP'){ if(!it.active)return; el=makeCatstrip(it,++ci); }
+        else { el=rootOf(it.key); if(el&&el.parentNode!==parent)el=null; }
+        if(!el)return;
+        parent.appendChild(el);
+        extraNodes(it.key).forEach(function(n){ if(n.parentNode===parent)parent.appendChild(n); });
+      });
+    } else {
+      /* no known parent (old theme) — still allow CATSTRIP appends after brands */
+      items.forEach(function(it){ if(it.key!=='CATSTRIP'||!it.active)return;
+        var b=rootOf('BRANDS'); if(b&&b.parentNode)b.parentNode.insertBefore(makeCatstrip(it,++ci),b.nextSibling); });
+    }
+  }
+  function boot(){
+    try{
+      var KEY='ath_homesections_v1';
+      var cached=null;
+      try{cached=sessionStorage.getItem(KEY);}catch(e){}
+      if(cached){ try{apply(parseCSV(cached));}catch(e){} }
+      fetch(SHEET).then(function(r){return r.ok?r.text():'';}).then(function(t){
+        if(!t||t.charAt(0)==='<')return;
+        var changed=(t!==cached);
+        try{sessionStorage.setItem(KEY,t);}catch(e){}
+        if(changed)apply(parseCSV(t));
+      }).catch(function(){});
+    }catch(e){}
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);
+  else boot();
 })();
