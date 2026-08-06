@@ -2156,12 +2156,11 @@ async function init(){
   (SECTION_DATA.allCoupons||[]).forEach(function(r){
     var idCell=(r['Big Commerce Product ID']||r['BigCommerce Product ID']||r['Product ID']||'').toString();
     var code=(r['Coupon Code']||'').toString().trim();
-    if(!code)return;
     idCell.split(',').forEach(function(pid){
       pid=pid.trim();
       if(!pid)return;
-      PRODUCT_COUPONS[pid]=code;
-      if(!seenCoupon[pid]){seenCoupon[pid]=1;couponIdOrder.push(pid);}
+      if(code)PRODUCT_COUPONS[pid]=code; // ✂ sticker only when a code is typed
+      if(!seenCoupon[pid]){seenCoupon[pid]=1;couponIdOrder.push(pid);} // product shows regardless
     });
   });
   COUPON_PRODUCT_IDS=couponIdOrder;
