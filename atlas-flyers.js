@@ -1,4 +1,4 @@
-/* v90 (30JULY2026): + HomeSections controller (sheet gid 108791889). Base: live 43f7e39. */
+/* v91 (23SEP2026): PDP CTA owned by BigCommerce Purchasability - no duplicate NOTIFY ME on 'Unavailable' (Contact For Pricing) products. Base: live 66cb7b6. */
 (function(){
 'use strict';
 
@@ -2549,13 +2549,73 @@ setTimeout(function(){
     }
     return false;
   }
+  // v91: the CTA on a PDP is owned by BigCommerce Purchasability, not by the DOM.
+  // Radio 3 ("This product cannot be purchased in my online store") =>
+  // availabilityV2.status 'Unavailable' => the theme renders Contact For Pricing
+  // and NO add button - which the !abs.length test in pdpSync reads as "0
+  // inventory" and answers with a second, wrong NOTIFY ME button.
+  // Resolved ONCE per PDP and PRODUCT-LEVEL on purpose: picking an unavailable
+  // variant on a normal product must still get Notify Me, and a product-level
+  // read cannot be flipped by variant selection the way
+  // BCData.product_attributes.purchasable can (it goes false on an unavailable
+  // combination) - which is why that flag is only the offline fallback below.
+  //   'Unavailable' + Track inventory OFF  -> theme SHOWS Contact For Pricing (just drop our button)
+  //   'Unavailable' + Track inventory ON/0 -> theme HIDES it, leaving no CTA   (restore it too)
+  var fpPdpUnavail=null;   // null = not resolved yet, true/false once known
+  function fpBootPurchasable(){
+    try{
+      var a=window.BCData&&BCData.product_attributes;
+      return (a&&typeof a.purchasable!=='undefined')?a.purchasable:null;
+    }catch(e){return null;}
+  }
+  function fpResolvePdpStatus(pid,done){
+    STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
+    var fallback=function(){
+      // GraphQL unreachable: fall back to the page-load purchasable flag, which
+      // is still product-level before the shopper has touched any option.
+      // Worst case this resolves false and we behave exactly as v90 did.
+      fpPdpUnavail=(fpBootPurchasable()===false);
+      if(done)done();
+    };
+    if(!STORE_TOKEN||!pid)return fallback();
+    try{
+      fetch(STORE+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+STORE_TOKEN},body:JSON.stringify({query:'query($p:Int!){site{product(entityId:$p){availabilityV2{status}}}}',variables:{p:pid}})})
+        .then(function(r){return r.ok?r.json():null;})
+        .then(function(d){
+          var pr=d&&d.data&&d.data.site&&d.data.site.product;
+          var st=pr&&pr.availabilityV2&&pr.availabilityV2.status;
+          if(st){fpPdpUnavail=(st==='Unavailable');if(done)done();}
+          else fallback();
+        })
+        .catch(fallback);
+    }catch(e){fallback();}
+  }
+  // Track-inventory ON + 0 stock: the theme sets an inline display:none on its
+  // own Contact For Pricing wrapper, so ours must be inline + important to win.
+  function fpShowContactBtn(form){
+    if(!form)return;
+    var w=form.querySelector('.product-contact-us-btn-wrapper');
+    if(w&&getComputedStyle(w).display==='none')w.style.setProperty('display','inline-block','important');
+  }
   function pdpSync(){
     try{
       var pidEl=document.querySelector('input[name="product_id"]');
-      var abs=pdpAddButtons();
       if(!pidEl)return;
+      var abs=pdpAddButtons();
       var addForm=document.querySelector('form[data-cart-item-add]');
       if(!abs.length&&!addForm)return;
+      // v91: Purchasability radio 3 - the theme owns this CTA, we stay out of it
+      if(fpPdpUnavail===true){
+        var mineU=document.getElementById('fp-pdp-notify');
+        if(mineU&&mineU.parentNode)mineU.parentNode.removeChild(mineU);
+        document.body.classList.remove('fp-pdp-unavail');   // only gates #form-action-addToCart, which does not exist here
+        fpShowContactBtn(addForm);
+        return;
+      }
+      // v91: status not resolved yet AND no add button rendered is ambiguous
+      // (could be 'Unavailable', could be a genuine 0-stock product) - wait for
+      // the answer instead of flashing the wrong CTA for a few hundred ms.
+      if(fpPdpUnavail===null&&!abs.length)return;
       var un=!abs.length||pdpUnavailable();   // v79: no add button rendered = 0 inventory
       if(un&&!document.body.classList.contains('fp-pdp-unavail')){
         var nowT=Date.now();
@@ -2586,7 +2646,9 @@ setTimeout(function(){
     }catch(e){}
   }
   function nmBoot(){
-    if(!document.querySelector('input[name="product_id"]'))return;   // PDPs only
+    var pidEl0=document.querySelector('input[name="product_id"]');
+    if(!pidEl0)return;   // PDPs only
+    fpResolvePdpStatus(parseInt(pidEl0.value,10),pdpSync);   // v91: resolve BC Purchasability, then re-sync
     pdpSync();
     [800,2000,4000].forEach(function(ms){setTimeout(pdpSync,ms);});
     document.addEventListener('change',function(){setTimeout(pdpSync,150);setTimeout(pdpSync,700);},true);
