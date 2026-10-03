@@ -1,4 +1,4 @@
-/* v91 (23SEP2026): PDP CTA owned by BigCommerce Purchasability - no duplicate NOTIFY ME on 'Unavailable' (Contact For Pricing) products. Base: live 66cb7b6. */
+/* v92 (03OCT2026): fast Shop-by-Brand coupon injection - brand-only GraphQL in parallel batches + 24h cache (was full-product fetch of ~4,700 serially, blocking load ~45s). Base: v91. */
 (function(){
 'use strict';
 
@@ -48,9 +48,9 @@ var PRODUCT_CACHE = {};
 var BRANDS_DEALS = [];
 var FAQS = [];
 var FAQS_FALLBACK = [
-  {q:'What deals does Atlas Tools & Machinery currently have?', a:'Check our active sections above — Flash Sales, Price Drop, BOGO Deals, Hot Deals, Under $99, Clearance, Free Tool Kit Deals, Free Battery promos, and Atlas Exclusive Deals. All are updated regularly.'},
-  {q:'Where are Atlas Tools & Machinery store locations?', a:'Two GTA locations: 871 Islington Avenue, Toronto ON · 111 Creditview Road, Vaughan ON. Most deals are available at both stores and online at atlas-machinery.com.'},
-  {q:'Does Atlas offer free shipping?', a:'Yes — free shipping on orders over $149 and under 50 lbs within Canada.'},
+  {q:'What deals does Atlas Tools & Machinery currently have?', a:'Check our active sections above ‚Äî Flash Sales, Price Drop, BOGO Deals, Hot Deals, Under $99, Clearance, Free Tool Kit Deals, Free Battery promos, and Atlas Exclusive Deals. All are updated regularly.'},
+  {q:'Where are Atlas Tools & Machinery store locations?', a:'Two GTA locations: 871 Islington Avenue, Toronto ON ¬∑ 111 Creditview Road, Vaughan ON. Most deals are available at both stores and online at atlas-machinery.com.'},
+  {q:'Does Atlas offer free shipping?', a:'Yes ‚Äî free shipping on orders over $149 and under 50 lbs within Canada.'},
   {q:'Can I combine coupon codes?', a:'Only one coupon code can be applied per order. However, manufacturer promotions like free gift with purchase can still apply alongside a coupon code.'},
   {q:'How do I redeem the Veto Pro Pac bonus bag?', a:'1) Buy a qualifying Veto product from Atlas in-store or online. 2) Redeem at vetopropac.com. 3) Veto ships the bonus bag directly to your door.'}
 ];
@@ -72,8 +72,8 @@ var SECTION_DEFAULTS = {
   hotDeals: {tag:'HOT DEAL', cls:'fp-t-hot'},
   under99: {tag:'UNDER $99', cls:'fp-t-99'},
   clearance: {tag:'CLEARANCE', cls:'fp-t-clr'},
-  freeKit: {tag:'🎁 FREE KIT', cls:'fp-t-free'},
-  freeBattery: {tag:'🔋 FREE BATTERY', cls:'fp-t-free'},
+  freeKit: {tag:'üéÅ FREE KIT', cls:'fp-t-free'},
+  freeBattery: {tag:'üîã FREE BATTERY', cls:'fp-t-free'},
   atlasExclusive: {tag:'ATLAS EXCLUSIVE', cls:'fp-t-excl'},
   trendingProducts: {tag:'TRENDING', cls:'fp-t-hot'},
   trendingDeals: {tag:'TRENDING', cls:'fp-t-hot'},
@@ -148,16 +148,16 @@ function getBrandFromProduct(p){
 // Show if: in stock OR available to order (Preorder). Hide if: Unavailable,
 // out of stock, or product missing/deleted (null).
 function isShowable(p){
-  // "Should this product appear at all?" — hide only truly dead products:
+  // "Should this product appear at all?" ‚Äî hide only truly dead products:
   // missing object (failed fetch / deleted) or BC status Unavailable. Genuine
-  // out-of-stock products now SHOW (greyed, Add to Cart disabled — see isPurchasable).
+  // out-of-stock products now SHOW (greyed, Add to Cart disabled ‚Äî see isPurchasable).
   if(!p)return false;
   var av=p.availabilityV2&&p.availabilityV2.status;
   if(av==='Unavailable')return false;
   return true;
 }
 function isPurchasable(p){
-  // "Can this be added to cart?" — false when out of stock (and not a preorder).
+  // "Can this be added to cart?" ‚Äî false when out of stock (and not a preorder).
   if(!p)return false;
   var av=p.availabilityV2&&p.availabilityV2.status;
   if(av==='Preorder')return true;            // orderable
@@ -288,9 +288,9 @@ function cleanName(name,sku){
   name=name.replace(/^[A-Z]{2,3}-[A-Z0-9-]+\s+/i,'').trim();
   return name;
 }
-// Deterministic pseudo-random in [0,1) from a numeric seed. Same seed → same
+// Deterministic pseudo-random in [0,1) from a numeric seed. Same seed ‚Üí same
 // value (stable for all visitors), but we fold in a 30-minute time bucket so
-// the numbers rotate every half hour. No Math.random() → no per-reload flicker.
+// the numbers rotate every half hour. No Math.random() ‚Üí no per-reload flicker.
 function fpSeeded(seed){
   var x=Math.sin(seed)*10000;
   return x-Math.floor(x);
@@ -302,20 +302,20 @@ function fpBucket(){
 // ---- Product freshness (per-section daily rotation) ----
 // Same idea as fpBucket but in whole DAYS. days=rotation cadence (1..10) from the
 // Section Order "Rotation Days" column. Returns an integer that stays constant for
-// `days` days then ticks up — the rotating seed input for the section shuffle.
+// `days` days then ticks up ‚Äî the rotating seed input for the section shuffle.
 function fpDayBucket(days){
   var d=parseInt(days,10)||1; if(d<1)d=1; if(d>10)d=10;
   return Math.floor(Date.now()/(d*86400000));
 }
-// Cheap deterministic string hash (djb2) → stable number per section key, so each
+// Cheap deterministic string hash (djb2) ‚Üí stable number per section key, so each
 // section shuffles independently (two sections don't reorder in lockstep).
 function fpStrHash(s){
   s=String(s||''); var h=5381;
   for(var i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;
   return h;
 }
-// Deterministic seeded shuffle (Fisher-Yates driven by fpSeeded). Same seed → same
-// order for every visitor (no per-reload flicker); new day-bucket → fresh order.
+// Deterministic seeded shuffle (Fisher-Yates driven by fpSeeded). Same seed ‚Üí same
+// order for every visitor (no per-reload flicker); new day-bucket ‚Üí fresh order.
 // Returns a NEW array; the input is left untouched.
 function fpSeededShuffle(arr,seed){
   var a=arr.slice();
@@ -340,9 +340,9 @@ function fpFreshRows(sectionKey,rows){
   return fpSeededShuffle(rows,fpFreshSeed(sectionKey));
 }
 // Tiered "viewing now" count, correlated with the discount:
-//   >30% off  → 200–450 (hot deals look busy)
-//   1–30% off → 40–199
-//   full price→ 1–90 (and only shown on a subset; see fpVisitorShow)
+//   >30% off  ‚Üí 200‚Äì450 (hot deals look busy)
+//   1‚Äì30% off ‚Üí 40‚Äì199
+//   full price‚Üí 1‚Äì90 (and only shown on a subset; see fpVisitorShow)
 function visitorCount(p,savePct){
   var id=parseInt(p&&p.entityId,10)||0;
   var seed=id*31+fpBucket();
@@ -389,7 +389,7 @@ function richCard(p,m){
   // Per-product coupon code (from the "All Coupon Codes" tab). Shown as a
   // click-to-copy ticket on the top-right of the image. Blank/unmapped = none.
   var couponCode=PRODUCT_COUPONS[String(p.entityId)]||'';
-  var couponHtml=couponCode?'<span class="fp-rich-coupon" data-code="'+esc(couponCode)+'" onclick="fpCopyProductCoupon(event,this)" title="Click to copy"><span class="cc-code">'+esc(couponCode)+'</span><span class="cc-hint">✂</span></span>':'';
+  var couponHtml=couponCode?'<span class="fp-rich-coupon" data-code="'+esc(couponCode)+'" onclick="fpCopyProductCoupon(event,this)" title="Click to copy"><span class="cc-code">'+esc(couponCode)+'</span><span class="cc-hint">‚úÇ</span></span>':'';
   var bid='fpa-'+p.entityId+'-'+Math.random().toString(36).substr(2,4);
   var cn=cleanName(p.name,p.sku);
   var inWish=WISHLIST[p.entityId];
@@ -423,7 +423,7 @@ function richCard(p,m){
   //   Row 1: SKU (left) + stock badge (right)         -> .fp-rich-meta
   //   Row 2: viewing count (left) + savings ribbon (right, overhangs edge) -> .fp-rich-stats
   //   Row 3: coupon ticket, centered                   -> .fp-rich-couponrow
-  var viewingHtml=showVisitors?'<span class="fp-rich-viewing">👀 '+visitorCount(p,savePct)+' viewing</span>':'<span></span>';
+  var viewingHtml=showVisitors?'<span class="fp-rich-viewing">üëÄ '+visitorCount(p,savePct)+' viewing</span>':'<span></span>';
   var couponRowHtml=couponHtml?'<div class="fp-rich-couponrow">'+couponHtml+'</div>':'';
   // Tag: hidden by default unless m.showTag is true. Custom color via m.customTagColor.
   var tagStyle=m.customTagColor?' style="background:'+m.customTagColor+';color:#fff"':'';
@@ -433,11 +433,11 @@ function richCard(p,m){
   var canBuy=isPurchasable(p);
   var stockHtml=!canBuy
     ? '<div class="fp-rich-stock fp-rich-stock-oos">Out of Stock</div>'
-    : ((bcStatus==='Preorder')?'<div class="fp-rich-stock fp-rich-stock-ord">✓ Available to Order</div>':'<div class="fp-rich-stock">✓ In Stock</div>');
+    : ((bcStatus==='Preorder')?'<div class="fp-rich-stock fp-rich-stock-ord">‚úì Available to Order</div>':'<div class="fp-rich-stock">‚úì In Stock</div>');
   // A scraped/heuristic optionsUrl (native card had no add-cart button) must not
   // override a CONFIRMED no-options preorder: those quick-add fine via fpAdd and
   // the button should read PRE ORDER NOW, matching the PDP. Only fires when
-  // GraphQL productOptions data is present and says zero options — cached
+  // GraphQL productOptions data is present and says zero options ‚Äî cached
   // products without the field keep today's behavior.
   var optionsUrl=m.optionsUrl;
   if(optionsUrl&&bcStatus==='Preorder'&&p.productOptions&&p.productOptions.edges&&p.productOptions.edges.length===0)optionsUrl=null;
@@ -447,7 +447,7 @@ function richCard(p,m){
   // re-indexes on a lag, so right after a backend change the tile would be stale
   // (e.g. show CONTACT FOR PRICING for a product just switched to Pre-Order)
   // while the PDP is instant. bcStatus tracks the PDP with no SS dependency.
-  // Renders: no price, no ribbon, no stock/viewing — just a CONTACT FOR PRICING
+  // Renders: no price, no ribbon, no stock/viewing ‚Äî just a CONTACT FOR PRICING
   // button that opens the Klaviyo Special Order form.
   if(bcStatus==='Unavailable'){
     return '<div class="fp-rich" data-bk="'+esc((b&&b.key)||'')+'">'+
@@ -455,7 +455,7 @@ function richCard(p,m){
         (brandLabel?'<span class="fp-rich-brand" style="background:'+brandBg+';color:'+brandTc+brandBorder+'">'+esc(brandLabel)+'</span>':'<span></span>')+
         tagHtml+
       '</div>'+
-      (img?'<div class="fp-rich-img-wrap"'+(quickView?' onclick="fpQuickView('+p.entityId+')"':(p.path?' style="cursor:pointer" onclick="fpTrackRecent('+p.entityId+');location.href=\''+esc(p.path)+'\'"':''))+'><img src="'+img+'" alt="'+esc(p.name)+'" loading="lazy"></div>':'<div class="fp-rich-ph">🔧</div>')+
+      (img?'<div class="fp-rich-img-wrap"'+(quickView?' onclick="fpQuickView('+p.entityId+')"':(p.path?' style="cursor:pointer" onclick="fpTrackRecent('+p.entityId+');location.href=\''+esc(p.path)+'\'"':''))+'><img src="'+img+'" alt="'+esc(p.name)+'" loading="lazy"></div>':'<div class="fp-rich-ph">üîß</div>')+
       '<a class="fp-rich-name" href="'+esc(p.path||'#')+'" onclick="fpTrackRecent('+p.entityId+')">'+esc(cn)+'</a>'+
       '<div class="fp-rich-meta"><div class="fp-rich-sku">SKU# '+esc(p.sku||p.entityId)+'</div></div>'+
       '<button type="button" class="fp-rich-add fp-rich-choose" onclick="fpContactForPricing('+p.entityId+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+esc(String(p.sku||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">CONTACT FOR PRICING</button>'+
@@ -466,7 +466,7 @@ function richCard(p,m){
       (brandLabel?'<span class="fp-rich-brand" style="background:'+brandBg+';color:'+brandTc+brandBorder+'">'+esc(brandLabel)+'</span>':'<span></span>')+
       tagHtml+
     '</div>'+
-    (img?'<div class="fp-rich-img-wrap"'+(quickView?' onclick="fpQuickView('+p.entityId+')"':(p.path?' style="cursor:pointer" onclick="fpTrackRecent('+p.entityId+');location.href=\''+esc(p.path)+'\'"':''))+'><img src="'+img+'" alt="'+esc(p.name)+'" loading="lazy"></div>':'<div class="fp-rich-ph">🔧</div>')+
+    (img?'<div class="fp-rich-img-wrap"'+(quickView?' onclick="fpQuickView('+p.entityId+')"':(p.path?' style="cursor:pointer" onclick="fpTrackRecent('+p.entityId+');location.href=\''+esc(p.path)+'\'"':''))+'><img src="'+img+'" alt="'+esc(p.name)+'" loading="lazy"></div>':'<div class="fp-rich-ph">üîß</div>')+
     '<a class="fp-rich-name" href="'+esc(p.path||'#')+'" onclick="fpTrackRecent('+p.entityId+')">'+esc(cn)+'</a>'+
     '<div class="fp-rich-meta"><div class="fp-rich-sku">SKU# '+esc(p.sku||p.entityId)+'</div>'+stockHtml+'</div>'+
     '<div class="fp-rich-stats">'+viewingHtml+ribbonHtml+'</div>'+
@@ -526,7 +526,7 @@ async function renderProductSection(sectionKey,gridId){
 
   var pagingOn=getSetting('enable_section_paging',true);
 
-  // Small sections (or paging off): fetch all, filter, render at once — identical
+  // Small sections (or paging off): fetch all, filter, render at once ‚Äî identical
   // to the original behaviour.
   if(!pagingOn || items.length<=PAGE_SIZE){
     await fetchProducts(items.map(function(x){return x.id;}));
@@ -611,9 +611,9 @@ function renderFlyerTabs(){
     if(!a)return;
     var bk=a.getAttribute('data-scroll-bk');
     // Resolve the scroll target from the cell value (column E). Try, in order:
-    //   1) a brand strip in Brand Deals (.fp-brow[data-bk]) — e.g. "Bosch","Wiha"
-    //   2) a section by its Display Name — e.g. "June Flyer Deals"
-    //   3) a section by its Section ID — e.g. "monthlyFlyer"
+    //   1) a brand strip in Brand Deals (.fp-brow[data-bk]) ‚Äî e.g. "Bosch","Wiha"
+    //   2) a section by its Display Name ‚Äî e.g. "June Flyer Deals"
+    //   3) a section by its Section ID ‚Äî e.g. "monthlyFlyer"
     // If none is on the page, let the tab's normal link run. Case/space-forgiving.
     var key=bk.toLowerCase().replace(/\s+/g,' ').trim();
     var target=document.querySelector('.fp-brow[data-bk="'+key+'"]');
@@ -681,7 +681,7 @@ function setupFlyerArrows(){
 // the Deal of the Day tab as tiles, and is positioned via the Section Order tab.
 // The old single-product daily-rotation banner has been retired. The legacy
 // show_deal_of_the_day setting is still honoured (see renderProductSection).
-function renderDealOfDay(){ /* retired — see renderProductSection */ }
+function renderDealOfDay(){ /* retired ‚Äî see renderProductSection */ }
 
 // ==================== COUNTDOWN TIMER ====================
 var COUNTDOWN_TIMERS=[];
@@ -721,7 +721,7 @@ async function renderCountdown(){
         '<div class="fp-cd-unit"><div class="fp-cd-num" data-u="m">0</div><div class="fp-cd-lbl">Min</div></div>'+
         '<div class="fp-cd-unit"><div class="fp-cd-num" data-u="s">0</div><div class="fp-cd-lbl">Sec</div></div>'+
       '</div>'+
-      '<div class="fp-cd-img-wrap" onclick="fpQuickView('+it.id+')">'+(img?'<img src="'+img+'" loading="lazy">':'🔧')+'</div>'+
+      '<div class="fp-cd-img-wrap" onclick="fpQuickView('+it.id+')">'+(img?'<img src="'+img+'" loading="lazy">':'üîß')+'</div>'+
       '<div class="fp-cd-name">'+esc(cleanName(p.name,p.sku))+'</div>'+
       '<div class="fp-cd-prices"><span class="fp-cd-sale">$'+(os?sl.toFixed(2):pr?pr.toFixed(2):'?')+'</span>'+(os?'<span class="fp-cd-was">$'+pr.toFixed(2)+'</span>':'')+'</div>'+
       '<button class="fp-cd-add'+(inCartLabel(it.id)?' added':'')+'" id="'+bid+'" data-pid="'+it.id+'" onclick="fpAdd('+it.id+','+(os?sl:pr)+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">'+(inCartLabel(it.id)||'Add to Cart')+'</button>'+
@@ -777,7 +777,7 @@ function parseShopByBrand(rows){
     return {key:k,name:style?style.name:k,style:style,deals:b.deals,showCount:b.showCount};
   });
 }
-// Shop by Brand — per brand, render each DEAL as: a headline box on top, then a
+// Shop by Brand ‚Äî per brand, render each DEAL as: a headline box on top, then a
 // product strip. The brand's FIRST deal leads its strip with a product-sized
 // brand tile (logo, brand image, deal count, expiry); later deals start straight
 // from products. Each strip reuses the standard .fp-rich cards + VIEW ALL, and
@@ -794,38 +794,68 @@ var BRAND_FIRST_PAINT=8;
 // anywhere in Brand Deals (no duplication). Brand is detected from the product's
 // BigCommerce data. Products with no matching brand group are left out (they
 // still appear in the Monthly Flyer section).
+// v92 (fast): only brands with a "Shop All" group can receive injections, and we
+// only need each candidate's BRAND to place it ‚Äî so fetch brand-only in big
+// parallel batches (cheap GraphQL) with a 24h localStorage cache, instead of
+// fetching FULL product data for every coupon product (~4,700, 15/batch,
+// sequential) which blocked the page for ~45s. Injected tiles' full data is then
+// fetched lazily by the strip pager, only for the ones actually displayed.
 async function injectCouponProductsIntoBrandDeals(){
   if(!COUPON_PRODUCT_IDS.length||!BRANDS_DEALS.length)return;
+  STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
+  if(!STORE_TOKEN)return;
 
-  // Set of IDs already present anywhere in Brand Deals (for de-dupe).
-  var existing={};
+  // "Shop All" group per brand key ‚Äî if no brand has one, nothing can be injected.
+  var shopAllByKey={};
   BRANDS_DEALS.forEach(function(b){
-    b.deals.forEach(function(d){ (d.ids||[]).forEach(function(id){ existing[String(id)]=1; }); });
+    for(var j=0;j<b.deals.length;j++){
+      var label=((b.deals[j].offer||'')+' '+(b.deals[j].type||'')).toLowerCase();
+      if(label.indexOf('shop all')!==-1){shopAllByKey[b.key]=b.deals[j];break;}
+    }
   });
+  if(!Object.keys(shopAllByKey).length)return;
 
-  // Candidates = coupon products not already in Brand Deals.
+  // Candidates = coupon products not already anywhere in Brand Deals.
+  var existing={};
+  BRANDS_DEALS.forEach(function(b){ b.deals.forEach(function(d){ (d.ids||[]).forEach(function(id){ existing[String(id)]=1; }); }); });
   var candidates=COUPON_PRODUCT_IDS.filter(function(id){return !existing[String(id)];});
   if(!candidates.length)return;
 
-  // Need product details (for brand) — fetch them.
-  await fetchProducts(candidates);
-
+  // Resolve each candidate's BRAND only ‚Äî 24h cache first, then lightweight
+  // brand-only GraphQL (50/batch, 8 workers in parallel).
+  var brandOf={},need=[];
   candidates.forEach(function(id){
-    var p=PRODUCT_CACHE[id];
-    if(!isShowable(p))return;                 // skip OOS / failed
-    var brandStyle=getBrandFromProduct(p);
-    if(!brandStyle||!brandStyle.key)return;   // unknown / unmatched brand -> Monthly Flyer only
-    // Find this brand in Brand Deals.
-    var brand=null;
-    for(var i=0;i<BRANDS_DEALS.length;i++){ if(BRANDS_DEALS[i].key===brandStyle.key){brand=BRANDS_DEALS[i];break;} }
-    if(!brand)return;                         // brand has no Brand Deals group -> Monthly Flyer only
-    // Find its "Shop All" group (offer/type containing "shop all").
-    var shopAll=null;
-    for(var j=0;j<brand.deals.length;j++){
-      var label=((brand.deals[j].offer||'')+' '+(brand.deals[j].type||'')).toLowerCase();
-      if(label.indexOf('shop all')!==-1){shopAll=brand.deals[j];break;}
+    var c=fpCacheGet('fp_brand_'+id,86400000);
+    if(c!==null&&c!==undefined)brandOf[id]=c; else need.push(id);
+  });
+  if(need.length){
+    var batches=[];
+    for(var i=0;i<need.length;i+=50)batches.push(need.slice(i,i+50));
+    var bi=0;
+    async function worker(){
+      while(bi<batches.length){
+        var chunk=batches[bi++];
+        var fields=chunk.map(function(id,i){return 'p'+i+':product(entityId:'+id+'){brand{name path}}';}).join(' ');
+        try{
+          var r=await fetch(STORE+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+STORE_TOKEN},body:JSON.stringify({query:'{site{'+fields+'}}'})});
+          var d=await r.json();var site=d&&d.data&&d.data.site;
+          chunk.forEach(function(id,i){var p=site&&site['p'+i];var br=(p&&p.brand)||null;brandOf[id]=br;fpCacheSet('fp_brand_'+id,br);});
+        }catch(e){}
+      }
     }
-    if(!shopAll)return;                       // no "Shop All" group -> Monthly Flyer only
+    await Promise.all([worker(),worker(),worker(),worker(),worker(),worker(),worker(),worker()]);
+  }
+
+  // Place each candidate into its brand's "Shop All" group (brand matched the same
+  // way getBrandFromProduct does).
+  candidates.forEach(function(id){
+    var brand=brandOf[id];
+    if(!brand||!brand.name)return;
+    var path=(brand.path||'').replace(/^\/|\/$/g,'').toLowerCase();
+    var style=BRAND_STYLES[path.replace(/-/g,'')]||BRAND_STYLES[path]||BRAND_STYLES[brand.name.toLowerCase().replace(/[\s\-]+/g,'')];
+    if(!style||!style.key)return;
+    var shopAll=shopAllByKey[style.key];
+    if(!shopAll)return;
     shopAll.ids.push(id);                     // append (de-dup already guaranteed)
     existing[String(id)]=1;
   });
@@ -838,7 +868,7 @@ async function renderBrandRows(){
 
   // Per-section freshness: when shopByBrand is Sequencing=Off, shuffle ONLY the
   // products inside each brand's strips (daily seed). Brand-card ORDER is left as-is.
-  // Non-mutating — a fresh copy is derived from BRANDS_DEALS each call, so it's stable
+  // Non-mutating ‚Äî a fresh copy is derived from BRANDS_DEALS each call, so it's stable
   // within the day and the strip pager (BRAND_STRIP_STATE below) stays consistent.
   var brands=BRANDS_DEALS;
   if(SECTION_SEQUENCING['shopByBrand']===false){
@@ -878,7 +908,7 @@ async function renderBrandRows(){
     // Expiry: only when the sheet cell is non-blank. Count: only when Show Deal
     // Count is yes for this brand. Both fully sheet-driven (blank = hide).
     var expRaw=fd&&fd.exp?fd.exp:'';
-    var expTxt=expRaw?(fd.urgent?'⚠ Ends '+esc(expRaw):esc(expRaw)):'';
+    var expTxt=expRaw?(fd.urgent?'‚ö† Ends '+esc(expRaw):esc(expRaw)):'';
     var countHtml=b.showCount?('<div class="fp-btile-count">'+dc+' deal'+(dc>1?'s':'')+'</div>'):'';
     var expHtml=expTxt?('<div class="fp-btile-exp">'+expTxt+'</div>'):'';
     var metaHtml=(countHtml||expHtml)?('<div class="fp-btile-meta">'+countHtml+expHtml+'</div>'):'';
@@ -890,7 +920,7 @@ async function renderBrandRows(){
       ? '<div class="fp-btile-imgwrap"><img class="fp-btile-img" src="'+esc(b.style.brandIconUrl)+'" alt=""></div>'
       : '';
 
-    // The brand tile (same footprint as a product card) — first cell of deal 1.
+    // The brand tile (same footprint as a product card) ‚Äî first cell of deal 1.
     var brandTile='<div class="fp-btile" style="background:'+bg+';color:'+tc+'">'+
         '<div class="fp-btile-logo">'+logo+'</div>'+
         img+
@@ -1142,7 +1172,7 @@ function fpCollapseSection(gridId){
   if(typeof PAGERS!=='undefined'&&PAGERS[gridId]){ updateLoadMore(gridId); }
   else if(typeof BRAND_STRIP_STATE!=='undefined'&&BRAND_STRIP_STATE[gridId]){ updateBrandLoadMore(gridId); }
   // Scroll the section back into view at its top. Check the narrow brand-strip
-  // container (.fp-brow-deal) BEFORE the broad .fp-section — brand strips live
+  // container (.fp-brow-deal) BEFORE the broad .fp-section ‚Äî brand strips live
   // inside the single Shop-by-Brand .fp-section wrapper, so closest('.fp-section')
   // would scroll all the way up to the wrapper instead of this specific strip.
   var sec=grid.closest('.fp-brow-deal')||grid.closest('.fp-section');
@@ -1202,17 +1232,17 @@ function renderHero(){
   wrap.innerHTML='<a class="fp-featured" style="background:'+bg+';border-color:'+bg+'" onclick="fpOpenBrandPanel(\''+b.key+'\');return false;" href="#">'+
     '<div style="display:flex;align-items:center;flex:1;min-width:0">'+logo+
       '<div style="min-width:0">'+
-        '<span class="fp-feat-badge" style="background:rgba(0,0,0,0.25);color:'+tc+'">'+((d.urgent&&d.exp)?'⚠ Ends '+esc(d.exp)+' — Hurry':'Active Deal')+'</span>'+
+        '<span class="fp-feat-badge" style="background:rgba(0,0,0,0.25);color:'+tc+'">'+((d.urgent&&d.exp)?'‚ö† Ends '+esc(d.exp)+' ‚Äî Hurry':'Active Deal')+'</span>'+
         '<div class="fp-feat-title" style="color:'+tc+'">'+esc(d.offer)+'</div>'+
         '<div class="fp-feat-sub" style="color:'+tc+';opacity:0.8">'+esc(d.where)+'</div>'+
       '</div>'+
     '</div>'+
-    '<span class="fp-feat-arr" style="color:'+tc+'">→</span>'+
+    '<span class="fp-feat-arr" style="color:'+tc+'">‚Üí</span>'+
   '</a>';
 }
 
 // ==================== BRAND CHIPS (REMOVED) ====================
-// The top brand-filter chip row has been removed — brand browsing now lives
+// The top brand-filter chip row has been removed ‚Äî brand browsing now lives
 // only in the "Shop by Brand" section. renderChips() is still called from init
 // but now just strips the chip bar from the page if the markup is still present
 // in the HTML widget. fpFilter() and applyBrandFilter() are kept as no-ops so
@@ -1257,7 +1287,7 @@ async function renderBundles(){
       var pr=p.prices&&p.prices.price?p.prices.price.value:null;
       var img=p.defaultImage?p.defaultImage.url:'';
       return (pi>0?'<span style="font-size:18px;color:#ccc;align-self:center">+</span>':'')+
-        '<div class="fp-bundle-prod">'+(img?'<div class="fp-bundle-prod-img"><img src="'+img+'" loading="lazy"></div>':'<div class="fp-bundle-prod-img">🔧</div>')+
+        '<div class="fp-bundle-prod">'+(img?'<div class="fp-bundle-prod-img"><img src="'+img+'" loading="lazy"></div>':'<div class="fp-bundle-prod-img">üîß</div>')+
         '<div class="fp-bundle-prod-name">'+esc((p.name||'').substring(0,28))+'</div>'+
         (pr?'<div class="fp-bundle-prod-price">$'+pr.toFixed(2)+'</div>':'')+'</div>';
     }).join('');
@@ -1274,7 +1304,7 @@ window.fpAddBundle=async function(bid,ids){
   for(var i=0;i<ids.length;i++){var ok=await addToCartSilent(ids[i]);if(!ok)anyFailed=true;}
   if(anyFailed){
     if(btn){btn.textContent='Add Bundle';btn.disabled=false;}
-    toast('Couldn’t add the full bundle — please try again');
+    toast('Couldn‚Äôt add the full bundle ‚Äî please try again');
     return;
   }
   ids.forEach(function(id){
@@ -1337,13 +1367,13 @@ async function renderStaff(){
     if(!prods.length)return'';
     return '<div class="fp-staff-card">'+
       '<div class="fp-staff-head">'+
-        '<div class="fp-staff-photo">'+(s.photo?'<img src="'+esc(s.photo)+'" alt="'+esc(s.name)+'" loading="lazy">':'👷')+'</div>'+
+        '<div class="fp-staff-photo">'+(s.photo?'<img src="'+esc(s.photo)+'" alt="'+esc(s.name)+'" loading="lazy">':'üë∑')+'</div>'+
         '<div><div class="fp-staff-name">'+esc(s.name)+'</div><div class="fp-staff-title">'+esc(s.title)+'</div></div>'+
       '</div>'+
       '<div class="fp-staff-quote">'+esc(s.quote)+'</div>'+
       '<div class="fp-staff-prods">'+prods.map(function(x){
         var img=x.p.defaultImage?x.p.defaultImage.url:'';
-        return '<div class="fp-staff-prod" onclick="fpQuickView('+x.id+')">'+(img?'<div class="fp-staff-prod-img"><img src="'+img+'" loading="lazy"></div>':'<div class="fp-staff-prod-img">🔧</div>')+'<div class="fp-staff-prod-name">'+esc((x.p.name||'').substring(0,30))+'</div></div>';
+        return '<div class="fp-staff-prod" onclick="fpQuickView('+x.id+')">'+(img?'<div class="fp-staff-prod-img"><img src="'+img+'" loading="lazy"></div>':'<div class="fp-staff-prod-img">üîß</div>')+'<div class="fp-staff-prod-name">'+esc((x.p.name||'').substring(0,30))+'</div></div>';
       }).join('')+'</div>'+
     '</div>';
   }).join('');
@@ -1371,7 +1401,7 @@ function renderVideos(){
         var id=ytId(url);if(id)thumb='https://img.youtube.com/vi/'+id+'/hqdefault.jpg';
       }
     }
-    return '<a class="fp-video-card" href="'+esc(url)+'" target="_blank" rel="noopener"><div class="fp-video-thumb">'+(thumb?'<img src="'+esc(thumb)+'" alt="'+esc(title)+'" loading="lazy">':'')+'<div class="fp-video-play">▶</div></div><div class="fp-video-title">'+esc(title)+'</div></a>';
+    return '<a class="fp-video-card" href="'+esc(url)+'" target="_blank" rel="noopener"><div class="fp-video-thumb">'+(thumb?'<img src="'+esc(thumb)+'" alt="'+esc(title)+'" loading="lazy">':'')+'<div class="fp-video-play">‚ñ∂</div></div><div class="fp-video-title">'+esc(title)+'</div></a>';
   }).filter(Boolean).join('');
   if($('fp-videos').innerHTML.trim())show('fp-sec-videos');else hide('fp-sec-videos');
 }
@@ -1399,13 +1429,13 @@ window.fpTradeFilter=function(i){
   var ids=parseIds(r['Product IDs']||'');
   if(!ids.length){toast('No products listed for this trade yet');return;}
   // Open a quick modal listing matching products
-  fpMultiQuickView(ids,r['Trade Name']+' — Recommended');
+  fpMultiQuickView(ids,r['Trade Name']+' ‚Äî Recommended');
 };
 
 // ==================== PROMO BANNERS ====================
 // ==================== SECTION ORDER ====================
 // Maps Section IDs (from the Section Order sheet) to actual DOM element IDs.
-// FAQs and sticky cart bar are LOCKED at the bottom — not reorderable.
+// FAQs and sticky cart bar are LOCKED at the bottom ‚Äî not reorderable.
 // Populated by applySectionOrder() from "Show Visitor Count" column. Section key -> bool.
 var SECTION_VISITOR_COUNT = {};
 // Product-freshness config from the Section Order tab, keyed by Section ID.
@@ -1448,7 +1478,7 @@ var SECTION_NAME_TO_DOM = {};
 
 function applySectionOrder(){
   var rows=SECTION_DATA.sectionOrder||[];
-  if(!rows.length){console.log('[Atlas Flyers] No Section Order data — using default DOM order');return;}
+  if(!rows.length){console.log('[Atlas Flyers] No Section Order data ‚Äî using default DOM order');return;}
 
   // Parse rows into entries with order
   var entries=rows.map(function(r){
@@ -1460,10 +1490,10 @@ function applySectionOrder(){
     // Default: if blank, treat as no (opt-in)
     SECTION_VISITOR_COUNT[id]=(svc==='yes'||svc==='true');
     // Product freshness. "Sequencing" On (default) = keep sheet order; Off = randomise.
-    // Blank → On, so freshness is opt-in and nothing changes until a section is flipped.
+    // Blank ‚Üí On, so freshness is opt-in and nothing changes until a section is flipped.
     var seq=(r['Sequencing']||r['sequencing']||'').toString().toLowerCase().trim();
     SECTION_SEQUENCING[id]=!(seq==='off'||seq==='no'||seq==='false'||seq==='0');
-    // "Rotation Days" 1..10 (blank/invalid → 1). Only used when Sequencing = Off.
+    // "Rotation Days" 1..10 (blank/invalid ‚Üí 1). Only used when Sequencing = Off.
     var rot=parseInt(r['Rotation Days']||r['rotationDays']||r['rotation_days']||'',10);
     if(isNaN(rot)||rot<1)rot=1; if(rot>10)rot=10;
     SECTION_ROTATE_DAYS[id]=rot;
@@ -1545,7 +1575,7 @@ function applySectionOrder(){
       }
     }
     // Same emptiness guard for custom (non-grid) sections that are driven by their
-    // own sheet tab — trades, coupons, videos. If the tab has no rows, keep the
+    // own sheet tab ‚Äî trades, coupons, videos. If the tab has no rows, keep the
     // section hidden so we don't show a lonely header with no content.
     var customDataKey={ 'fp-sec-trades':'shopByTrade', 'fp-sec-coupons':'coupons', 'fp-sec-videos':'videoSection' }[domId];
     if(customDataKey){
@@ -1616,7 +1646,7 @@ window.fpQuickView=async function(pid){
   await fetchProducts([pid]);
   var p=PRODUCT_CACHE[pid];if(!p){c.innerHTML='<p style="padding:20px">Product not available.</p>';return;}
   // If the product went out of stock / unavailable, don't show the buy UI.
-  if(!isShowable(p)){c.innerHTML='<div style="padding:30px 20px;text-align:center"><div style="font-size:16px;font-weight:700;margin-bottom:6px">'+esc(cleanName(p.name,p.sku))+'</div><p style="font-size:13px;color:#777">This item is no longer available.</p><a class="fp-modal-view" href="'+esc(p.path||'#')+'">View product page →</a></div>';return;}
+  if(!isShowable(p)){c.innerHTML='<div style="padding:30px 20px;text-align:center"><div style="font-size:16px;font-weight:700;margin-bottom:6px">'+esc(cleanName(p.name,p.sku))+'</div><p style="font-size:13px;color:#777">This item is no longer available.</p><a class="fp-modal-view" href="'+esc(p.path||'#')+'">View product page ‚Üí</a></div>';return;}
   var pr=p.prices&&p.prices.price?p.prices.price.value:null;
   var sl=p.prices&&p.prices.salePrice?p.prices.salePrice.value:null;
   var rp=p.prices&&p.prices.retailPrice?p.prices.retailPrice.value:null;
@@ -1647,17 +1677,17 @@ window.fpQuickView=async function(pid){
     var thumbsHtml=allImgs.map(function(im,idx){return '<div class="fp-modal-thumb'+(idx===0?' active':'')+'" data-idx="'+idx+'" onclick="fpModalGoto('+idx+')"><img src="'+esc(im.url)+'" alt=""></div>';}).join('');
     galleryHtml='<div class="fp-modal-img fp-modal-gallery" id="fp-modal-gallery">'+
       '<div class="fp-modal-slides" id="fp-modal-slides">'+slidesHtml+'</div>'+
-      '<button class="fp-modal-arrow fp-modal-arrow-prev" onclick="fpModalPrev()" aria-label="Previous">‹</button>'+
-      '<button class="fp-modal-arrow fp-modal-arrow-next" onclick="fpModalNext()" aria-label="Next">›</button>'+
+      '<button class="fp-modal-arrow fp-modal-arrow-prev" onclick="fpModalPrev()" aria-label="Previous">‚Äπ</button>'+
+      '<button class="fp-modal-arrow fp-modal-arrow-next" onclick="fpModalNext()" aria-label="Next">‚Ä∫</button>'+
       '<div class="fp-modal-dots">'+dotsHtml+'</div>'+
     '</div>'+
     '<div class="fp-modal-thumbs">'+thumbsHtml+'</div>';
   } else {
-    galleryHtml='<div class="fp-modal-img">'+(img?'<img src="'+img+'" alt="'+esc(p.name)+'">':'🔧')+'</div>';
+    galleryHtml='<div class="fp-modal-img">'+(img?'<img src="'+img+'" alt="'+esc(p.name)+'">':'üîß')+'</div>';
   }
   window._fpModalImgCount=allImgs.length;
   window._fpModalImgIdx=0;
-  // Brand resolution for modal — same priority as cards
+  // Brand resolution for modal ‚Äî same priority as cards
   var modalBrand=getBrandFromProduct(p)||null;
   var modalBrandLabel=modalBrand?modalBrand.name:'';
   var modalBrandBg=modalBrand?modalBrand.accentBg:'#1a1a1a';
@@ -1670,14 +1700,14 @@ window.fpQuickView=async function(pid){
     '</div>'+
     '<div class="fp-modal-name">'+esc(cleanName(p.name,p.sku))+'</div>'+
     '<div class="fp-modal-prices"><div class="fp-modal-sale">$'+(qvCurrent?qvCurrent.toFixed(2):'?')+'</div>'+(qvHasDiscount?'<div class="fp-modal-was">$'+qvWas.toFixed(2)+'</div><div class="fp-modal-off">'+qvPct+'% Off</div>':'')+'</div>'+
-    (descPlain?'<div class="fp-modal-desc" id="fp-modal-desc" data-teaser="'+esc(descTeaser)+'" style="font-size:13px;color:#555;line-height:1.5;margin-bottom:10px">'+esc(descTeaser)+(descIsLong?'… <a href="#" class="fp-modal-readmore" onclick="fpToggleDesc(event)">Read more</a>':'')+'</div>':'')+
+    (descPlain?'<div class="fp-modal-desc" id="fp-modal-desc" data-teaser="'+esc(descTeaser)+'" style="font-size:13px;color:#555;line-height:1.5;margin-bottom:10px">'+esc(descTeaser)+(descIsLong?'‚Ä¶ <a href="#" class="fp-modal-readmore" onclick="fpToggleDesc(event)">Read more</a>':'')+'</div>':'')+
     '<div class="fp-modal-actions">'+
       (isPurchasable(p)
-        ? '<div class="fp-modal-qty"><button class="fp-modal-qty-btn" onclick="fpQtyChg(-1)">−</button><div class="fp-modal-qty-val" id="fp-qty">1</div><button class="fp-modal-qty-btn" onclick="fpQtyChg(1)">+</button></div>'+
+        ? '<div class="fp-modal-qty"><button class="fp-modal-qty-btn" onclick="fpQtyChg(-1)">‚àí</button><div class="fp-modal-qty-val" id="fp-qty">1</div><button class="fp-modal-qty-btn" onclick="fpQtyChg(1)">+</button></div>'+
           '<button type="button" class="fp-modal-add'+(inCartLabel(pid)?' added':'')+'" id="fp-modal-add" onclick="fpModalAdd('+pid+','+qvCurrent+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">'+(inCartLabel(pid)||((p.availabilityV2&&p.availabilityV2.status)==='Preorder'?'PRE ORDER NOW':'Add to Cart'))+'</button>'
         : '<button type="button" class="fp-modal-add fp-rich-notify" onclick="fpNotifyMe('+pid+',this)">Notify Me</button>')+
     '</div>'+
-    '<a class="fp-modal-view" href="'+esc(p.path||'#')+'">View full product details →</a>';
+    '<a class="fp-modal-view" href="'+esc(p.path||'#')+'">View full product details ‚Üí</a>';
   // Enable finger-swipe on the image gallery (touch devices)
   var gal=document.getElementById('fp-modal-slides');
   if(gal){
@@ -1719,7 +1749,7 @@ window.fpToggleDesc=function(ev){
   function escTxt(s){return s.replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
   if(expanded){
     el.classList.remove('fp-modal-desc-expanded');
-    el.innerHTML=escTxt(dec(teaser))+'… <a href="#" class="fp-modal-readmore" onclick="fpToggleDesc(event)">Read more</a>';
+    el.innerHTML=escTxt(dec(teaser))+'‚Ä¶ <a href="#" class="fp-modal-readmore" onclick="fpToggleDesc(event)">Read more</a>';
     el.setAttribute('data-expanded','0');
   }else{
     el.classList.add('fp-modal-desc-expanded');
@@ -1737,7 +1767,7 @@ window.fpModalAdd=async function(pid,price,name){
   for(var i=0;i<qty;i++){var ok=await addToCartSilent(pid);if(!ok)anyFailed=true;}
   if(anyFailed){
     btn.textContent='Add to Cart';btn.disabled=false;
-    toast('Couldn’t add to cart — item may be unavailable');
+    toast('Couldn‚Äôt add to cart ‚Äî item may be unavailable');
     return;
   }
   if(!CART[pid])CART[pid]={name:name,price:price,qty:0};
@@ -1762,7 +1792,7 @@ async function fpMultiQuickView(ids,title){
     var os=sl&&sl<pr;
     var img=p.defaultImage?p.defaultImage.url:'';
     return '<a href="'+esc(p.path||'#')+'" style="display:flex;gap:10px;padding:8px;border-bottom:1px solid #eee;text-decoration:none;color:inherit">'+
-      '<div style="width:60px;height:60px;background:#f7f7f5;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">'+(img?'<img src="'+img+'" style="width:100%;height:100%;object-fit:contain;padding:4px">':'🔧')+'</div>'+
+      '<div style="width:60px;height:60px;background:#f7f7f5;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">'+(img?'<img src="'+img+'" style="width:100%;height:100%;object-fit:contain;padding:4px">':'üîß')+'</div>'+
       '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">'+esc(cleanName(p.name,p.sku).substring(0,60))+'</div><div style="font-size:14px;font-weight:700;margin-top:2px">$'+(os?sl.toFixed(2):pr?pr.toFixed(2):'?')+'</div></div>'+
     '</a>';
   }).join('');
@@ -1770,7 +1800,7 @@ async function fpMultiQuickView(ids,title){
 
 // ==================== CART ====================
 // Read the live BigCommerce cart (guest or logged-in; cookie/session based) so
-// tiles can show "✓ IN CART (x)" persistently across refreshes/visits.
+// tiles can show "‚úì IN CART (x)" persistently across refreshes/visits.
 var CART_TOTAL_QTY=0;   // total item count in the real BC cart
 var CART_TOTAL_AMT=0;   // grand total ($) of the real BC cart
 async function loadServerCart(){
@@ -1800,7 +1830,7 @@ async function loadServerCart(){
 // Returns the "in cart" button label for a product, or null if not in cart.
 function inCartLabel(id){
   var q=CART_QTY[id];
-  return q>0?('✓ IN CART ('+q+')'):null;
+  return q>0?('‚úì IN CART ('+q+')'):null;
 }
 // Re-apply "in cart" state to every add button for a product (it can appear in
 // multiple sections). Call after a successful add.
@@ -1812,8 +1842,8 @@ function refreshCartButtons(id){
   });
 }
 // Sweep all currently-rendered add buttons and apply in-cart state.
-// Resets buttons for items no longer in the cart too (so a removal elsewhere —
-// e.g. the theme's cart drawer — reverts the tile to "Add to Cart").
+// Resets buttons for items no longer in the cart too (so a removal elsewhere ‚Äî
+// e.g. the theme's cart drawer ‚Äî reverts the tile to "Add to Cart").
 function applyCartStateToButtons(){
   document.querySelectorAll('.fp-rich-add[data-pid],.fp-cd-add[data-pid]').forEach(function(b){
     if(b.disabled)return; // leave out-of-stock buttons alone
@@ -1834,7 +1864,7 @@ async function addToCartSilent(id){
       var r2=await fetch('/api/storefront/carts/'+ex[0].id+'/items',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({lineItems:[{quantity:1,productId:id}]})});
       return r2.ok;
     }
-    // No cart yet — create one
+    // No cart yet ‚Äî create one
     var r=await fetch('/api/storefront/carts',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({lineItems:[{quantity:1,productId:id}]})});
     return r.ok;
   }catch(e){return false;}
@@ -1844,7 +1874,7 @@ window.fpAdd=async function(id,price,name,bid){
   var ok=await addToCartSilent(id);
   if(!ok){
     if(b){b.textContent=b.getAttribute('data-lbl')||'Add to Cart';b.disabled=false;}
-    toast('Couldn’t add to cart — item may be unavailable');
+    toast('Couldn‚Äôt add to cart ‚Äî item may be unavailable');
     return;
   }
   if(!CART[id])CART[id]={name:name,price:price,qty:0};
@@ -1858,7 +1888,7 @@ window.fpAdd=async function(id,price,name,bid){
 function updateCartBar(){
   // Use the real BigCommerce cart totals (loaded via loadServerCart), which
   // include items added in this session AND items already in the cart / added
-  // elsewhere — not just the session-only CART object.
+  // elsewhere ‚Äî not just the session-only CART object.
   var c=CART_TOTAL_QTY,t=CART_TOTAL_AMT;
   [].slice.call(document.querySelectorAll('.cart-quantity')).forEach(function(el){
     el.textContent=c;
@@ -1872,7 +1902,7 @@ function toast(msg){var t=$('fp-toast');t.textContent=msg;t.classList.add('show'
 // ==================== CONTACT FOR PRICING ====================
 // Call-for-pricing products (BigCommerce availability=disabled) get a "CONTACT
 // FOR PRICING" tile/PDP button that opens the Klaviyo "Special Order" form
-// (form id YyRARa — the SAME form the theme's .klaviyo_form_trigger uses).
+// (form id YyRARa ‚Äî the SAME form the theme's .klaviyo_form_trigger uses).
 // Best-effort prefill of the form's "Product Name and SKU" field from the
 // clicked product (on a PDP the theme also prefills it, harmless if both run).
 window.fpContactForPricing=function(pid,name,sku){
@@ -1898,7 +1928,7 @@ window.fpContactForPricing=function(pid,name,sku){
   },150);
 };
 // The theme's PDP "Contact For Pricing" button is a DEAD mailto: link
-// (a.custom-contact-us-btn) — clicking it does nothing on desktops with no mail
+// (a.custom-contact-us-btn) ‚Äî clicking it does nothing on desktops with no mail
 // handler. Intercept it (plus the hidden "Special Order" trigger) and open the
 // Klaviyo Special Order form instead. Delegated + capture so it wins the click.
 document.addEventListener('click',function(e){
@@ -1923,7 +1953,7 @@ window.fpCopyProductCoupon=function(e,el){
   if(codeEl&&hintEl){
     var pc=codeEl.textContent, ph=hintEl.textContent;
     el.classList.add('copied');
-    codeEl.textContent='✓ Copied!';
+    codeEl.textContent='‚úì Copied!';
     hintEl.textContent='';
     setTimeout(function(){codeEl.textContent=pc;hintEl.textContent=ph;el.classList.remove('copied');},1200);
   }
@@ -1945,7 +1975,7 @@ window.fpFAQ=function(i){$('fpfa-'+i).classList.toggle('open');$('fpfi-'+i).clas
 // ==================== SECTION VIEW ALL TOGGLE ====================
 window.fpToggleSection=function(gid,btn){
   // Expand/collapse is driven by CSS off the data-ex attribute
-  // (see .fp-rich-grid[data-ex="1"]). No inline widths here — the old code forced
+  // (see .fp-rich-grid[data-ex="1"]). No inline widths here ‚Äî the old code forced
   // every tile to a fixed 200px on desktop, which shrank and left-aligned them on
   // wide screens. CSS now lays out a responsive grid on expand instead.
   var g=$(gid);if(!g)return;
@@ -1957,7 +1987,7 @@ window.fpToggleSection=function(gid,btn){
     g.setAttribute('data-ex','0');
     btn.textContent='VIEW ALL';btn.classList.remove('expanded');
   }
-  // Arrows only make sense on a collapsed horizontal strip — refresh this one.
+  // Arrows only make sense on a collapsed horizontal strip ‚Äî refresh this one.
   refreshScrollArrows(g);
   // Show/hide the Load More button for this section (expanded = button mode).
   if(PAGERS[gid]){ if(typeof updateLoadMore==='function')updateLoadMore(gid); }
@@ -1973,7 +2003,7 @@ window.fpToggleSection=function(gid,btn){
 // FIX (right-arrow-missing-for-mouse-users): product sections render skeletons
 // first, then inject the real tiles asynchronously. The old code ran its single
 // refreshScrollArrows() while the strip was still empty/skeleton (so scrollWidth
-// didn't overflow yet → right arrow hidden), early-returned for already-wrapped
+// didn't overflow yet ‚Üí right arrow hidden), early-returned for already-wrapped
 // grids on later runs, and only re-checked on 'scroll'/'resize'. A trackpad's
 // tiny horizontal nudge fired 'scroll' and revealed the arrow, but a regular
 // mouse never did. We now (1) re-check already-wrapped strips on every run,
@@ -1983,7 +2013,7 @@ function setupScrollArrows(){
   if(!getSetting('enable_scroll_arrows',true))return;
 
   // Attach load-listeners to any not-yet-wired images so the arrows re-check as
-  // images size in (idempotent — each <img> is wired at most once).
+  // images size in (idempotent ‚Äî each <img> is wired at most once).
   function wireImgs(grid){
     grid.querySelectorAll('img').forEach(function(img){
       if(img.getAttribute('data-fp-arrowimg'))return;
@@ -1994,7 +2024,7 @@ function setupScrollArrows(){
 
   document.querySelectorAll('.fp-rich-grid, .fp-countdown-grid').forEach(function(grid){
     // Already wrapped: tiles may have been injected/lazy-loaded since the last
-    // run — re-check (and wire any new images), then bail.
+    // run ‚Äî re-check (and wire any new images), then bail.
     if(grid.parentNode&&grid.parentNode.classList.contains('fp-scroll-wrap')){
       wireImgs(grid);
       refreshScrollArrows(grid);
@@ -2005,9 +2035,9 @@ function setupScrollArrows(){
     grid.parentNode.insertBefore(wrap,grid);
     wrap.appendChild(grid);
     var L=document.createElement('button');
-    L.className='fp-scroll-arrow fp-scroll-arrow-l';L.setAttribute('aria-label','Scroll left');L.innerHTML='‹';L.hidden=true;
+    L.className='fp-scroll-arrow fp-scroll-arrow-l';L.setAttribute('aria-label','Scroll left');L.innerHTML='‚Äπ';L.hidden=true;
     var R=document.createElement('button');
-    R.className='fp-scroll-arrow fp-scroll-arrow-r';R.setAttribute('aria-label','Scroll right');R.innerHTML='›';R.hidden=true;
+    R.className='fp-scroll-arrow fp-scroll-arrow-r';R.setAttribute('aria-label','Scroll right');R.innerHTML='‚Ä∫';R.hidden=true;
     wrap.appendChild(L);wrap.appendChild(R);
     L.onclick=function(){grid.scrollBy({left:-Math.round(grid.clientWidth*0.8),behavior:'smooth'});};
     R.onclick=function(){grid.scrollBy({left:Math.round(grid.clientWidth*0.8),behavior:'smooth'});};
@@ -2031,7 +2061,7 @@ function setupScrollArrows(){
     setTimeout(function(){refreshScrollArrows(grid);},80);
   });
 
-  // Bind the global resize handler ONCE (setupScrollArrows is called ~7×; the old
+  // Bind the global resize handler ONCE (setupScrollArrows is called ~7√ó; the old
   // code re-added a duplicate resize listener every time it ran).
   if(!setupScrollArrows._resizeBound){
     setupScrollArrows._resizeBound=true;
@@ -2058,9 +2088,9 @@ function refreshScrollArrows(grid){
 // ==================== ENDING SOON ====================
 function renderEndingSoon(){
   var urgent=[];
-  BRANDS_DEALS.forEach(function(b){b.deals.forEach(function(d){if(d.urgent)urgent.push(b.name+' — '+d.offer+(d.exp?' ends '+d.exp:''));});});
+  BRANDS_DEALS.forEach(function(b){b.deals.forEach(function(d){if(d.urgent)urgent.push(b.name+' ‚Äî '+d.offer+(d.exp?' ends '+d.exp:''));});});
   if(SECTION_SEQUENCING['endingSoon']===false)urgent=fpSeededShuffle(urgent,fpFreshSeed('endingSoon')); // rotate which surface
-  var el=$('fp-ending-sub');if(el)el.textContent=urgent.length?urgent.slice(0,3).join(' · '):'Check current deals for expiry dates';
+  var el=$('fp-ending-sub');if(el)el.textContent=urgent.length?urgent.slice(0,3).join(' ¬∑ '):'Check current deals for expiry dates';
 }
 
 // ==================== SAVE SCROLL POSITION ====================
@@ -2148,7 +2178,7 @@ async function init(){
 
   // 2.1) Build the per-product coupon lookup from the "All Coupon Codes" tab.
   // Columns: "Big Commerce Product ID" + "Coupon Code". The ID cell may contain
-  // a SINGLE id or a COMMA-SEPARATED LIST of ids (like the brand tabs) — every
+  // a SINGLE id or a COMMA-SEPARATED LIST of ids (like the brand tabs) ‚Äî every
   // id in the list gets mapped to that row's code. Blank ids are ignored.
   PRODUCT_COUPONS={};
   var couponIdOrder=[];           // preserves sheet order, de-duped
@@ -2159,7 +2189,7 @@ async function init(){
     idCell.split(',').forEach(function(pid){
       pid=pid.trim();
       if(!pid)return;
-      if(code)PRODUCT_COUPONS[pid]=code; // ✂ sticker only when a code is typed
+      if(code)PRODUCT_COUPONS[pid]=code; // ‚úÇ sticker only when a code is typed
       if(!seenCoupon[pid]){seenCoupon[pid]=1;couponIdOrder.push(pid);} // product shows regardless
     });
   });
@@ -2168,7 +2198,7 @@ async function init(){
   // section renderer (paging, scroll, View All) exactly like other sections.
   SECTION_DATA.monthlyFlyer=couponIdOrder.map(function(id){return {'Product ID':id};});
 
-  // (Brand injection runs later, after BRANDS_DEALS is parsed — see below.)
+  // (Brand injection runs later, after BRANDS_DEALS is parsed ‚Äî see below.)
 
   // 2.5) Parse FAQs from sheet (overrides hardcoded fallback)
   var faqRows=SECTION_DATA.faqs||[];
@@ -2198,7 +2228,7 @@ async function init(){
   renderTrades();
   applySectionOrder();
 
-  // Sections are now ordered and the empty ones hidden — reveal the page (it was
+  // Sections are now ordered and the empty ones hidden ‚Äî reveal the page (it was
   // held at opacity:0 by the .flyers-page:not(.fp-ready) rule in the widget CSS).
   // This stops the flash where default-order headers (e.g. "Deal of the Day")
   // briefly appeared before the JS reordered/hid them. Product grids inside still
@@ -2232,7 +2262,7 @@ async function init(){
   console.log('[Atlas Flyers] Init complete');
 
   // ---- Keep the flyer's cart UI (footer + tile buttons) in sync when the cart
-  // changes outside the flyer — e.g. an item removed in the theme's own cart
+  // changes outside the flyer ‚Äî e.g. an item removed in the theme's own cart
   // drawer. Re-reads the real BC cart and re-paints. Debounced + guarded so it
   // never piles up requests or slows the page.
   var _resyncing=false, _resyncT=null;
@@ -2261,7 +2291,7 @@ async function init(){
       && url.indexOf('/api/storefront/cart')!==-1
       && String(method||'GET').toUpperCase()!=='GET';
   }
-  // PRIMARY trigger — the theme's cart drawer (add/remove) uses XHR, so this is
+  // PRIMARY trigger ‚Äî the theme's cart drawer (add/remove) uses XHR, so this is
   // the path that actually fires on a drawer edit.
   if(window.XMLHttpRequest&&XMLHttpRequest.prototype){
     var _xhrOpen=XMLHttpRequest.prototype.open;
@@ -2270,7 +2300,7 @@ async function init(){
       return _xhrOpen.apply(this,arguments);
     };
   }
-  // Secondary trigger — covers any cart calls made via fetch().
+  // Secondary trigger ‚Äî covers any cart calls made via fetch().
   if(window.fetch){
     var _origFetch=window.fetch;
     window.fetch=function(){
@@ -2288,13 +2318,13 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
 
 // ==================== DEEP-LINK: ?section= (ad / email landing) ====================
-// Jump straight to a section on load — even one with NO flyer tab and even one not
+// Jump straight to a section on load ‚Äî even one with NO flyer tab and even one not
 // listed in SECTION_ID_TO_DOM (e.g. faqs). URL: /flyers-and-deals/?section=<key>
 //   <key> = Section ID (hotDeals), a DOM key (faqs -> #fp-sec-faqs), a Display Name,
 //   or a Brand ID. Case/space-forgiving.
 // Sections render async AND shift as more load above, AND the page restores a saved
 // scroll pos (fp_scroll) ~800ms after load. So we CONTINUOUSLY re-align to the target
-// until it holds — lands fast and overrides both the drift and the restore.
+// until it holds ‚Äî lands fast and overrides both the drift and the restore.
 function fpResolveSection(bk){
   if(!bk) return null;
   var raw=String(bk).trim(), key=raw.toLowerCase().replace(/\s+/g,' ').trim();
@@ -2384,7 +2414,7 @@ setTimeout(function(){
     +'.fp-checkout{display:none!important}'
     // brand pages' Page Builder content ships a legacy mobile rule
     // (.brand-title-section-container div:not(.shortcode-layout){order:1})
-    // written for the OLD tile markup — it scrambles richCard internals on
+    // written for the OLD tile markup ‚Äî it scrambles richCard internals on
     // mobile (name+button jump above the pill/image). Pin our tiles' children
     // back to DOM order.
     +'@media(max-width:1023px){.brand-title-section-container .fp-rich>div,'
@@ -2417,7 +2447,7 @@ setTimeout(function(){
     +'.klaviyo-bis-trigger,[class*="klaviyo-bis"]{display:none!important}'
     +'body.fp-pdp-unavail #form-action-addToCart{display:none!important}'
     // the theme's OWN legacy notify button (custom-notification-btn) also pops
-    // in the unavailable state — ours is the only notify UI (console-proven)
+    // in the unavailable state ‚Äî ours is the only notify UI (console-proven)
     +'.notify-me-btn-wrapper,.custom-notification-btn{display:none!important}'
     // /our-store/ ad landing: no breadcrumb (the WYSIWYG sanitizer strips
     // <style> from page bodies, so the hide lives here, path-scoped)
@@ -2429,7 +2459,7 @@ setTimeout(function(){
 // Out-of-stock tiles/quick-view/PDP get a working NOTIFY ME: email -> Klaviyo
 // client back-in-stock subscription (company M8tCJj; live "Back In Stock Flow
 // - Standard" sends the email when BigCommerce inventory returns). The
-// subscription needs the BC VARIANT entityId — resolved per click via GraphQL.
+// subscription needs the BC VARIANT entityId ‚Äî resolved per click via GraphQL.
 (function(){
   var KLAVIYO_COMPANY='M8tCJj';
   async function bcFirstVariantId(pid){
@@ -2500,18 +2530,18 @@ setTimeout(function(){
       if(ok){
         try{localStorage.setItem('fp_notify_email',em);}catch(e){}
         close();
-        try{toast("You're on the list — we'll email you when it's back!");}catch(e){}
-        if(btn){btn.textContent="✓ We'll Notify You";btn.classList.add('done');btn.disabled=true;btn.onclick=null;}
+        try{toast("You're on the list ‚Äî we'll email you when it's back!");}catch(e){}
+        if(btn){btn.textContent="‚úì We'll Notify You";btn.classList.add('done');btn.disabled=true;btn.onclick=null;}
       }else{
         go.disabled=false;go.textContent='Notify Me';
-        err.textContent='Something went wrong — please try again.';
+        err.textContent='Something went wrong ‚Äî please try again.';
         err.style.display='block';
       }
     }
     wrap.querySelector('.fp-nm-go').addEventListener('click',submit);
     input.addEventListener('keydown',function(e){if(e.key==='Enter')submit();});
   };
-  // PDP notify — ONE owner, driven purely by BigCommerce state (v68):
+  // PDP notify ‚Äî ONE owner, driven purely by BigCommerce state (v68):
   // Klaviyo's onsite button proved flaky (renders on some variant PDPs, not
   // others, disappears between loads), so its UI is hidden via CSS and OUR
   // button covers every case. Unavailable = the theme's own "combination
@@ -2519,7 +2549,7 @@ setTimeout(function(){
   // (simple products). Subscriptions go to the SELECTED variant.
   // v70 (console-proven on THE FRAMERR, 13 Jul): the theme renders THREE add
   // buttons with the same id (main + sticky clones), re-shows them from JS,
-  // and styles them display:flex!important at ID specificity — so the hide is
+  // and styles them display:flex!important at ID specificity ‚Äî so the hide is
   // a body class + `body.fp-pdp-unavail #form-action-addToCart{display:none
   // !important}` (wins the cascade, covers every clone, survives re-renders).
   function pdpAddButtons(){
@@ -2631,7 +2661,7 @@ setTimeout(function(){
           b.id='fp-pdp-notify';
           b.className='button fp-rich-notify';
           var st={'padding':'14px 28px','border-radius':'18px','font-weight':'700','font-size':'15px','background':'#0f0f0f','color':'#fff','border':'none','cursor':'pointer','text-decoration':'none','text-transform':'uppercase','letter-spacing':'0.4px','line-height':'1.2','display':'inline-block','width':'auto','box-shadow':'none'};
-          Object.keys(st).forEach(function(k){b.style.setProperty(k,st[k],'important');});   // v80: theme styles form buttons with !important — ours must too
+          Object.keys(st).forEach(function(k){b.style.setProperty(k,st[k],'important');});   // v80: theme styles form buttons with !important ‚Äî ours must too
           b.textContent='Notify Me When Available';
           b.addEventListener('click',function(){
             fpSelectedVariantId(parseInt(pidEl.value,10)).then(function(vid){
@@ -2734,7 +2764,7 @@ function catInjectInfra(){
 function catWidenContainer(){
   // The theme caps page content in a centered .container; the flyer page removes
   // that cap (fixContainer) and spreads edge-to-edge. Category pages get the same.
-  // category pages NEST two .container divs — widen EVERY one up the chain
+  // category pages NEST two .container divs ‚Äî widen EVERY one up the chain
   var node=document.getElementById('product-listing-container')||document.querySelector('.page');
   var pad=window.innerWidth>=768?'30px':'10px';
   for(var i=0;i<12&&node;i++){
@@ -2749,7 +2779,7 @@ function catWidenContainer(){
       node.style.setProperty('padding-right',pad,'important');
     }
   }
-  // release the grid's column (col-lg-10) to full width — the theme's filter
+  // release the grid's column (col-lg-10) to full width ‚Äî the theme's filter
   // aside is position:fixed z-index:-9 (permanently out of flow), so nothing
   // else occupies that space
   var mainCol=document.querySelector('.page-main-content');
@@ -2766,7 +2796,7 @@ function catWidenContainer(){
 // Filter state lives in our own query params (a reload applies them):
 //   fbrand=<Brand Name> (repeatable)   fprice=<low:high>   fstock=1
 // v85: V63 removed breadcrumbs from category pages, starving ssCatPath's DOM
-// read — every category page silently lost the filter bar/pill and URL-filter
+// read ‚Äî every category page silently lost the filter bar/pill and URL-filter
 // application (NA survived via its hardcode). Resolve the hierarchy from the
 // GraphQL categoryTree instead (one query, 24h-cached per path).
 async function fpCatPathFromTree(){
@@ -2846,7 +2876,7 @@ function ssUrlWith(mod){
   var u=new URL(location.href);
   u.hash='';
   u.searchParams.delete('page');
-  // the /shop/ SALE view's state lives in Snap's hash — normalize it to
+  // the /shop/ SALE view's state lives in Snap's hash ‚Äî normalize it to
   // ?fsale=1 so filter/sort reloads land back in the takeover
   if(location.pathname.indexOf('/shop/')===0&&(location.hash.indexOf('ss_on_sale')>-1||/fsale=1|summer-site-wide-sale/.test(location.search)))u.searchParams.set('fsale','1');
   mod(u.searchParams);
@@ -2954,8 +2984,8 @@ function ssBuildFilterBar(facets,hostEl,sortSpec){
 }
 // floating FILTERS & SORT pill (replaces the theme's dead floating buttons on
 // taken-over pages): shows when the fp bar is scrolled out of view; tapping it
-// opens the LIVE filter bar in an overlay IN PLACE — bottom sheet on mobile,
-// floating card on desktop — so the user never loses their scroll position.
+// opens the LIVE filter bar in an overlay IN PLACE ‚Äî bottom sheet on mobile,
+// floating card on desktop ‚Äî so the user never loses their scroll position.
 // The real #fp-filter-bar node is MOVED into the sheet (listeners travel with
 // it) and moved back on close.
 function fpFilterFloat(){
@@ -3039,10 +3069,10 @@ async function initCategoryTiles(rerun){
     var grid=document.querySelector('#product-listing-container .productGrid');
     if(!grid)return;                                               // not a product listing
     STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
-    if(!STORE_TOKEN){console.warn('[Atlas Tiles] no storefront token — native grid kept');return;}
+    if(!STORE_TOKEN){console.warn('[Atlas Tiles] no storefront token ‚Äî native grid kept');return;}
 
     // stale SearchSpring hash state (#/filter:... from the old Snap bar) does
-    // nothing anymore — clean it off the URL so it stops confusing everyone
+    // nothing anymore ‚Äî clean it off the URL so it stops confusing everyone
     if(location.hash.slice(0,2)==='#/'){
       try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}
     }
@@ -3062,7 +3092,7 @@ async function initCategoryTiles(rerun){
     await fpEnsureTileData();
     catInjectInfra();
     // category pages only: hide Snap's re-mounting sidebar UI (on /shop/,
-    // /brands/ and search that sidebar is the working filter UI — kept there)
+    // /brands/ and search that sidebar is the working filter UI ‚Äî kept there)
     if(!document.getElementById('fp-cat-sidebar-hide')){
       var shSt=document.createElement('style');
       shSt.id='fp-cat-sidebar-hide';
@@ -3104,7 +3134,7 @@ async function initCategoryTiles(rerun){
           wrap.innerHTML='<div class="fp-fb-none">No products match these filters.</div>';
         }
       }else{
-        console.warn('[Atlas Tiles] SS filter fetch failed — unfiltered grid kept');
+        console.warn('[Atlas Tiles] SS filter fetch failed ‚Äî unfiltered grid kept');
         ssMode=false;
       }
     }
@@ -3117,7 +3147,7 @@ async function initCategoryTiles(rerun){
       }else{
         await fpFetchProductsCached(items.map(function(x){return x.id;}));
         var got=items.filter(function(x){return PRODUCT_CACHE[x.id];});
-        if(got.length<items.length*0.7){console.warn('[Atlas Tiles] GraphQL incomplete ('+got.length+'/'+items.length+') — native grid kept');return;}
+        if(got.length<items.length*0.7){console.warn('[Atlas Tiles] GraphQL incomplete ('+got.length+'/'+items.length+') ‚Äî native grid kept');return;}
         wrap.innerHTML=cardsHtml(got);
         if(!wrap.children.length)return;
       }
@@ -3125,7 +3155,7 @@ async function initCategoryTiles(rerun){
     var myRun=(window.__fpCatRun=(window.__fpCatRun||0)+1);   // this run owns the grid now
     catWidenContainer();
     // Sort By: deterministic full-reload navigation that PRESERVES our filter
-    // params — the native GET form drops everything but ?sort, and leftover
+    // params ‚Äî the native GET form drops everything but ?sort, and leftover
     // Snap bindings write the sort into a dead #/sort: hash. Capture beats both.
     if(!window.__fpSortBound){
       window.__fpSortBound=true;
@@ -3141,7 +3171,7 @@ async function initCategoryTiles(rerun){
       },true);
     }
     // REFINE bar from SearchSpring facet data scoped to this category (Snap's
-    // own sidebar UI is hidden by CSS — SS is a data feed only). Non-blocking;
+    // own sidebar UI is hidden by CSS ‚Äî SS is a data feed only). Non-blocking;
     // if SS is down the page just has no filter bar.
     (async function(){
       try{
@@ -3289,10 +3319,10 @@ if('MutationObserver' in window){
 }
 
 // ==================== SALE + SEARCH TAKEOVER ====================
-// Two Snap-rendered landings get our grid: (a) SALE — /sale/ -> 301 ->
+// Two Snap-rendered landings get our grid: (a) SALE ‚Äî /sale/ -> 301 ->
 // /shop/?tag=summer-site-wide-sale (Snap normalizes to
 // /shop/#/filter:ss_on_sale:1:1), scope = bgfilter.ss_on_sale=1 storewide;
-// (b) SEARCH — /search.php?search_query=..., scope = q=<term>, SS still does
+// (b) SEARCH ‚Äî /search.php?search_query=..., scope = q=<term>, SS still does
 // relevance/synonyms/spell-correction server-side and its keyword redirects
 // are honored. NEVER morph Snap's tiles in place (v34: Preact reconciliation
 // resurrects its tiles next to ours -> every product doubles). Instead hide
@@ -3313,7 +3343,7 @@ if('MutationObserver' in window){
     q=sp.get('search_query');
     mode='search';
   }else if(onShop&&tag){
-    // any other campaign landing (tag=monthly-flyer etc.) — the SS API honors
+    // any other campaign landing (tag=monthly-flyer etc.) ‚Äî the SS API honors
     // the tag directly, so the campaign's product set renders as our grid
     mode='tag';
   }
@@ -3335,7 +3365,7 @@ if('MutationObserver' in window){
     if(wrap&&wrap.parentNode)wrap.parentNode.removeChild(wrap);
     var b=document.getElementById('fp-filter-bar');
     if(b&&b.parentNode)b.parentNode.removeChild(b);
-    console.warn('[Atlas Tiles] sale takeover failed open — Snap view restored');
+    console.warn('[Atlas Tiles] sale takeover failed open ‚Äî Snap view restored');
   }
   async function initSale(){
     if(window.__fpSaleRun)return;
@@ -3345,7 +3375,7 @@ if('MutationObserver' in window){
       var anchor=document.getElementById('searchspring-content')||document.querySelector('#product-listing-container')||document.querySelector('.page');
       if(!anchor){saleFail(null);return;}
       // the flyer core evaluates before footer.html's global_bct on /shop/, so
-      // STORE_TOKEN is empty at load — re-resolve BEFORE any GraphQL hydration
+      // STORE_TOKEN is empty at load ‚Äî re-resolve BEFORE any GraphQL hydration
       // (v35 skipped this: cold-cache visitors got a 40-card dead grid / blank
       // sorted pages while pages 1-4 hydrated against an empty token)
       STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
@@ -3392,7 +3422,7 @@ if('MutationObserver' in window){
           try{ssBuildFilterBar(d.facets||[],wrap,sortSpec);fpFilterFloat();}catch(e){}
           // campaign header content: the interactive flip-book flyer viewer
           // iframe + its chrome styles on the Monthly Flyer landing (the
-          // static inline artwork tile was rendered here too — removed on
+          // static inline artwork tile was rendered here too ‚Äî removed on
           // user request 10 Jul, the flip-book alone is the artwork)
           try{
             var mc=d.merchandising&&d.merchandising.content;
@@ -3417,7 +3447,7 @@ if('MutationObserver' in window){
         var its=res.map(ssResultItem).filter(Boolean);
         await fpFetchProductsCached(its.map(function(x){return x.id;}));
         if(its.length&&!its.some(function(x){return PRODUCT_CACHE[x.id];})){
-          // whole batch failed to hydrate (token race) — re-resolve, retry once
+          // whole batch failed to hydrate (token race) ‚Äî re-resolve, retry once
           STORE_TOKEN=window.BC_STOREFRONT_TOKEN||window.global_bct||STORE_TOKEN||'';
           await fpFetchProductsCached(its.map(function(x){return x.id;}));
           if(!its.some(function(x){return PRODUCT_CACHE[x.id];}))console.warn('[Atlas Tiles] sale: page '+ssPage+' hydration failed');
@@ -3426,7 +3456,7 @@ if('MutationObserver' in window){
         if(h){
           wrap.insertAdjacentHTML('beforeend',h);
           applyCartStateToButtons();
-          console.log('[Atlas Tiles] '+mode+': +page '+ssPage+' — '+wrap.children.length+' cards');
+          console.log('[Atlas Tiles] '+mode+': +page '+ssPage+' ‚Äî '+wrap.children.length+' cards');
         }
         if(ssPage>=ssTotalPages)exhausted=true;
       }
@@ -3471,7 +3501,7 @@ if('MutationObserver' in window){
 // ==================== STRIP AUTO-SCROLL DRIVER (v75) ====================
 // V63 renders the home sections as native fp strips ([data-fp-autoscroll]).
 // This drives the slow drift: >=768px only (phones swipe), pause on hover /
-// touch over the WHOLE SECTION (arrows included — the v74 bug was grid-only
+// touch over the WHOLE SECTION (arrows included ‚Äî the v74 bug was grid-only
 // pause, so hovering an arrow resumed the drift and stomped its smooth
 // scroll), plus a grace period after arrow clicks.
 (function(){
@@ -3645,7 +3675,7 @@ function fpCardTargets(){
     out.push({el:el,id:id,opt:choose?choose.getAttribute('href'):null});
   });
   // legacy shortcode cards (rendered by the theme module OR the inline Script
-  // Manager copies of the old renderer) — id lives in shortcode-product-<id>
+  // Manager copies of the old renderer) ‚Äî id lives in shortcode-product-<id>
   [].slice.call(document.querySelectorAll('article.card.shortcode-card,article.fp-slide-wrap')).forEach(function(el){
     if(el.querySelector('.fp-rich'))return;              // already converted
     var m=String(el.className).match(/shortcode-product-(\d+)/);
@@ -3682,7 +3712,7 @@ async function enrichThemeCards(){
       var fresh=host.firstElementChild;
       if(!fresh)return;
       if(t.legacy){
-        // the old card IS the slick slide — keep the element (slick owns its
+        // the old card IS the slick slide ‚Äî keep the element (slick owns its
         // classes/inline width) and mount the new card inside it
         var keep=(String(t.el.className).match(/slick-[\w-]+/g)||[]).join(' ');
         t.el.className=('fp-slide-wrap shortcode-product-'+t.id+' '+keep).trim();
@@ -3697,7 +3727,7 @@ async function enrichThemeCards(){
     });
     if(done){
       applyCartStateToButtons();
-      // slick measured the OLD cards — force affected carousels to re-measure
+      // slick measured the OLD cards ‚Äî force affected carousels to re-measure
       if(window.jQuery&&window.jQuery.fn&&window.jQuery.fn.slick){
         window.jQuery('.slick-initialized').each(function(){
           if(this.querySelector('.fp-rich')){
@@ -3723,7 +3753,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 // ==================== SS RECOMMENDATIONS: DIRECT RENDER ====================
 // Deterministic at load. Snap's own carousels are hidden the moment their
 // placeholders are collected (before Snap can paint the old design) and only
-// un-hidden if we end up with no data for them — so there is never a flash of
+// un-hidden if we end up with no data for them ‚Äî so there is never a flash of
 // the old format, and never an empty hole when data is missing.
 var SS_SITE_ID='kncv3u';
 var _fpRecsSeed=null;
@@ -3787,7 +3817,7 @@ async function fpFetchProductsCached(ids){
     missing.forEach(function(id){if(PRODUCT_CACHE[id])fpCacheSet('fp_prod2_'+id,PRODUCT_CACHE[id]);});
   }
 }
-// Skeleton section rendered at 0ms in the carousel's spot — flyer-format shape
+// Skeleton section rendered at 0ms in the carousel's spot ‚Äî flyer-format shape
 // with shimmer tiles until the real data lands.
 function recRenderSkeleton(entry){
   var sec=document.createElement('div');
@@ -3878,7 +3908,7 @@ async function initRecsDirect(){
     recs.forEach(function(b){var t=b&&b.profile&&(b.profile.tag||b.profile);if(t)byTag[t]=b;});
     var done=0;
     // Each section resolves and renders INDEPENDENTLY the moment its data is
-    // ready — a slow source (recently-viewed storage poll) never delays others.
+    // ready ‚Äî a slow source (recently-viewed storage poll) never delays others.
     await Promise.all(entries.map(async function(e,i){
       var cacheKey='fp_recs_'+e.tag+'_'+(_fpRecsSeed||'');
       var block=byTag[e.tag];
@@ -3930,16 +3960,16 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
 
 /* ============================================================================
-   v90: HOME SECTIONS CONTROLLER — show/hide, reorder, retitle sections, apply
+   v90: HOME SECTIONS CONTROLLER ‚Äî show/hide, reorder, retitle sections, apply
    per-section SOURCE overrides, define Explore tabs (EXPLORETAB rows) and add
-   CATSTRIP product strips on the home page — all driven by the flyer sheet
+   CATSTRIP product strips on the home page ‚Äî all driven by the flyer sheet
    "HomeSections" tab (ORDER | SECTION | ACTIVE | TITLE | SOURCE).
    SOURCE semantics:
-     TOPDEALS / CLEARANCE / TENOFF  → target link URL
-     FEATUREDBRAND                  → brand/category path or SearchSpring URL for the strip
-     FEATUREDVIDEO                  → "productURL | videoURL" (pipe-separated)
-     CATSTRIP                       → category path or SearchSpring URL (new strip per row)
-     EXPLORETAB                     → tab source (TITLE = tab label), replaces client tabs
+     TOPDEALS / CLEARANCE / TENOFF  ‚Üí target link URL
+     FEATUREDBRAND                  ‚Üí brand/category path or SearchSpring URL for the strip
+     FEATUREDVIDEO                  ‚Üí "productURL | videoURL" (pipe-separated)
+     CATSTRIP                       ‚Üí category path or SearchSpring URL (new strip per row)
+     EXPLORETAB                     ‚Üí tab source (TITLE = tab label), replaces client tabs
    Requires theme V72+ (ath-* home). Safe no-op on older themes / unreachable sheet.
    ============================================================================ */
 (function(){
@@ -4016,7 +4046,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       +add+'</article>';
   }
   function fromRoute(path){
-    /* Category OR Brand path → products, live BC data */
+    /* Category OR Brand path ‚Üí products, live BC data */
     return gql('query($p:String!){site{route(path:$p){node{__typename ... on Category{products(first:12){edges{node{'+GQL_FIELDS+'}}}} ... on Brand{products(first:12){edges{node{'+GQL_FIELDS+'}}}}}}}}',{p:path})
       .then(function(d){var n=d&&d.data&&d.data.site&&d.data.site.route&&d.data.site.route.node;
         return (n&&n.products&&n.products.edges||[]).map(function(e){return e.node;});});
@@ -4149,7 +4179,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       else if(it.key==='FEATUREDVIDEO')applySource(it);
     });
     if(exploreTabs.length)applyExploreTabs(exploreTabs);
-    /* 2) reorder (HERO stays put — it lives in the theme hero region) */
+    /* 2) reorder (HERO stays put ‚Äî it lives in the theme hero region) */
     var ci=0;
     var ordered=items.filter(function(it){return it.key!=='HERO'&&it.key!=='EXPLORETAB';})
                      .sort(function(a,b){return a.order-b.order;});
@@ -4166,7 +4196,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
         extraNodes(it.key).forEach(function(n){ if(n.parentNode===parent)parent.appendChild(n); });
       });
     } else {
-      /* no known parent (old theme) — still allow CATSTRIP appends after brands */
+      /* no known parent (old theme) ‚Äî still allow CATSTRIP appends after brands */
       items.forEach(function(it){ if(it.key!=='CATSTRIP'||!it.active)return;
         var b=rootOf('BRANDS'); if(b&&b.parentNode)b.parentNode.insertBefore(makeCatstrip(it,++ci),b.nextSibling); });
     }
