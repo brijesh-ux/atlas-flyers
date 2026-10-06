@@ -1,4 +1,4 @@
-/* v93 (03OCT2026): all glyphs escaped to \uXXXX so icons render under any page charset (fixes mojibake stock/viewing/coupon icons) + v92 fast Shop-by-Brand coupon injection (brand-only GraphQL, parallel, 24h cache). Base: v91. */
+/* v94 (06OCT2026): richCard option-product CTA now stock-aware — tiles with optionsUrl where ALL variants are out of stock render NOTIFY ME (PDP link) instead of Choose Options; was dead-branch bcStatus==='Unavailable' check (Unavailable exits earlier via Contact for Pricing). Mixed-stock/preorder/in-stock tiles unchanged. Base: v93 (03OCT2026: glyphs escaped to \uXXXX, fixes mojibake) + v92 fast Shop-by-Brand coupon injection. */
 (function(){
 'use strict';
 
@@ -474,9 +474,12 @@ function richCard(p,m){
     '<div class="fp-rich-prices">'+(hasDiscount?'<div class="fp-rich-sale">$'+currentPrice.toFixed(2)+'</div><div class="fp-rich-was">$'+wasPrice.toFixed(2)+'</div>':'<div class="fp-rich-reg">'+(pr?'$'+pr.toFixed(2):'See price')+'</div>')+'</div>'+
     (m.code?'<div class="fp-rich-code"><span class="fp-rich-code-lbl">Code:</span><span class="fp-rich-code-val">'+esc(m.code)+'</span></div>':'')+
     (optionsUrl
-      ? (bcStatus==='Unavailable'
+      ? (!canBuy
           /* has variants but ALL are out of stock -> Notify Me (links to PDP where the
-             per-variant back-in-stock subscribes to the size the shopper picks) */
+             per-variant back-in-stock subscribes to the size the shopper picks).
+             Mixed stock (some variants left) keeps isInStock true -> Choose Options.
+             Preorder keeps canBuy true -> Choose Options. Unavailable never reaches
+             here (early CONTACT FOR PRICING return above). */
           ? '<a class="fp-rich-add fp-rich-notify" href="'+esc(optionsUrl)+'">Notify Me</a>'
           : '<a class="fp-rich-add fp-rich-choose" href="'+esc(optionsUrl)+'">Choose Options</a>')
       : canBuy
