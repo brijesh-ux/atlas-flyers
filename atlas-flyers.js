@@ -1,3 +1,4 @@
+/* v95 (06OCT2026): SALE view (/shop/ ?fsale=1 or #ss_on_sale) — new sort 'Biggest Discount' (sort=discount -> Searchspring sort.ss_pct_off=desc), made the SALE default (was bestselling) and listed first in its Sort menu; 'Search results' h1 hidden on the SALE view only. Base: v94. */
 /* v94 (06OCT2026): richCard option-product CTA now stock-aware — tiles with optionsUrl where ALL variants are out of stock render NOTIFY ME (PDP link) instead of Choose Options; was dead-branch bcStatus==='Unavailable' check (Unavailable exits earlier via Contact for Pricing). Mixed-stock/preorder/in-stock tiles unchanged. Base: v93 (03OCT2026: glyphs escaped to \uXXXX, fixes mojibake) + v92 fast Shop-by-Brand coupon injection. */
 (function(){
 'use strict';
@@ -2869,9 +2870,10 @@ function ssSearchUrl(catPath,f,page,perPage){
   var sort='';
   try{sort=new URLSearchParams(location.search).get('sort')||'';}catch(e){}
   if(!sort&&/^\/new-arrivals\//.test(location.pathname))sort='newest';
-  if(!sort&&catPath==='ss:on-sale')sort='bestselling';
+  if(!sort&&catPath==='ss:on-sale')sort='discount';   // SALE view opens with the biggest discounts first
   var map={newest:'sort.sortable_date_created=desc',bestselling:'sort.ga_unique_purchases=desc',
-    featured:'sort.is_featured=desc',priceasc:'sort.calculated_price=asc',pricedesc:'sort.calculated_price=desc'};
+    featured:'sort.is_featured=desc',priceasc:'sort.calculated_price=asc',pricedesc:'sort.calculated_price=desc',
+    discount:'sort.ss_pct_off=desc'};   // Searchspring % off field
   if(map[sort])u+='&'+map[sort];
   return u;
 }
@@ -3356,12 +3358,13 @@ if('MutationObserver' in window){
     ?{names:{relevance:'Relevance',bestselling:'Best Selling',newest:'Newest',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'},def:'relevance'}
     :(mode==='tag'
       ?{names:{merch:'Featured',bestselling:'Best Selling',newest:'Newest',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'},def:'merch'}
-      :{names:{bestselling:'Best Selling',newest:'Newest',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'},def:'bestselling'});
+      :{names:{discount:'Biggest Discount',bestselling:'Best Selling',newest:'Newest',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'},def:'discount'});
   var hideSt=document.createElement('style');
   hideSt.id='fp-sale-hide';
   hideSt.textContent='#searchspring-content{display:none!important}'
     +'#searchspring-sidebar,#facetedSearch,.facetedSearch,.ss__sidebar,'
-    +'.floating-filter-btn,.floating-mobile-filter-btn,.ssc-slideout-button,.breadcrumbs,.atlas-filter-bar{display:none!important}';
+    +'.floating-filter-btn,.floating-mobile-filter-btn,.ssc-slideout-button,.breadcrumbs,.atlas-filter-bar{display:none!important}'
+    +(mode==='sale'?'h1.page-heading{display:none!important}':'');   // no "Search results" heading on the SALE view
   (document.head||document.documentElement).appendChild(hideSt);
   function saleFail(wrap){
     if(hideSt&&hideSt.parentNode)hideSt.parentNode.removeChild(hideSt);
