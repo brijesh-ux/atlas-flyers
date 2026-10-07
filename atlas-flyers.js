@@ -1,6 +1,7 @@
-/* v96 (07OCT2026): brand pages (non-/brands/ URLs, e.g. /klein/, /graco/) get the full REFINE bar (Category/Price/Availability/Sort) — fpCatPathFromTree falls back to a GraphQL route lookup and returns 'ss:brand:<Name>' (ssSearchUrl -> bgfilter.brand); catPath now resolves tree/brand FIRST, breadcrumbs only as fallback (brand pages still render 'Home > Brand' crumbs, which mis-scoped SS to a nonexistent category); brand-scope Category facet drops Brands/New Arrivals/Sale/Hidden. Base: v95. */
-/* v95 (06OCT2026): SALE view (/shop/ ?fsale=1 or #ss_on_sale) — new sort 'Biggest Discount' (sort=discount -> Searchspring sort.ss_pct_off=desc), made the SALE default (was bestselling) and listed first in its Sort menu; 'Search results' h1 hidden on the SALE view only. Base: v94. */
-/* v94 (06OCT2026): richCard option-product CTA now stock-aware — tiles with optionsUrl where ALL variants are out of stock render NOTIFY ME (PDP link) instead of Choose Options; was dead-branch bcStatus==='Unavailable' check (Unavailable exits earlier via Contact for Pricing). Mixed-stock/preorder/in-stock tiles unchanged. Base: v93 (03OCT2026: glyphs escaped to \uXXXX, fixes mojibake) + v92 fast Shop-by-Brand coupon injection. */
+/* v97 (07OCT2026): typing a brand name in search now lands on that brand's page ‚Äî on /shop/?search_query=<q> (fresh search, no filters/page) fpBrandPathForQuery() matches q against the GraphQL brand list (normalized exact name, or the name minus a generic trailing word like Tools/Systems/Gloves; ambiguous short keys dropped; list cached 24h as fp_brandmap_v1) and location.replace()s to brand.path. Covers the ~35 brands BigCommerce's own brand-search redirect misses (Diablo, Metabo HPT, FLEX, Stanley, Occidental Leather, Velocity Pro Gear...). Base: v96. */
+/* v96 (07OCT2026): brand pages (non-/brands/ URLs, e.g. /klein/, /graco/) get the full REFINE bar (Category/Price/Availability/Sort) ‚Äî fpCatPathFromTree falls back to a GraphQL route lookup and returns 'ss:brand:<Name>' (ssSearchUrl -> bgfilter.brand); catPath now resolves tree/brand FIRST, breadcrumbs only as fallback (brand pages still render 'Home > Brand' crumbs, which mis-scoped SS to a nonexistent category); brand-scope Category facet drops Brands/New Arrivals/Sale/Hidden. Base: v95. */
+/* v95 (06OCT2026): SALE view (/shop/ ?fsale=1 or #ss_on_sale) ‚Äî new sort 'Biggest Discount' (sort=discount -> Searchspring sort.ss_pct_off=desc), made the SALE default (was bestselling) and listed first in its Sort menu; 'Search results' h1 hidden on the SALE view only. Base: v94. */
+/* v94 (06OCT2026): richCard option-product CTA now stock-aware ‚Äî tiles with optionsUrl where ALL variants are out of stock render NOTIFY ME (PDP link) instead of Choose Options; was dead-branch bcStatus==='Unavailable' check (Unavailable exits earlier via Contact for Pricing). Mixed-stock/preorder/in-stock tiles unchanged. Base: v93 (03OCT2026: glyphs escaped to \uXXXX, fixes mojibake) + v92 fast Shop-by-Brand coupon injection. */
 (function(){
 'use strict';
 
@@ -2838,6 +2839,43 @@ async function fpCatPathFromTree(){
     return p;
   }catch(e){return null;}
 }
+// v97: brand-name search -> brand page. Brand list from GraphQL, cached 24h.
+function fpBrandNorm(s){return String(s||'').toLowerCase().replace(/&/g,' and ').replace(/[^a-z0-9]+/g,' ').trim();}
+async function fpBrandPathForQuery(q){
+  try{
+    var nq=fpBrandNorm(q).replace(/ /g,'');
+    if(nq.length<2)return null;
+    var map=fpCacheGet('fp_brandmap_v1',86400000);
+    if(!map){
+      STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
+      if(!STORE_TOKEN)return null;
+      var list=[],after=null;
+      for(var i=0;i<10;i++){
+        var d=await fetch(STORE+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+STORE_TOKEN},body:JSON.stringify({query:'{site{brands(first:50'+(after?',after:'+JSON.stringify(after):'')+'){pageInfo{hasNextPage endCursor} edges{node{name path}}}}}'})}).then(function(r){return r.ok?r.json():null;});
+        var c=d&&d.data&&d.data.site&&d.data.site.brands;
+        if(!c)break;
+        c.edges.forEach(function(e){list.push(e.node);});
+        if(!c.pageInfo.hasNextPage)break;
+        after=c.pageInfo.endCursor;
+      }
+      if(!list.length)return null;
+      var GENERIC=/ (tools?|systems|abrasives|industries|industrial|power|equipment|co|company|inc|ltd|gloves|tapes|machinery|workwear|clamps|hand tools|toolbelts|marker)$/;
+      var full={},short={},dup={};
+      list.forEach(function(b){
+        var n=fpBrandNorm(b.name);
+        full[n.replace(/ /g,'')]=b.path;
+        var t=n;
+        while(GENERIC.test(t)){t=t.replace(GENERIC,'');}
+        var k=t.replace(/ /g,'');
+        if(k&&k!==n.replace(/ /g,'')){if(short[k]&&short[k]!==b.path)dup[k]=1;short[k]=b.path;}
+      });
+      Object.keys(dup).forEach(function(k){delete short[k];});
+      map={full:full,short:short};
+      fpCacheSet('fp_brandmap_v1',map);
+    }
+    return map.full[nq]||(map.full[nq]===undefined?map.short[nq]:null)||null;
+  }catch(e){return null;}
+}
 function ssCatPath(){
   if(/^\/new-arrivals\//.test(location.pathname))return 'New Arrivals';
   var names=[].slice.call(document.querySelectorAll('.breadcrumbs li')).map(function(li){
@@ -3199,7 +3237,7 @@ async function initCategoryTiles(rerun){
           if(facets)fpCacheSet(ck,facets);
         }
         if(facets&&catPath.indexOf('ss:brand:')===0){
-          // v96: brand pages — drop store sections that aren't product types
+          // v96: brand pages ‚Äî drop store sections that aren't product types
           facets=facets.map(function(fa){
             if(fa.field!=='categories_hierarchy')return fa;
             return Object.assign({},fa,{values:(fa.values||[]).filter(function(v){return !/^(Brands|New Arrivals|Sale|Hidden From Navigation)$/i.test(String(v.label||'').trim());})});
@@ -3402,6 +3440,12 @@ if('MutationObserver' in window){
       // (v35 skipped this: cold-cache visitors got a 40-card dead grid / blank
       // sorted pages while pages 1-4 hydrated against an empty token)
       STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
+      // v97: a search that IS a brand name goes straight to that brand's page
+      // (BigCommerce's own brand-search redirect misses ~35 brands)
+      if(mode==='search'&&!ssFParams().any&&!(sp&&sp.get('page'))){
+        var bp=await fpBrandPathForQuery(q);
+        if(bp&&bp!==location.pathname){location.replace(bp);return;}
+      }
       await fpEnsureTileData();
       catInjectInfra();
       catWidenContainer();
