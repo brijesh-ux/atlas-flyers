@@ -1,7 +1,8 @@
-/* v97 (07OCT2026): typing a brand name in search now lands on that brand's page ‚Äî on /shop/?search_query=<q> (fresh search, no filters/page) fpBrandPathForQuery() matches q against the GraphQL brand list (normalized exact name, or the name minus a generic trailing word like Tools/Systems/Gloves; ambiguous short keys dropped; list cached 24h as fp_brandmap_v1) and location.replace()s to brand.path. Covers the ~35 brands BigCommerce's own brand-search redirect misses (Diablo, Metabo HPT, FLEX, Stanley, Occidental Leather, Velocity Pro Gear...). Base: v96. */
-/* v96 (07OCT2026): brand pages (non-/brands/ URLs, e.g. /klein/, /graco/) get the full REFINE bar (Category/Price/Availability/Sort) ‚Äî fpCatPathFromTree falls back to a GraphQL route lookup and returns 'ss:brand:<Name>' (ssSearchUrl -> bgfilter.brand); catPath now resolves tree/brand FIRST, breadcrumbs only as fallback (brand pages still render 'Home > Brand' crumbs, which mis-scoped SS to a nonexistent category); brand-scope Category facet drops Brands/New Arrivals/Sale/Hidden. Base: v95. */
-/* v95 (06OCT2026): SALE view (/shop/ ?fsale=1 or #ss_on_sale) ‚Äî new sort 'Biggest Discount' (sort=discount -> Searchspring sort.ss_pct_off=desc), made the SALE default (was bestselling) and listed first in its Sort menu; 'Search results' h1 hidden on the SALE view only. Base: v94. */
-/* v94 (06OCT2026): richCard option-product CTA now stock-aware ‚Äî tiles with optionsUrl where ALL variants are out of stock render NOTIFY ME (PDP link) instead of Choose Options; was dead-branch bcStatus==='Unavailable' check (Unavailable exits earlier via Contact for Pricing). Mixed-stock/preorder/in-stock tiles unchanged. Base: v93 (03OCT2026: glyphs escaped to \uXXXX, fixes mojibake) + v92 fast Shop-by-Brand coupon injection. */
+/* v98 (07OCT2026): 'Shop All <Brand>' on the designed brand landings works again — initCategoryTiles no longer strips '#/sort:...' (only stale '#/filter:'), because the landings' Page Builder script shows the product grid (#main-content) only when the URL has '#/sort'; and when '#/sort', our filter params or ?sort= are present we force the grid visible + landing hidden so filtering/sorting from that grid stays on the grid. Base: v97. */
+/* v97 (07OCT2026): typing a brand name in search now lands on that brand's page — on /shop/?search_query=<q> (fresh search, no filters/page) fpBrandPathForQuery() matches q against the GraphQL brand list (normalized exact name, or the name minus a generic trailing word like Tools/Systems/Gloves; ambiguous short keys dropped; list cached 24h as fp_brandmap_v1) and location.replace()s to brand.path. Covers the ~35 brands BigCommerce's own brand-search redirect misses (Diablo, Metabo HPT, FLEX, Stanley, Occidental Leather, Velocity Pro Gear...). Base: v96. */
+/* v96 (07OCT2026): brand pages (non-/brands/ URLs, e.g. /klein/, /graco/) get the full REFINE bar (Category/Price/Availability/Sort) — fpCatPathFromTree falls back to a GraphQL route lookup and returns 'ss:brand:<Name>' (ssSearchUrl -> bgfilter.brand); catPath now resolves tree/brand FIRST, breadcrumbs only as fallback (brand pages still render 'Home > Brand' crumbs, which mis-scoped SS to a nonexistent category); brand-scope Category facet drops Brands/New Arrivals/Sale/Hidden. Base: v95. */
+/* v95 (06OCT2026): SALE view (/shop/ ?fsale=1 or #ss_on_sale) — new sort 'Biggest Discount' (sort=discount -> Searchspring sort.ss_pct_off=desc), made the SALE default (was bestselling) and listed first in its Sort menu; 'Search results' h1 hidden on the SALE view only. Base: v94. */
+/* v94 (06OCT2026): richCard option-product CTA now stock-aware — tiles with optionsUrl where ALL variants are out of stock render NOTIFY ME (PDP link) instead of Choose Options; was dead-branch bcStatus==='Unavailable' check (Unavailable exits earlier via Contact for Pricing). Mixed-stock/preorder/in-stock tiles unchanged. Base: v93 (03OCT2026: glyphs escaped to \uXXXX, fixes mojibake) + v92 fast Shop-by-Brand coupon injection. */
 (function(){
 'use strict';
 
@@ -3126,7 +3127,8 @@ async function initCategoryTiles(rerun){
 
     // stale SearchSpring hash state (#/filter:... from the old Snap bar) does
     // nothing anymore \u2014 clean it off the URL so it stops confusing everyone
-    if(location.hash.slice(0,2)==='#/'){
+    // v98: keep '#/sort:...' — designed brand landings use it as their 'Shop All' trigger
+    if(location.hash.slice(0,2)==='#/'&&location.hash.indexOf('#/sort:')!==0){
       try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}
     }
     var newestModeEarly=/^\/new-arrivals\//.test(location.pathname);
@@ -3135,6 +3137,20 @@ async function initCategoryTiles(rerun){
     var fParams=ssFParams();
     var themeSort='';
     try{themeSort=new URLSearchParams(location.search).get('sort')||'';}catch(e){}
+    // v98: designed brand landings keep the product grid (#main-content) hidden behind
+    // the header_bottom landing unless the URL asks for products ('#/sort:...' from their
+    // 'Shop All' button). Our own filter/sort params mean the same thing, so filtering
+    // from that grid must not bounce the shopper back to the landing.
+    if(location.hash.indexOf('#/sort:')===0||fParams.any||themeSort){
+      var fpShowGrid=function(){
+        var mcEl=document.getElementById('main-content');
+        var hbEl=document.querySelector('div[data-content-region="header_bottom"]');
+        if(mcEl&&hbEl&&mcEl.style.display==='none'){mcEl.style.display='block';hbEl.style.display='none';}
+      };
+      fpShowGrid();
+      document.addEventListener('DOMContentLoaded',function(){setTimeout(fpShowGrid,0);});
+      window.addEventListener('load',fpShowGrid);
+    }
     // filters active -> SS supplies the ids. Also /new-arrivals/ with an explicit
     // non-newest sort: the GraphQL stream can ONLY do newest-first, so any other
     // order comes from SS (same New Arrivals scope, mapped sort).
@@ -3237,7 +3253,7 @@ async function initCategoryTiles(rerun){
           if(facets)fpCacheSet(ck,facets);
         }
         if(facets&&catPath.indexOf('ss:brand:')===0){
-          // v96: brand pages ‚Äî drop store sections that aren't product types
+          // v96: brand pages — drop store sections that aren't product types
           facets=facets.map(function(fa){
             if(fa.field!=='categories_hierarchy')return fa;
             return Object.assign({},fa,{values:(fa.values||[]).filter(function(v){return !/^(Brands|New Arrivals|Sale|Hidden From Navigation)$/i.test(String(v.label||'').trim());})});
