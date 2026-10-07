@@ -1,3 +1,4 @@
+/* v96 (07OCT2026): brand pages (non-/brands/ URLs, e.g. /klein/, /graco/) get the full REFINE bar (Category/Price/Availability/Sort) — fpCatPathFromTree falls back to a GraphQL route lookup and returns 'ss:brand:<Name>' (ssSearchUrl -> bgfilter.brand); catPath now resolves tree/brand FIRST, breadcrumbs only as fallback (brand pages still render 'Home > Brand' crumbs, which mis-scoped SS to a nonexistent category); brand-scope Category facet drops Brands/New Arrivals/Sale/Hidden. Base: v95. */
 /* v95 (06OCT2026): SALE view (/shop/ ?fsale=1 or #ss_on_sale) — new sort 'Biggest Discount' (sort=discount -> Searchspring sort.ss_pct_off=desc), made the SALE default (was bestselling) and listed first in its Sort menu; 'Search results' h1 hidden on the SALE view only. Base: v94. */
 /* v94 (06OCT2026): richCard option-product CTA now stock-aware — tiles with optionsUrl where ALL variants are out of stock render NOTIFY ME (PDP link) instead of Choose Options; was dead-branch bcStatus==='Unavailable' check (Unavailable exits earlier via Contact for Pricing). Mixed-stock/preorder/in-stock tiles unchanged. Base: v93 (03OCT2026: glyphs escaped to \uXXXX, fixes mojibake) + v92 fast Shop-by-Brand coupon injection. */
 (function(){
@@ -2823,7 +2824,15 @@ async function fpCatPathFromTree(){
       return null;
     }
     var names=find(tree,[]);
-    if(!names||!names.length)return null;
+    if(!names||!names.length){
+      // v96: not a category -- a brand page gets the same filter bar, scoped by brand
+      var rb=await fetch(STORE+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+STORE_TOKEN},body:JSON.stringify({query:'{site{route(path:'+JSON.stringify(location.pathname)+'){node{__typename ... on Brand{name}}}}}'})}).then(function(r){return r.ok?r.json():null;});
+      var bn=rb&&rb.data&&rb.data.site&&rb.data.site.route&&rb.data.site.route.node;
+      if(!bn||bn.__typename!=='Brand'||!bn.name)return null;
+      var pb='ss:brand:'+bn.name;
+      fpCacheSet(ck,pb);
+      return pb;
+    }
     var p=names.join('>');
     fpCacheSet(ck,p);
     return p;
@@ -2856,6 +2865,7 @@ function ssSearchUrl(catPath,f,page,perPage){
   if(catPath==='ss:on-sale')u+='&bgfilter.ss_on_sale=1';
   else if(catPath&&catPath.indexOf('ss:q:')===0)u+='&q='+encodeURIComponent(catPath.slice(5));
   else if(catPath&&catPath.indexOf('ss:tag:')===0)u+='&tag='+encodeURIComponent(catPath.slice(7));
+  else if(catPath&&catPath.indexOf('ss:brand:')===0)u+='&bgfilter.brand='+encodeURIComponent(catPath.slice(9));
   else u+='&bgfilter.categories_hierarchy='+encodeURIComponent(catPath);
   f.brands.forEach(function(b){u+='&filter.brand='+encodeURIComponent(b);});
   if(f.cats)f.cats.forEach(function(c){u+='&filter.categories_hierarchy='+encodeURIComponent(c);});
@@ -3082,8 +3092,8 @@ async function initCategoryTiles(rerun){
       try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}
     }
     var newestModeEarly=/^\/new-arrivals\//.test(location.pathname);
-    var catPath=ssCatPath();
-    if(!catPath)catPath=await fpCatPathFromTree();
+    var catPath=await fpCatPathFromTree();   // v96: tree/brand lookup first; breadcrumbs (still on brand pages) only as fallback
+    if(!catPath)catPath=ssCatPath();
     var fParams=ssFParams();
     var themeSort='';
     try{themeSort=new URLSearchParams(location.search).get('sort')||'';}catch(e){}
@@ -3187,6 +3197,13 @@ async function initCategoryTiles(rerun){
           var fr=await fetch(ssSearchUrl(catPath,fParams,1,2)).then(function(r){return r.ok?r.json():null;});   // SS 400s below resultsPerPage=2
           facets=(fr&&fr.facets)||null;
           if(facets)fpCacheSet(ck,facets);
+        }
+        if(facets&&catPath.indexOf('ss:brand:')===0){
+          // v96: brand pages — drop store sections that aren't product types
+          facets=facets.map(function(fa){
+            if(fa.field!=='categories_hierarchy')return fa;
+            return Object.assign({},fa,{values:(fa.values||[]).filter(function(v){return !/^(Brands|New Arrivals|Sale|Hidden From Navigation)$/i.test(String(v.label||'').trim());})});
+          });
         }
         if(facets){
           ssBuildFilterBar(facets,null,{
