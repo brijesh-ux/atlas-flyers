@@ -1,3 +1,4 @@
+/* v99 (08OCT2026): Monthly Flyer is now a clean sheet-driven page at /monthlyflyer/ — products + order from the "Monthly Flyer Deals" tab (Product ID rows, top-to-bottom), flip-book from Settings "monthly_flyer_flipbook_url", same richCard tiles + endless scroll. /shop/?search_query&tag=monthly-flyer 301s there and header chips are rewritten, so nothing SearchSpring-side is needed any more. Base: v98. */
 /* v98 (07OCT2026): 'Shop All <Brand>' on the designed brand landings works again — initCategoryTiles no longer strips '#/sort:...' (only stale '#/filter:'), because the landings' Page Builder script shows the product grid (#main-content) only when the URL has '#/sort'; and when '#/sort', our filter params or ?sort= are present we force the grid visible + landing hidden so filtering/sorting from that grid stays on the grid. Base: v97. */
 /* v97 (07OCT2026): typing a brand name in search now lands on that brand's page — on /shop/?search_query=<q> (fresh search, no filters/page) fpBrandPathForQuery() matches q against the GraphQL brand list (normalized exact name, or the name minus a generic trailing word like Tools/Systems/Gloves; ambiguous short keys dropped; list cached 24h as fp_brandmap_v1) and location.replace()s to brand.path. Covers the ~35 brands BigCommerce's own brand-search redirect misses (Diablo, Metabo HPT, FLEX, Stanley, Occidental Leather, Velocity Pro Gear...). Base: v96. */
 /* v96 (07OCT2026): brand pages (non-/brands/ URLs, e.g. /klein/, /graco/) get the full REFINE bar (Category/Price/Availability/Sort) — fpCatPathFromTree falls back to a GraphQL route lookup and returns 'ss:brand:<Name>' (ssSearchUrl -> bgfilter.brand); catPath now resolves tree/brand FIRST, breadcrumbs only as fallback (brand pages still render 'Home > Brand' crumbs, which mis-scoped SS to a nonexistent category); brand-scope Category facet drops Brands/New Arrivals/Sale/Hidden. Base: v95. */
@@ -3394,6 +3395,113 @@ if('MutationObserver' in window){
   })();
 }
 
+// ==================== MONTHLY FLYER LANDING (/monthlyflyer/) ====================
+// v99: the monthly flyer is now a plain web page at /monthlyflyer/ that is 100%
+// sheet-driven. Products + ORDER come from the "Monthly Flyer Deals" tab
+// (GIDS.allCoupons: "Big Commerce Product ID" rows, top-to-bottom), the flip-book
+// comes from Settings "monthly_flyer_flipbook_url". Tiles are the same richCard
+// as every other grid, hydrated via GraphQL in sheet order with endless scroll.
+// The old SearchSpring landing (/shop/?search_query&tag=monthly-flyer) 301s here
+// and any header chip still pointing at it is rewritten, so old links keep working.
+(function(){
+  var MF_PATH='/monthlyflyer/';
+  var MF_DEFAULT_BOOK='https://flyer.atlas-machinery.com/flip-book/788627/2654093'; // used only when the Settings row is blank
+  var MF_PER=24;
+  var path=location.pathname.replace(/\/*$/,'/').toLowerCase();
+  // 1) legacy campaign URL -> clean URL (also catches the ?search_query&tag= form)
+  try{
+    var sp0=new URLSearchParams(location.search);
+    if(location.pathname.indexOf('/shop/')===0&&sp0.get('tag')==='monthly-flyer'){location.replace(MF_PATH);return;}
+  }catch(e){}
+  // 2) header chips / menu links that still point at the old URL
+  function fixChips(){
+    [].slice.call(document.querySelectorAll('a[href*="tag=monthly-flyer"]')).forEach(function(a){a.setAttribute('href',MF_PATH);});
+  }
+  fixChips();
+  document.addEventListener('DOMContentLoaded',fixChips);
+  setTimeout(fixChips,1500);setTimeout(fixChips,4000);
+  if(path!==MF_PATH&&path!=='/monthly-flyer/')return;
+
+  function mfCss(){
+    if(document.getElementById('fp-mf-style'))return;
+    var st=document.createElement('style');st.id='fp-mf-style';
+    st.textContent='#fp-mf-wrap{width:100%}'
+      +'#fp-mf-book{margin:0 0 22px;border-radius:14px;overflow:hidden;background:#111;box-shadow:0 8px 30px rgba(0,0,0,.18)}'
+      +'#fp-mf-book iframe{display:block;width:100%;height:min(82vh,920px);min-height:420px;border:0}'
+      +'@media(max-width:767px){#fp-mf-book iframe{height:72vh;min-height:360px}#fp-mf-book{border-radius:10px;margin-bottom:14px}}'
+      +'#fp-mf-grid{min-height:200px}'
+      +'.fp-mf-none{padding:40px 16px;text-align:center;color:#666;font:600 15px Roboto,Arial,sans-serif}'
+      +'.breadcrumbs{display:none!important}';
+    (document.head||document.documentElement).appendChild(st);
+  }
+  function mfIds(rows){
+    var ids=[],seen={};
+    (rows||[]).forEach(function(r){
+      var cell=(r['Big Commerce Product ID']||r['BigCommerce Product ID']||r['Product ID']||'').toString();
+      parseIds(cell).forEach(function(id){if(!seen[id]){seen[id]=1;ids.push(id);}});
+    });
+    return ids;
+  }
+  async function run(){
+    if(window.__fpMonthlyRun)return;window.__fpMonthlyRun=1;
+    var host=document.getElementById('fp-monthly-flyer')||document.querySelector('.page-content')||document.querySelector('main.page')||document.getElementById('main-content');
+    if(!host){console.warn('[Atlas Monthly] no host element');return;}
+    mfCss();
+    STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
+    await fpEnsureTileData();
+    catInjectInfra();
+    catWidenContainer();
+    var wrapAll=document.createElement('div');wrapAll.id='fp-mf-wrap';
+    host.appendChild(wrapAll);
+    // flip-book (Publuu) on top
+    var book=(SETTINGS.monthly_flyer_flipbook_url||'').trim()||MF_DEFAULT_BOOK;
+    if(book&&book.toLowerCase()!=='none'&&book.toLowerCase()!=='no'){
+      wrapAll.insertAdjacentHTML('beforeend','<div id="fp-mf-book"><iframe src="'+esc(book)+'" title="Monthly Flyer" loading="eager" allowfullscreen allow="fullscreen; clipboard-write"></iframe></div>');
+    }
+    // product grid, sheet order
+    var rows=await fetchCSV('allCoupons',GIDS.allCoupons);
+    var ids=mfIds(rows);
+    var grid=document.createElement('div');grid.id='fp-mf-grid';grid.className='fp-rich-grid fp-cat-grid';
+    wrapAll.appendChild(grid);
+    if(!ids.length){grid.innerHTML='<div class="fp-mf-none">The new flyer is being loaded — please check back shortly.</div>';return;}
+    var sk='';for(var i=0;i<10;i++)sk+='<div class="fp-skel"></div>';
+    grid.innerHTML=sk;
+    var pos=0,loading=false,exhausted=false,painted=0;
+    async function loadPage(){
+      var batch=ids.slice(pos,pos+MF_PER);pos+=batch.length;
+      if(!batch.length){exhausted=true;return;}
+      await fpFetchProductsCached(batch);
+      if(!batch.some(function(id){return PRODUCT_CACHE[id];})){
+        // token race on cold load: re-resolve once and retry
+        STORE_TOKEN=window.BC_STOREFRONT_TOKEN||window.global_bct||STORE_TOKEN||'';
+        await fpFetchProductsCached(batch);
+      }
+      [].slice.call(grid.querySelectorAll('.fp-skel')).forEach(function(el){el.parentNode.removeChild(el);});
+      var h=batch.map(function(id){
+        var p=PRODUCT_CACHE[id];
+        return (p&&isShowable(p))?richCard(p,{showTag:false,_sectionKey:'monthlyFlyerPage'}):'';
+      }).join('');
+      if(h){grid.insertAdjacentHTML('beforeend',h);painted+=batch.length;applyCartStateToButtons();}
+      if(pos>=ids.length){exhausted=true;if(!grid.querySelector('.fp-rich'))grid.innerHTML='<div class="fp-mf-none">No flyer products are available right now.</div>';}
+    }
+    var sentinel=document.createElement('div');sentinel.style.cssText='height:1px;width:100%';
+    grid.parentNode.insertBefore(sentinel,grid.nextSibling);
+    async function loadMore(){if(loading||exhausted)return;loading=true;try{await loadPage();}catch(e){exhausted=true;}finally{loading=false;}}
+    function nearBottom(){var r=sentinel.getBoundingClientRect();return r.top<innerHeight+900;}
+    async function maybeLoad(){if(exhausted||loading||!nearBottom())return;await loadMore();if(!exhausted&&nearBottom())setTimeout(maybeLoad,150);}
+    document.addEventListener('scroll',maybeLoad,true);
+    window.addEventListener('wheel',maybeLoad,{passive:true});
+    window.addEventListener('touchmove',maybeLoad,{passive:true});
+    if('IntersectionObserver' in window){
+      new IntersectionObserver(function(es){es.forEach(function(en){if(en.isIntersecting)maybeLoad();});},{rootMargin:'900px 0px'}).observe(sentinel);
+    }
+    await loadMore();
+    maybeLoad();
+    console.log('[Atlas Monthly] /monthlyflyer/ rendered from sheet — '+ids.length+' ids');
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();
+})();
+
 // ==================== SALE + SEARCH TAKEOVER ====================
 // Two Snap-rendered landings get our grid: (a) SALE \u2014 /sale/ -> 301 ->
 // /shop/?tag=summer-site-wide-sale (Snap normalizes to
@@ -3418,9 +3526,10 @@ if('MutationObserver' in window){
     // the theme lands search results on /shop/?search_query=...
     q=sp.get('search_query');
     mode='search';
-  }else if(onShop&&tag){
-    // any other campaign landing (tag=monthly-flyer etc.) \u2014 the SS API honors
-    // the tag directly, so the campaign's product set renders as our grid
+  }else if(onShop&&tag&&tag!=='monthly-flyer'){
+    // any other campaign landing (tag=xyz) \u2014 the SS API honors the tag
+    // directly, so the campaign's product set renders as our grid.
+    // v99: monthly-flyer is redirected to /monthlyflyer/ (see MONTHLY FLYER LANDING)
     mode='tag';
   }
   if(!mode)return;
