@@ -1,3 +1,4 @@
+/* v103 (09OCT2026): Battery Platform Deals redesigned as a TABBED section (Brijesh did not want a copy of Top Brand Deals): a row of coloured platform pills (Trade Name + deal count, Background/Text Color from the sheet) above ONE product strip; clicking a pill swaps the strip (fpPlatShow). Strip still uses the brand-strip engine (lazy load, VIEW ALL, Load More). Self-contained CSS injected as #fp-plat-css. */
 /* v102 (09OCT2026): 'Shop by Trade' section (tab now 'Battery Platform Deals', same gid) renders like Top Brand Deals instead of chips — one row per sheet line: coloured tile (Trade Name / Icon Image URL / Background Color / Text Color) + lazy-loading product strip with VIEW ALL + Load More, driven by Product IDs. Reuses the brand-strip engine, so renderTrades() now runs after renderBrandRows(). Used for the weekly-refreshed Battery Platform Deals (M18, M12, 20V MAX, ...). */
 /* v101 (09OCT2026): home 'Shop Deals' now repaints the page's EXISTING Shop Deals carousel (Page Builder region, found by its 'Shop Deals' heading, polled up to 14s for the legacy-carousel strip) from the HOME Shop Deals tab instead of inserting a second strip under Featured; the insert is now only the fallback when that region is absent. */
 /* v100 (09OCT2026): HOME PAGE is now sheet-driven like the flyers page — three new tabs in the 'New Flyers & Deals Page' sheet (HOME Featured gid 1227425050, HOME Shop Deals gid 349775653, HOME You May Also Like gid 626322427), filled every Friday by weekly-refresh.js. On '/', the Featured strip ([data-product-type=featured]) is repainted from HOME Featured (server-rendered BC-flag cards stay as fallback when the tab is empty), a 'Shop Deals' strip is inserted right after it from HOME Shop Deals, and the SearchSpring recs block (.home-recommended) is replaced by a 'You May Also Like' strip from HOME You May Also Like. Titles via Settings home_featured_title / home_shop_deals_title / home_ymal_title. Row order honoured as-is. */
@@ -1420,14 +1421,55 @@ function renderVideos(){
   if($('fp-videos').innerHTML.trim())show('fp-sec-videos');else hide('fp-sec-videos');
 }
 
-// ==================== TRADES / BATTERY PLATFORM ROWS (v102) ====================
-// The "Shop by Trade" tab (gid 1407344995, now named "Battery Platform Deals")
-// renders like Top Brand Deals: one row per sheet line = a coloured tile
-// (Trade Name + optional icon) followed by a lazy-loading strip of its
-// Product IDs with VIEW ALL / Load More. Columns: Trade Name, Icon Image URL,
-// Background Color, Text Color, Product IDs. Reuses the brand-strip engine
-// (BRAND_STRIP_STATE / loadBrandPage / wireBrandLazyLoad / backgroundFill),
-// so it must run AFTER renderBrandRows (see the call site in init).
+// ==================== BATTERY PLATFORM DEALS — TABBED (v103) ====================
+// "Shop by Trade" tab (gid 1407344995, named "Battery Platform Deals"): one
+// compact section. A row of coloured pills (Trade Name + deal count, colours
+// from Background Color / Text Color) sits above ONE product strip; clicking a
+// pill swaps the strip to that platform's Product IDs. The strip reuses the
+// brand-strip engine (BRAND_STRIP_STATE / loadBrandPage / lazy load / VIEW ALL),
+// so this still runs after renderBrandRows().
+var PLAT_ROWS=[];
+var PLAT_GID='fp-plat-strip';
+function platCss(){
+  if($('fp-plat-css'))return;
+  var st=document.createElement('style');st.id='fp-plat-css';
+  st.textContent=
+    '.fp-plat-tabs{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:4px var(--p) 14px;margin:0 0 4px}'+
+    '.fp-plat-tabs::-webkit-scrollbar{display:none}'+
+    '.fp-plat-tab{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;border:2px solid var(--pc,#1a1a1a);background:#fff;color:#1a1a1a;border-radius:999px;padding:8px 14px;font-size:13px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;cursor:pointer;white-space:nowrap;transition:background .15s,color .15s,transform .12s}'+
+    '.fp-plat-tab .fp-plat-n{font-size:11px;font-weight:700;background:var(--pc,#1a1a1a);color:var(--pt,#fff);border-radius:999px;padding:2px 7px;opacity:.9}'+
+    '.fp-plat-tab.fp-plat-on{background:var(--pc,#1a1a1a);color:var(--pt,#fff)}'+
+    '.fp-plat-tab.fp-plat-on .fp-plat-n{background:rgba(255,255,255,.22);color:inherit}'+
+    '.fp-plat-tab:active{transform:scale(.97)}'+
+    '.fp-plat-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 var(--p);margin:2px 0 10px}'+
+    '.fp-plat-label{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-left:5px solid var(--pc,#1a1a1a);padding-left:10px}';
+  document.head.appendChild(st);
+}
+async function fpPlatShow(i){
+  var p=PLAT_ROWS[i];if(!p)return;
+  var host=$('fp-trades');if(!host)return;
+  [].forEach.call(host.querySelectorAll('.fp-plat-tab'),function(t,j){t.classList.toggle('fp-plat-on',j===i);t.setAttribute('aria-selected',j===i?'true':'false');});
+  var label=host.querySelector('.fp-plat-label');
+  if(label){label.textContent=p.name+' — '+p.ids.length+' deal'+(p.ids.length>1?'s':'');label.style.setProperty('--pc',p.bg);}
+  var grid=$(PLAT_GID);if(!grid)return;
+  // Reset the single strip for the chosen platform.
+  delete BRAND_STRIP_STATE[PLAT_GID];
+  var wrap=grid.closest('.fp-scroll-wrap');
+  if(wrap&&wrap.parentNode){var lm=wrap.parentNode.querySelector('.fp-loadmore[data-gid="'+PLAT_GID+'"]');if(lm)lm.parentNode.removeChild(lm);}
+  grid.removeAttribute('data-ex');
+  grid.innerHTML='<span class="fp-brow-sentinel" data-gid="'+PLAT_GID+'"></span>';
+  grid.scrollLeft=0;
+  BRAND_STRIP_STATE[PLAT_GID]={ids:p.ids,shown:0,brand:null,loading:false};
+  await loadBrandPage(PLAT_GID,BRAND_FIRST_PAINT);
+  wireBrandLazyLoad();
+  backgroundFillBrandStrips();
+  if(typeof setupScrollArrows==='function')setupScrollArrows();
+  if(typeof refreshScrollArrows==='function')refreshScrollArrows(grid);
+  // keep the chosen pill in view
+  var tab=host.querySelectorAll('.fp-plat-tab')[i],bar=host.querySelector('.fp-plat-tabs');
+  if(tab&&bar&&bar.scrollTo)bar.scrollTo({left:tab.offsetLeft-bar.clientWidth/2+tab.offsetWidth/2,behavior:'smooth'});
+}
+window.fpPlatShow=fpPlatShow;
 async function renderTrades(){
   if(!getSetting('show_shop_by_trade',true)){hide('fp-sec-trades');return;}
   var rows=SECTION_DATA.shopByTrade||[];
@@ -1435,52 +1477,34 @@ async function renderTrades(){
   rows=fpFreshRows('shopByTrade',rows); // freshness (Sequencing=Off)
   var host=$('fp-trades');
   if(!host)return;
-  host.className='fp-brand-rows';
+  platCss();
   var seqOff=SECTION_SEQUENCING['shopByTrade']===false;
   var seed=seqOff?fpFreshSeed('shopByTrade'):0;
-  var plats=rows.map(function(r,i){
+  PLAT_ROWS=rows.map(function(r,i){
     var name=(r['Trade Name']||'').trim();
     var ids=parseIds(r['Product IDs']||'');
     if(!name||!ids.length)return null;
     if(seqOff)ids=fpSeededShuffle(ids,seed+fpStrHash(name)+i);
-    return {key:'p'+i+'-'+name.toLowerCase().replace(/[^a-z0-9]+/g,''),name:name,
-      icon:(r['Icon Image URL']||'').trim(),bg:r['Background Color']||'#1a1a1a',tc:r['Text Color']||'#fff',ids:ids};
+    return {name:name,icon:(r['Icon Image URL']||'').trim(),bg:r['Background Color']||'#1a1a1a',tc:r['Text Color']||'#fff',ids:ids};
   }).filter(Boolean);
-  if(!plats.length){hide('fp-sec-trades');return;}
+  if(!PLAT_ROWS.length){hide('fp-sec-trades');return;}
+  // Drop platforms whose first batch has nothing showable (all OOS).
   var firstIds=[];
-  plats.forEach(function(p){firstIds=firstIds.concat(p.ids.slice(0,BRAND_FIRST_PAINT));});
+  PLAT_ROWS.forEach(function(p){firstIds=firstIds.concat(p.ids.slice(0,BRAND_FIRST_PAINT));});
   if(firstIds.length)await fetchProducts(firstIds);
-  var html='';
-  plats.forEach(function(p){
-    if(!p.ids.slice(0,BRAND_FIRST_PAINT).some(function(id){return isShowable(PRODUCT_CACHE[id]);}))return;
-    var gid='fptrade-'+p.key;
-    BRAND_STRIP_STATE[gid]={ids:p.ids,shown:0,brand:null,loading:false};
-    var logo=p.icon
-      ? '<img class="fp-brow-logo" src="'+esc(p.icon)+'" alt="'+esc(p.name)+'">'
-      : '<span class="fp-brow-logotext" style="color:'+p.tc+'">'+esc(p.name)+'</span>';
-    var tile='<div class="fp-btile" style="background:'+p.bg+';color:'+p.tc+'">'+
-        '<div class="fp-btile-logo">'+logo+'</div>'+
-        '<div class="fp-btile-meta"><div class="fp-btile-count">'+p.ids.length+' deal'+(p.ids.length>1?'s':'')+'</div></div>'+
-      '</div>';
-    html+='<div class="fp-brow" data-bk="'+esc(p.key)+'">'+
-        '<div class="fp-brow-deal">'+
-          '<div class="fp-brow-dealhead">'+
-            '<span class="fp-brow-deallabel" style="background:'+p.bg+';color:'+p.tc+'">'+esc(p.name)+'</span>'+
-            '<button class="fp-section-btn" onclick="fpToggleSection(\''+gid+'\',this)">VIEW ALL</button>'+
-          '</div>'+
-          '<div class="fp-rich-grid" id="'+gid+'" data-lead="1">'+tile+
-            '<span class="fp-brow-sentinel" data-gid="'+gid+'"></span>'+
-          '</div>'+
-        '</div>'+
-      '</div>';
-  });
-  if(!html){hide('fp-sec-trades');return;}
-  host.innerHTML=html;
+  PLAT_ROWS=PLAT_ROWS.filter(function(p){return p.ids.slice(0,BRAND_FIRST_PAINT).some(function(id){return isShowable(PRODUCT_CACHE[id]);});});
+  if(!PLAT_ROWS.length){hide('fp-sec-trades');return;}
+  host.className='fp-plat';
+  host.innerHTML=
+    '<div class="fp-plat-tabs" role="tablist">'+PLAT_ROWS.map(function(p,i){
+      return '<button type="button" role="tab" class="fp-plat-tab" style="--pc:'+esc(p.bg)+';--pt:'+esc(p.tc)+'" onclick="fpPlatShow('+i+')">'+
+        (p.icon?'<img src="'+esc(p.icon)+'" alt="" style="height:18px;width:auto">':'')+esc(p.name)+'<span class="fp-plat-n">'+p.ids.length+'</span></button>';
+    }).join('')+'</div>'+
+    '<div class="fp-plat-head"><span class="fp-plat-label"></span>'+
+      '<button class="fp-section-btn" onclick="fpToggleSection(\''+PLAT_GID+'\',this)">VIEW ALL</button></div>'+
+    '<div class="fp-rich-grid" id="'+PLAT_GID+'" data-lead="0"><span class="fp-brow-sentinel" data-gid="'+PLAT_GID+'"></span></div>';
   show('fp-sec-trades');
-  plats.forEach(function(p){loadBrandPage('fptrade-'+p.key,BRAND_FIRST_PAINT);});
-  wireBrandLazyLoad();
-  backgroundFillBrandStrips();
-  if(typeof setupScrollArrows==='function')setupScrollArrows();
+  await fpPlatShow(0);
 }
 window.fpTradeFilter=function(i){
   var rows=SECTION_DATA.shopByTrade||[];
