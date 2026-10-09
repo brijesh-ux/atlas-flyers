@@ -1,3 +1,4 @@
+/* v104 (09OCT2026): Battery Platform pills redesigned per Brijesh: NO deal counts (badge and label), bigger box tiles (min 180x58, 12px radius, 15px bold, brand colour outline / filled when active), wrap to rows on desktop (>=900px) and scroll on phones; CSS scoped .flyers-page with !important because the widget reset was flattening them. */
 /* v103 (09OCT2026): Battery Platform Deals redesigned as a TABBED section (Brijesh did not want a copy of Top Brand Deals): a row of coloured platform pills (Trade Name + deal count, Background/Text Color from the sheet) above ONE product strip; clicking a pill swaps the strip (fpPlatShow). Strip still uses the brand-strip engine (lazy load, VIEW ALL, Load More). Self-contained CSS injected as #fp-plat-css. */
 /* v102 (09OCT2026): 'Shop by Trade' section (tab now 'Battery Platform Deals', same gid) renders like Top Brand Deals instead of chips — one row per sheet line: coloured tile (Trade Name / Icon Image URL / Background Color / Text Color) + lazy-loading product strip with VIEW ALL + Load More, driven by Product IDs. Reuses the brand-strip engine, so renderTrades() now runs after renderBrandRows(). Used for the weekly-refreshed Battery Platform Deals (M18, M12, 20V MAX, ...). */
 /* v101 (09OCT2026): home 'Shop Deals' now repaints the page's EXISTING Shop Deals carousel (Page Builder region, found by its 'Shop Deals' heading, polled up to 14s for the legacy-carousel strip) from the HOME Shop Deals tab instead of inserting a second strip under Featured; the insert is now only the fallback when that region is absent. */
@@ -1434,15 +1435,15 @@ function platCss(){
   if($('fp-plat-css'))return;
   var st=document.createElement('style');st.id='fp-plat-css';
   st.textContent=
-    '.fp-plat-tabs{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:4px var(--p) 14px;margin:0 0 4px}'+
-    '.fp-plat-tabs::-webkit-scrollbar{display:none}'+
-    '.fp-plat-tab{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;border:2px solid var(--pc,#1a1a1a);background:#fff;color:#1a1a1a;border-radius:999px;padding:8px 14px;font-size:13px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;cursor:pointer;white-space:nowrap;transition:background .15s,color .15s,transform .12s}'+
-    '.fp-plat-tab .fp-plat-n{font-size:11px;font-weight:700;background:var(--pc,#1a1a1a);color:var(--pt,#fff);border-radius:999px;padding:2px 7px;opacity:.9}'+
-    '.fp-plat-tab.fp-plat-on{background:var(--pc,#1a1a1a);color:var(--pt,#fff)}'+
-    '.fp-plat-tab.fp-plat-on .fp-plat-n{background:rgba(255,255,255,.22);color:inherit}'+
-    '.fp-plat-tab:active{transform:scale(.97)}'+
-    '.fp-plat-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 var(--p);margin:2px 0 10px}'+
-    '.fp-plat-label{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-left:5px solid var(--pc,#1a1a1a);padding-left:10px}';
+    '.flyers-page .fp-plat-tabs{display:flex!important;flex-wrap:nowrap;gap:12px!important;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:6px var(--p) 18px!important;margin:0!important}'+
+    '.flyers-page .fp-plat-tabs::-webkit-scrollbar{display:none}'+
+    '@media(min-width:900px){.flyers-page .fp-plat-tabs{flex-wrap:wrap;overflow:visible}}'+
+    '.flyers-page .fp-plat-tab{flex:0 0 auto;min-width:180px;height:58px;display:inline-flex!important;align-items:center;justify-content:center;border:2px solid var(--pc,#1a1a1a)!important;background:#fff!important;color:#1a1a1a!important;border-radius:12px!important;padding:0 22px!important;margin:0!important;font-size:15px!important;line-height:1.1!important;font-weight:800!important;letter-spacing:.4px;text-transform:uppercase;cursor:pointer;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.08)!important;transition:background .15s,color .15s,transform .12s,box-shadow .15s}'+
+    '.flyers-page .fp-plat-tab.fp-plat-on{background:var(--pc,#1a1a1a)!important;color:var(--pt,#fff)!important;box-shadow:0 6px 16px rgba(0,0,0,.18)!important}'+
+    '.flyers-page .fp-plat-tab:hover{transform:translateY(-1px)}'+
+    '.flyers-page .fp-plat-tab:active{transform:scale(.97)}'+
+    '.flyers-page .fp-plat-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 var(--p)!important;margin:6px 0 12px!important}'+
+    '.flyers-page .fp-plat-label{font-size:16px!important;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-left:6px solid var(--pc,#1a1a1a);padding-left:12px!important}';
   document.head.appendChild(st);
 }
 async function fpPlatShow(i){
@@ -1450,7 +1451,7 @@ async function fpPlatShow(i){
   var host=$('fp-trades');if(!host)return;
   [].forEach.call(host.querySelectorAll('.fp-plat-tab'),function(t,j){t.classList.toggle('fp-plat-on',j===i);t.setAttribute('aria-selected',j===i?'true':'false');});
   var label=host.querySelector('.fp-plat-label');
-  if(label){label.textContent=p.name+' — '+p.ids.length+' deal'+(p.ids.length>1?'s':'');label.style.setProperty('--pc',p.bg);}
+  if(label){label.textContent=p.name+' Deals';label.style.setProperty('--pc',p.bg);}
   var grid=$(PLAT_GID);if(!grid)return;
   // Reset the single strip for the chosen platform.
   delete BRAND_STRIP_STATE[PLAT_GID];
@@ -1498,7 +1499,7 @@ async function renderTrades(){
   host.innerHTML=
     '<div class="fp-plat-tabs" role="tablist">'+PLAT_ROWS.map(function(p,i){
       return '<button type="button" role="tab" class="fp-plat-tab" style="--pc:'+esc(p.bg)+';--pt:'+esc(p.tc)+'" onclick="fpPlatShow('+i+')">'+
-        (p.icon?'<img src="'+esc(p.icon)+'" alt="" style="height:18px;width:auto">':'')+esc(p.name)+'<span class="fp-plat-n">'+p.ids.length+'</span></button>';
+        (p.icon?'<img src="'+esc(p.icon)+'" alt="" style="height:22px;width:auto;margin-right:10px">':'')+esc(p.name)+'</button>';
     }).join('')+'</div>'+
     '<div class="fp-plat-head"><span class="fp-plat-label"></span>'+
       '<button class="fp-section-btn" onclick="fpToggleSection(\''+PLAT_GID+'\',this)">VIEW ALL</button></div>'+
