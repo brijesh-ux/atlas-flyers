@@ -1,3 +1,4 @@
+/* v105 (09OCT2026): Battery Platforms section — strip label shows just the platform name (no 'Deals' suffix); section/tab renamed to BATTERY PLATFORMS in the sheet. */
 /* v104 (09OCT2026): Battery Platform pills redesigned per Brijesh: NO deal counts (badge and label), bigger box tiles (min 180x58, 12px radius, 15px bold, brand colour outline / filled when active), wrap to rows on desktop (>=900px) and scroll on phones; CSS scoped .flyers-page with !important because the widget reset was flattening them. */
 /* v103 (09OCT2026): Battery Platform Deals redesigned as a TABBED section (Brijesh did not want a copy of Top Brand Deals): a row of coloured platform pills (Trade Name + deal count, Background/Text Color from the sheet) above ONE product strip; clicking a pill swaps the strip (fpPlatShow). Strip still uses the brand-strip engine (lazy load, VIEW ALL, Load More). Self-contained CSS injected as #fp-plat-css. */
 /* v102 (09OCT2026): 'Shop by Trade' section (tab now 'Battery Platform Deals', same gid) renders like Top Brand Deals instead of chips — one row per sheet line: coloured tile (Trade Name / Icon Image URL / Background Color / Text Color) + lazy-loading product strip with VIEW ALL + Load More, driven by Product IDs. Reuses the brand-strip engine, so renderTrades() now runs after renderBrandRows(). Used for the weekly-refreshed Battery Platform Deals (M18, M12, 20V MAX, ...). */
@@ -1451,7 +1452,7 @@ async function fpPlatShow(i){
   var host=$('fp-trades');if(!host)return;
   [].forEach.call(host.querySelectorAll('.fp-plat-tab'),function(t,j){t.classList.toggle('fp-plat-on',j===i);t.setAttribute('aria-selected',j===i?'true':'false');});
   var label=host.querySelector('.fp-plat-label');
-  if(label){label.textContent=p.name+' Deals';label.style.setProperty('--pc',p.bg);}
+  if(label){label.textContent=p.name;label.style.setProperty('--pc',p.bg);}
   var grid=$(PLAT_GID);if(!grid)return;
   // Reset the single strip for the chosen platform.
   delete BRAND_STRIP_STATE[PLAT_GID];
