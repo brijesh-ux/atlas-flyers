@@ -1,3 +1,4 @@
+/* v102 (09OCT2026): 'Shop by Trade' section (tab now 'Battery Platform Deals', same gid) renders like Top Brand Deals instead of chips — one row per sheet line: coloured tile (Trade Name / Icon Image URL / Background Color / Text Color) + lazy-loading product strip with VIEW ALL + Load More, driven by Product IDs. Reuses the brand-strip engine, so renderTrades() now runs after renderBrandRows(). Used for the weekly-refreshed Battery Platform Deals (M18, M12, 20V MAX, ...). */
 /* v101 (09OCT2026): home 'Shop Deals' now repaints the page's EXISTING Shop Deals carousel (Page Builder region, found by its 'Shop Deals' heading, polled up to 14s for the legacy-carousel strip) from the HOME Shop Deals tab instead of inserting a second strip under Featured; the insert is now only the fallback when that region is absent. */
 /* v100 (09OCT2026): HOME PAGE is now sheet-driven like the flyers page — three new tabs in the 'New Flyers & Deals Page' sheet (HOME Featured gid 1227425050, HOME Shop Deals gid 349775653, HOME You May Also Like gid 626322427), filled every Friday by weekly-refresh.js. On '/', the Featured strip ([data-product-type=featured]) is repainted from HOME Featured (server-rendered BC-flag cards stay as fallback when the tab is empty), a 'Shop Deals' strip is inserted right after it from HOME Shop Deals, and the SearchSpring recs block (.home-recommended) is replaced by a 'You May Also Like' strip from HOME You May Also Like. Titles via Settings home_featured_title / home_shop_deals_title / home_ymal_title. Row order honoured as-is. */
 /* v99 (08OCT2026): Monthly Flyer is now a clean sheet-driven page at /monthlyflyer/ — products + order from the "Monthly Flyer Deals" tab (Product ID rows, top-to-bottom), flip-book from Settings "monthly_flyer_flipbook_url", same richCard tiles + endless scroll. /shop/?search_query&tag=monthly-flyer 301s there and header chips are rewritten, so nothing SearchSpring-side is needed any more. Base: v98. */
@@ -1419,22 +1420,67 @@ function renderVideos(){
   if($('fp-videos').innerHTML.trim())show('fp-sec-videos');else hide('fp-sec-videos');
 }
 
-// ==================== TRADES ====================
+// ==================== TRADES / BATTERY PLATFORM ROWS (v102) ====================
+// The "Shop by Trade" tab (gid 1407344995, now named "Battery Platform Deals")
+// renders like Top Brand Deals: one row per sheet line = a coloured tile
+// (Trade Name + optional icon) followed by a lazy-loading strip of its
+// Product IDs with VIEW ALL / Load More. Columns: Trade Name, Icon Image URL,
+// Background Color, Text Color, Product IDs. Reuses the brand-strip engine
+// (BRAND_STRIP_STATE / loadBrandPage / wireBrandLazyLoad / backgroundFill),
+// so it must run AFTER renderBrandRows (see the call site in init).
 async function renderTrades(){
   if(!getSetting('show_shop_by_trade',true)){hide('fp-sec-trades');return;}
   var rows=SECTION_DATA.shopByTrade||[];
   if(!rows.length){hide('fp-sec-trades');return;}
   rows=fpFreshRows('shopByTrade',rows); // freshness (Sequencing=Off)
-  $('fp-trades').innerHTML=rows.map(function(r,i){
-    var name=r['Trade Name']||'';
-    var icon=r['Icon Image URL']||'';
-    var bg=r['Background Color']||'#1a1a1a';
-    var tc=r['Text Color']||'#fff';
+  var host=$('fp-trades');
+  if(!host)return;
+  host.className='fp-brand-rows';
+  var seqOff=SECTION_SEQUENCING['shopByTrade']===false;
+  var seed=seqOff?fpFreshSeed('shopByTrade'):0;
+  var plats=rows.map(function(r,i){
+    var name=(r['Trade Name']||'').trim();
     var ids=parseIds(r['Product IDs']||'');
-    if(!name)return'';
-    return '<button class="fp-trade" style="background:'+bg+';color:'+tc+'" onclick="fpTradeFilter('+i+')">'+(icon?'<img src="'+esc(icon)+'" alt="">':'')+esc(name)+(ids.length?' ('+ids.length+')':'')+'</button>';
-  }).filter(Boolean).join('');
+    if(!name||!ids.length)return null;
+    if(seqOff)ids=fpSeededShuffle(ids,seed+fpStrHash(name)+i);
+    return {key:'p'+i+'-'+name.toLowerCase().replace(/[^a-z0-9]+/g,''),name:name,
+      icon:(r['Icon Image URL']||'').trim(),bg:r['Background Color']||'#1a1a1a',tc:r['Text Color']||'#fff',ids:ids};
+  }).filter(Boolean);
+  if(!plats.length){hide('fp-sec-trades');return;}
+  var firstIds=[];
+  plats.forEach(function(p){firstIds=firstIds.concat(p.ids.slice(0,BRAND_FIRST_PAINT));});
+  if(firstIds.length)await fetchProducts(firstIds);
+  var html='';
+  plats.forEach(function(p){
+    if(!p.ids.slice(0,BRAND_FIRST_PAINT).some(function(id){return isShowable(PRODUCT_CACHE[id]);}))return;
+    var gid='fptrade-'+p.key;
+    BRAND_STRIP_STATE[gid]={ids:p.ids,shown:0,brand:null,loading:false};
+    var logo=p.icon
+      ? '<img class="fp-brow-logo" src="'+esc(p.icon)+'" alt="'+esc(p.name)+'">'
+      : '<span class="fp-brow-logotext" style="color:'+p.tc+'">'+esc(p.name)+'</span>';
+    var tile='<div class="fp-btile" style="background:'+p.bg+';color:'+p.tc+'">'+
+        '<div class="fp-btile-logo">'+logo+'</div>'+
+        '<div class="fp-btile-meta"><div class="fp-btile-count">'+p.ids.length+' deal'+(p.ids.length>1?'s':'')+'</div></div>'+
+      '</div>';
+    html+='<div class="fp-brow" data-bk="'+esc(p.key)+'">'+
+        '<div class="fp-brow-deal">'+
+          '<div class="fp-brow-dealhead">'+
+            '<span class="fp-brow-deallabel" style="background:'+p.bg+';color:'+p.tc+'">'+esc(p.name)+'</span>'+
+            '<button class="fp-section-btn" onclick="fpToggleSection(\''+gid+'\',this)">VIEW ALL</button>'+
+          '</div>'+
+          '<div class="fp-rich-grid" id="'+gid+'" data-lead="1">'+tile+
+            '<span class="fp-brow-sentinel" data-gid="'+gid+'"></span>'+
+          '</div>'+
+        '</div>'+
+      '</div>';
+  });
+  if(!html){hide('fp-sec-trades');return;}
+  host.innerHTML=html;
   show('fp-sec-trades');
+  plats.forEach(function(p){loadBrandPage('fptrade-'+p.key,BRAND_FIRST_PAINT);});
+  wireBrandLazyLoad();
+  backgroundFillBrandStrips();
+  if(typeof setupScrollArrows==='function')setupScrollArrows();
 }
 window.fpTradeFilter=function(i){
   var rows=SECTION_DATA.shopByTrade||[];
@@ -2238,7 +2284,7 @@ async function init(){
   renderEndingSoon();
   renderCoupons();
   renderVideos();
-  renderTrades();
+  // renderTrades() moved: v102 renders it after renderBrandRows (shared strip engine)
   applySectionOrder();
 
   // Sections are now ordered and the empty ones hidden \u2014 reveal the page (it was
@@ -2262,7 +2308,7 @@ async function init(){
   // 7) Async: bundles, staff picks, shop-by-brand rows (don't block)
   renderBundles();
   renderStaff();
-  renderBrandRows();
+  renderBrandRows().then(function(){return renderTrades();}).catch(function(e){console.warn("[Atlas Flyers] trades/platform rows:",e&&e.message);});
 
   // Wrap any horizontal product strips with scroll arrows (idempotent; also
   // called by the section/brand renderers as they populate on scroll).
