@@ -1,3 +1,4 @@
+/* v100 (09OCT2026): HOME PAGE is now sheet-driven like the flyers page — three new tabs in the 'New Flyers & Deals Page' sheet (HOME Featured gid 1227425050, HOME Shop Deals gid 349775653, HOME You May Also Like gid 626322427), filled every Friday by weekly-refresh.js. On '/', the Featured strip ([data-product-type=featured]) is repainted from HOME Featured (server-rendered BC-flag cards stay as fallback when the tab is empty), a 'Shop Deals' strip is inserted right after it from HOME Shop Deals, and the SearchSpring recs block (.home-recommended) is replaced by a 'You May Also Like' strip from HOME You May Also Like. Titles via Settings home_featured_title / home_shop_deals_title / home_ymal_title. Row order honoured as-is. */
 /* v99 (08OCT2026): Monthly Flyer is now a clean sheet-driven page at /monthlyflyer/ — products + order from the "Monthly Flyer Deals" tab (Product ID rows, top-to-bottom), flip-book from Settings "monthly_flyer_flipbook_url", same richCard tiles + endless scroll. /shop/?search_query&tag=monthly-flyer 301s there and header chips are rewritten, so nothing SearchSpring-side is needed any more. Base: v98. */
 /* v98 (07OCT2026): 'Shop All <Brand>' on the designed brand landings works again — initCategoryTiles no longer strips '#/sort:...' (only stale '#/filter:'), because the landings' Page Builder script shows the product grid (#main-content) only when the URL has '#/sort'; and when '#/sort', our filter params or ?sort= are present we force the grid visible + landing hidden so filtering/sorting from that grid stays on the grid. Base: v97. */
 /* v97 (07OCT2026): typing a brand name in search now lands on that brand's page — on /shop/?search_query=<q> (fresh search, no filters/page) fpBrandPathForQuery() matches q against the GraphQL brand list (normalized exact name, or the name minus a generic trailing word like Tools/Systems/Gloves; ambiguous short keys dropped; list cached 24h as fp_brandmap_v1) and location.replace()s to brand.path. Covers the ~35 brands BigCommerce's own brand-search redirect misses (Diablo, Metabo HPT, FLEX, Stanley, Occidental Leather, Velocity Pro Gear...). Base: v96. */
@@ -40,7 +41,10 @@ var GIDS = {
   promoBanners: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2007099777',
   faqs: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=807514654',
   sectionOrder: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1373796339',
-  allCoupons: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1364979606'
+  allCoupons: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1364979606',
+  homeFeatured: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1227425050',
+  homeShopDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=349775653',
+  homeYmal: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=626322427'
 };
 var STORE = window.location.origin;
 var STORE_TOKEN = window.BC_STOREFRONT_TOKEN || '';
@@ -3809,6 +3813,99 @@ if('MutationObserver' in window){
     }catch(e){console.warn('[Atlas Tiles] NA fill:',e&&e.message);}
   }
   [2500,6000,10000].forEach(function(ms){setTimeout(fill,ms);});
+})();
+
+// ==================== HOME PAGE SHEET SECTIONS (v100) ====================
+// The home page reads three tabs of the flyers sheet, filled every Friday by
+// weekly-refresh.js (Desktop/Claude Skills/featured-carousel):
+//   HOME Featured          -> repaints the theme's Featured strip
+//   HOME Shop Deals        -> new strip inserted right after Featured
+//   HOME You May Also Like -> replaces the SearchSpring recs block
+// Each tab = "Product ID" rows, top-to-bottom order. Empty tab = section left
+// exactly as the theme/SearchSpring renders it (safe fallback).
+(function(){
+  if(!(location.pathname==='/'||location.pathname==='/index.php'))return;
+  var PER=40;
+  function tabIds(rows){
+    var ids=[],seen={};
+    (rows||[]).forEach(function(r){
+      var cell=(r['Product ID']||r['Big Commerce Product ID']||'').toString();
+      parseIds(cell).forEach(function(id){if(!seen[id]){seen[id]=1;ids.push(id);}});
+    });
+    return ids.slice(0,PER);
+  }
+  async function cards(ids,key){
+    if(!ids.length)return '';
+    await fpFetchProductsCached(ids);
+    if(!ids.some(function(id){return PRODUCT_CACHE[id];})){
+      STORE_TOKEN=window.BC_STOREFRONT_TOKEN||window.global_bct||STORE_TOKEN||'';
+      await fpFetchProductsCached(ids);
+    }
+    return ids.map(function(id){
+      var p=PRODUCT_CACHE[id];
+      if(!p||!isShowable(p))return '';
+      var hasOpts=p.productOptions&&p.productOptions.edges&&p.productOptions.edges.length>0;
+      return richCard(p,{showTag:false,_sectionKey:key,optionsUrl:hasOpts?p.path:null});
+    }).join('');
+  }
+  function strip(title,url,html,type){
+    var head=url?'<a href="'+esc(url)+'" class="heading-link"><h2 class="main-heading">'+title+'</h2></a>':'<h2 class="main-heading">'+title+'</h2>';
+    var sec=document.createElement('div');
+    sec.className='container-wide alternative-background fp-home-sheet';
+    sec.setAttribute('data-fp-home',type);
+    sec.innerHTML='<div>'+head+'<div class="custom-product-carousel"><div class="fp-section fp-home-strip"><div class="fp-rich-grid" data-fp-autoscroll="1" data-product-type="'+esc(type)+'">'+html+'</div></div></div></div>';
+    return sec;
+  }
+  async function run(){
+    if(window.__fpHomeSheet)return;window.__fpHomeSheet=1;
+    STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
+    await fpEnsureTileData();
+    var tabs=await Promise.all([
+      fetchCSV('homeFeatured',GIDS.homeFeatured),
+      fetchCSV('homeShopDeals',GIDS.homeShopDeals),
+      fetchCSV('homeYmal',GIDS.homeYmal)
+    ]);
+    var featIds=tabIds(tabs[0]),dealIds=tabIds(tabs[1]),ymalIds=tabIds(tabs[2]);
+    var painted=[];
+    // 1) Featured strip: repaint from sheet (fallback = theme's BC-flag cards)
+    var featGrid=document.querySelector('.fp-rich-grid[data-product-type="featured"]');
+    if(featGrid&&featIds.length){
+      var fh=await cards(featIds,'homeFeatured');
+      if(fh){featGrid.innerHTML=fh;featGrid.setAttribute('data-fp-sheet','1');painted.push('featured '+featIds.length);}
+      var fhead=featGrid.closest('.container-wide');
+      var ft=getSetting('home_featured_title','');
+      if(fhead&&ft){var h2=fhead.querySelector('h2.main-heading');if(h2)h2.innerHTML=esc(ft);}
+    }
+    // 2) Shop Deals strip: insert after the Featured section
+    if(dealIds.length){
+      var dh=await cards(dealIds,'homeShopDeals');
+      var featSec=featGrid?featGrid.closest('.container-wide'):null;
+      var hero=document.querySelector('#main-content > .hero-section');
+      if(dh&&(featSec||hero)&&!document.querySelector('[data-fp-home="shopdeals"]')){
+        var dsec=strip(esc(getSetting('home_shop_deals_title','<span>Shop </span>Deals')).replace(/&lt;(\/?span)&gt;/g,'<$1>'),'/flyers-and-deals/',dh,'shopdeals');
+        (featSec||hero).insertAdjacentElement('afterend',dsec);
+        painted.push('shopdeals '+dealIds.length);
+      }
+    }
+    // 3) You May Also Like: replace SearchSpring recs block
+    if(ymalIds.length){
+      var yh=await cards(ymalIds,'homeYmal');
+      var recs=document.querySelector('.home-recommended');
+      if(yh&&recs&&!document.querySelector('[data-fp-home="ymal"]')){
+        var ysec=strip(esc(getSetting('home_ymal_title','You May Also Like')),'',yh,'ymal');
+        recs.insertAdjacentElement('afterend',ysec);
+        recs.style.setProperty('display','none','important');
+        painted.push('ymal '+ymalIds.length);
+      }
+    }
+    if(painted.length){
+      applyCartStateToButtons();
+      if(typeof setupScrollArrows==='function'){try{setupScrollArrows();}catch(e){}}
+      console.log('[Atlas Home] sheet sections: '+painted.join(', '));
+    }
+  }
+  function start(){run().catch(function(e){console.warn('[Atlas Home] sheet sections:',e&&e.message);});}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
 
 // ==================== SEARCHSPRING RECOMMENDATION RESKIN ====================
