@@ -1,3 +1,4 @@
+/* v101 (09OCT2026): home 'Shop Deals' now repaints the page's EXISTING Shop Deals carousel (Page Builder region, found by its 'Shop Deals' heading, polled up to 14s for the legacy-carousel strip) from the HOME Shop Deals tab instead of inserting a second strip under Featured; the insert is now only the fallback when that region is absent. */
 /* v100 (09OCT2026): HOME PAGE is now sheet-driven like the flyers page — three new tabs in the 'New Flyers & Deals Page' sheet (HOME Featured gid 1227425050, HOME Shop Deals gid 349775653, HOME You May Also Like gid 626322427), filled every Friday by weekly-refresh.js. On '/', the Featured strip ([data-product-type=featured]) is repainted from HOME Featured (server-rendered BC-flag cards stay as fallback when the tab is empty), a 'Shop Deals' strip is inserted right after it from HOME Shop Deals, and the SearchSpring recs block (.home-recommended) is replaced by a 'You May Also Like' strip from HOME You May Also Like. Titles via Settings home_featured_title / home_shop_deals_title / home_ymal_title. Row order honoured as-is. */
 /* v99 (08OCT2026): Monthly Flyer is now a clean sheet-driven page at /monthlyflyer/ — products + order from the "Monthly Flyer Deals" tab (Product ID rows, top-to-bottom), flip-book from Settings "monthly_flyer_flipbook_url", same richCard tiles + endless scroll. /shop/?search_query&tag=monthly-flyer 301s there and header chips are rewritten, so nothing SearchSpring-side is needed any more. Base: v98. */
 /* v98 (07OCT2026): 'Shop All <Brand>' on the designed brand landings works again — initCategoryTiles no longer strips '#/sort:...' (only stale '#/filter:'), because the landings' Page Builder script shows the product grid (#main-content) only when the URL has '#/sort'; and when '#/sort', our filter params or ?sort= are present we force the grid visible + landing hidden so filtering/sorting from that grid stays on the grid. Base: v97. */
@@ -3815,7 +3816,7 @@ if('MutationObserver' in window){
   [2500,6000,10000].forEach(function(ms){setTimeout(fill,ms);});
 })();
 
-// ==================== HOME PAGE SHEET SECTIONS (v100) ====================
+// ==================== HOME PAGE SHEET SECTIONS (v100, v101) ====================
 // The home page reads three tabs of the flyers sheet, filled every Friday by
 // weekly-refresh.js (Desktop/Claude Skills/featured-carousel):
 //   HOME Featured          -> repaints the theme's Featured strip
@@ -3876,15 +3877,32 @@ if('MutationObserver' in window){
       var ft=getSetting('home_featured_title','');
       if(fhead&&ft){var h2=fhead.querySelector('h2.main-heading');if(h2)h2.innerHTML=esc(ft);}
     }
-    // 2) Shop Deals strip: insert after the Featured section
-    if(dealIds.length){
+    // 2) Shop Deals: repaint the page's existing 'Shop Deals' carousel (Page
+    //    Builder region, converted to an fp strip by the legacy-carousel block
+    //    a few seconds after load); only if it never shows up, insert a strip
+    //    right after Featured.
+    if(dealIds.length&&!document.querySelector('[data-fp-home="shopdeals"]')){
       var dh=await cards(dealIds,'homeShopDeals');
-      var featSec=featGrid?featGrid.closest('.container-wide'):null;
-      var hero=document.querySelector('#main-content > .hero-section');
-      if(dh&&(featSec||hero)&&!document.querySelector('[data-fp-home="shopdeals"]')){
-        var dsec=strip(esc(getSetting('home_shop_deals_title','<span>Shop </span>Deals')).replace(/&lt;(\/?span)&gt;/g,'<$1>'),'/flyers-and-deals/',dh,'shopdeals');
-        (featSec||hero).insertAdjacentElement('afterend',dsec);
-        painted.push('shopdeals '+dealIds.length);
+      function legacyDealsGrid(){
+        var h=[].slice.call(document.querySelectorAll('h2.main-heading')).filter(function(x){return /^shop\s*deals$/i.test((x.textContent||'').replace(/\s+/g,' ').trim())&&!x.closest('[data-fp-home]');})[0];
+        if(!h)return null;
+        var wrap=h.closest('[data-sub-layout-container]')||h.closest('.container-wide');
+        return wrap?wrap.querySelector('.fp-rich-grid[data-fp-autoscroll]'):null;
+      }
+      var grid=null;
+      for(var t=0;t<14&&!grid;t++){grid=legacyDealsGrid();if(!grid)await new Promise(function(r){setTimeout(r,1000);});}
+      if(dh&&grid){
+        grid.innerHTML=dh;grid.setAttribute('data-fp-sheet','1');
+        (grid.closest('[data-sub-layout-container]')||grid.closest('.container-wide')).setAttribute('data-fp-home','shopdeals');
+        painted.push('shopdeals '+dealIds.length+' (existing carousel)');
+      }else if(dh){
+        var featSec=featGrid?featGrid.closest('.container-wide'):null;
+        var hero=document.querySelector('#main-content > .hero-section');
+        if(featSec||hero){
+          var dsec=strip(esc(getSetting('home_shop_deals_title','<span>Shop </span>Deals')).replace(/&lt;(\/?span)&gt;/g,'<$1>'),'/flyers-and-deals/',dh,'shopdeals');
+          (featSec||hero).insertAdjacentElement('afterend',dsec);
+          painted.push('shopdeals '+dealIds.length+' (inserted)');
+        }
       }
     }
     // 3) You May Also Like: replace SearchSpring recs block
