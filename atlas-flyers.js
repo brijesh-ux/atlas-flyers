@@ -1,3 +1,4 @@
+/* v106 (13OCT2026): /monthlyflyer/ — "Monthly Flyer" page heading hidden and the theme's top whitespace (.body/main margins, empty <p>) removed so the flip-book sits right under the header; style injected immediately so the heading never flashes. Base: v105. */
 /* v105 (09OCT2026): Battery Platforms section — strip label shows just the platform name (no 'Deals' suffix); section/tab renamed to BATTERY PLATFORMS in the sheet. */
 /* v104 (09OCT2026): Battery Platform pills redesigned per Brijesh: NO deal counts (badge and label), bigger box tiles (min 180x58, 12px radius, 15px bold, brand colour outline / filled when active), wrap to rows on desktop (>=900px) and scroll on phones; CSS scoped .flyers-page with !important because the widget reset was flattening them. */
 /* v103 (09OCT2026): Battery Platform Deals redesigned as a TABBED section (Brijesh did not want a copy of Top Brand Deals): a row of coloured platform pills (Trade Name + deal count, Background/Text Color from the sheet) above ONE product strip; clicking a pill swaps the strip (fpPlatShow). Strip still uses the brand-strip engine (lazy load, VIEW ALL, Load More). Self-contained CSS injected as #fp-plat-css. */
@@ -3498,6 +3499,18 @@ if('MutationObserver' in window){
   document.addEventListener('DOMContentLoaded',fixChips);
   setTimeout(fixChips,1500);setTimeout(fixChips,4000);
   if(path!==MF_PATH&&path!=='/monthly-flyer/')return;
+  // v106: no "Monthly Flyer" page heading and none of the theme's top spacing —
+  // the flip-book sits right under the header. Injected immediately (not in run())
+  // so the heading never flashes.
+  (function(){
+    if(document.getElementById('fp-mf-top'))return;
+    var s=document.createElement('style');s.id='fp-mf-top';
+    s.textContent='h1.page-heading{display:none!important}'
+      +'.body{margin-top:14px!important}'
+      +'main.page{margin-top:0!important;padding-top:0!important}'
+      +'.page-content>p:empty{display:none!important}';
+    (document.head||document.documentElement).appendChild(s);
+  })();
 
   function mfCss(){
     if(document.getElementById('fp-mf-style'))return;
