@@ -1,3 +1,4 @@
+/* v108 (15OCT2026): out-of-stock product tiles sink to the END of every section strip/grid (product sections, Top Brand Deals rows, Battery Platforms) — applied on first paint and after every lazy-loaded page via fpSinkOos(); in-stock tiles keep sheet/shuffle order. */
 /* v107 (15OCT2026): product sections honour per-row 'Online Start' / 'Online End' columns (d-Mon-yyyy or yyyy-mm-dd, blank = no limit): a row outside its window is skipped on the page itself, so e.g. an expired Free Tool Kit promo disappears the day it ends, not at the next Friday refresh. Helpers fpParseSheetDate / fpRowLive. */
 /* v106 (13OCT2026): /monthlyflyer/ — "Monthly Flyer" page heading hidden and the theme's top whitespace (.body/main margins, empty <p>) removed so the flip-book sits right under the header; style injected immediately so the heading never flashes. Base: v105. */
 /* v105 (09OCT2026): Battery Platforms section — strip label shows just the platform name (no 'Deals' suffix); section/tab renamed to BATTERY PLATFORMS in the sheet. */
@@ -370,6 +371,15 @@ function fpRowLive(r){
   if(e&&t>e)return false;
   return true;
 }
+// v108: out-of-stock tiles sink to the END of their strip/grid. Called after every
+// render/page insert. Cards are moved after the pager/brand sentinel so later pages
+// (inserted before the sentinel) always land ahead of the out-of-stock tail.
+function fpSinkOos(grid){
+  if(!grid)return;
+  var oos=[].slice.call(grid.querySelectorAll('.fp-rich')).filter(function(c){return c.querySelector('.fp-rich-stock-oos');});
+  oos.forEach(function(c){grid.appendChild(c);});
+  if(oos.length&&typeof refreshScrollArrows==='function')refreshScrollArrows(grid);
+}
 function fpFreshRows(sectionKey,rows){
   if(!rows||rows.length<2||SECTION_SEQUENCING[sectionKey]!==false)return rows||[];
   return fpSeededShuffle(rows,fpFreshSeed(sectionKey));
@@ -571,6 +581,7 @@ async function renderProductSection(sectionKey,gridId){
     var visible=items.filter(function(m){return isShowable(PRODUCT_CACHE[m.id]);});
     if(!visible.length){hide('fp-sec-'+sectionKey);return;}
     grid.innerHTML=visible.map(function(m){return richCard(PRODUCT_CACHE[m.id],m);}).join('');
+    fpSinkOos(grid);
     show('fp-sec-'+sectionKey);
     applyBrandFilter();
     if(typeof setupScrollArrows==='function')setupScrollArrows();
@@ -589,6 +600,7 @@ async function renderProductSection(sectionKey,gridId){
   // section has no items at all (later pages may still have stock, so render the
   // sentinel and let the pager pull them in).
   grid.innerHTML=firstHtml+'<span class="fp-pager-sentinel" data-gid="'+gridId+'"></span>';
+  fpSinkOos(grid);
   registerPager(gridId, items, function(m){
     var p=PRODUCT_CACHE[m.id];
     return isShowable(p)?richCard(p,m):'';
@@ -1042,6 +1054,7 @@ async function loadBrandPage(gid, size){
   });
   if(sentinel)sentinel.insertAdjacentHTML('beforebegin',html);
   else grid.insertAdjacentHTML('beforeend',html);
+  fpSinkOos(grid);
   st.shown+=next.length;            // cursor through the ID list (for paging)
   st.rendered=(st.rendered||0)+rendered; // tiles actually displayed (for label)
   st.loading=false;
@@ -1143,6 +1156,7 @@ async function loadPagerPage(gridId){
   });
   if(sentinel)sentinel.insertAdjacentHTML('beforebegin',html);
   else grid.insertAdjacentHTML('beforeend',html);
+  fpSinkOos(grid);
   st.shown+=next.length;
   st.rendered=(st.rendered||0)+rendered;
   st.loading=false;
