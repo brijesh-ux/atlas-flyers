@@ -1,3 +1,4 @@
+/* v110 (15OCT2026): CONTACT FOR PRICING tiles sink to the end of every strip/grid as well (everywhere v108/v109 sinks out-of-stock). Order within a section: in stock, then contact-for-pricing, then out-of-stock. Card button carries class fp-rich-cfp. */
 /* v109 (15OCT2026): out-of-stock tiles also sink to the end on CATEGORY pages (fp-cat-grid, after every endless-scroll page), SALE / SEARCH takeover grids, and every HOME page strip (sweep over the first 18s so enriched cards are covered). Same fpSinkOos() as v108. */
 /* v108 (15OCT2026): out-of-stock product tiles sink to the END of every section strip/grid (product sections, Top Brand Deals rows, Battery Platforms) — applied on first paint and after every lazy-loaded page via fpSinkOos(); in-stock tiles keep sheet/shuffle order. */
 /* v107 (15OCT2026): product sections honour per-row 'Online Start' / 'Online End' columns (d-Mon-yyyy or yyyy-mm-dd, blank = no limit): a row outside its window is skipped on the page itself, so e.g. an expired Free Tool Kit promo disappears the day it ends, not at the next Friday refresh. Helpers fpParseSheetDate / fpRowLive. */
@@ -377,9 +378,12 @@ function fpRowLive(r){
 // (inserted before the sentinel) always land ahead of the out-of-stock tail.
 function fpSinkOos(grid){
   if(!grid)return;
-  var oos=[].slice.call(grid.querySelectorAll('.fp-rich')).filter(function(c){return c.querySelector('.fp-rich-stock-oos');});
-  oos.forEach(function(c){grid.appendChild(c);});
-  if(oos.length&&typeof refreshScrollArrows==='function')refreshScrollArrows(grid);
+  var cards=[].slice.call(grid.querySelectorAll('.fp-rich'));
+  var cfp=cards.filter(function(c){return !c.querySelector('.fp-rich-stock-oos')&&(c.querySelector('.fp-rich-cfp,.ap-contact,[onclick*="fpContactForPricing"]'));});
+  var oos=cards.filter(function(c){return c.querySelector('.fp-rich-stock-oos');});
+  cfp.forEach(function(c){grid.appendChild(c);});   // v110: CONTACT FOR PRICING tiles after in-stock
+  oos.forEach(function(c){grid.appendChild(c);});   // out-of-stock tiles last of all
+  if((cfp.length||oos.length)&&typeof refreshScrollArrows==='function')refreshScrollArrows(grid);
 }
 function fpFreshRows(sectionKey,rows){
   if(!rows||rows.length<2||SECTION_SEQUENCING[sectionKey]!==false)return rows||[];
@@ -504,7 +508,7 @@ function richCard(p,m){
       (img?'<div class="fp-rich-img-wrap"'+(quickView?' onclick="fpQuickView('+p.entityId+')"':(p.path?' style="cursor:pointer" onclick="fpTrackRecent('+p.entityId+');location.href=\''+esc(p.path)+'\'"':''))+'><img src="'+img+'" alt="'+esc(p.name)+'" loading="lazy"></div>':'<div class="fp-rich-ph">\ud83d\udd27</div>')+
       '<a class="fp-rich-name" href="'+esc(p.path||'#')+'" onclick="fpTrackRecent('+p.entityId+')">'+esc(cn)+'</a>'+
       '<div class="fp-rich-meta"><div class="fp-rich-sku">SKU# '+esc(p.sku||p.entityId)+'</div></div>'+
-      '<button type="button" class="fp-rich-add fp-rich-choose" onclick="fpContactForPricing('+p.entityId+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+esc(String(p.sku||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">CONTACT FOR PRICING</button>'+
+      '<button type="button" class="fp-rich-add fp-rich-choose fp-rich-cfp" onclick="fpContactForPricing('+p.entityId+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+esc(String(p.sku||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">CONTACT FOR PRICING</button>'+
     '</div>';
   }
   return '<div class="fp-rich" data-bk="'+esc((b&&b.key)||'')+'">'+
