@@ -1,3 +1,4 @@
+/* v106 (15OCT2026): product sections honour per-row 'Online Start' / 'Online End' columns (d-Mon-yyyy or yyyy-mm-dd, blank = no limit): a row outside its window is skipped on the page itself, so e.g. an expired Free Tool Kit promo disappears the day it ends, not at the next Friday refresh. Helpers fpParseSheetDate / fpRowLive. */
 /* v106 (13OCT2026): /monthlyflyer/ — "Monthly Flyer" page heading hidden and the theme's top whitespace (.body/main margins, empty <p>) removed so the flip-book sits right under the header; style injected immediately so the heading never flashes. Base: v105. */
 /* v105 (09OCT2026): Battery Platforms section — strip label shows just the platform name (no 'Deals' suffix); section/tab renamed to BATTERY PLATFORMS in the sheet. */
 /* v104 (09OCT2026): Battery Platform pills redesigned per Brijesh: NO deal counts (badge and label), bigger box tiles (min 180x58, 12px radius, 15px bold, brand colour outline / filled when active), wrap to rows on desktop (>=900px) and scroll on phones; CSS scoped .flyers-page with !important because the widget reset was flattening them. */
@@ -350,6 +351,25 @@ function fpFreshSeed(sectionKey){
 // EVERY section renderer so the Section Order columns work everywhere, not just the
 // generic product grids. Idempotent: always derives from the passed array + a
 // deterministic seed, so calling a renderer twice yields the same order.
+// v106: sheet rows can carry 'Online Start' / 'Online End' (d-Mon-yyyy or yyyy-mm-dd). A row is
+// live only when today is inside that window; blank cells mean no limit. Used by every product
+// section (Free Tool Kit Deals gets its dates from purchasing's tracker).
+function fpParseSheetDate(v){
+  v=String(v||'').trim();if(!v)return null;
+  var m=v.match(/^(d{1,2})-([A-Za-z]{3})[a-z]*-(d{4})$/);
+  if(m){var mo='jan feb mar apr may jun jul aug sep oct nov dec'.split(' ').indexOf(m[2].toLowerCase());return mo<0?null:new Date(+m[3],mo,+m[1]);}
+  m=v.match(/^(d{4})-(d{1,2})-(d{1,2})$/);
+  if(m)return new Date(+m[1],+m[2]-1,+m[3]);
+  var d=new Date(v);return isNaN(d)?null:new Date(d.getFullYear(),d.getMonth(),d.getDate());
+}
+function fpRowLive(r){
+  var s=fpParseSheetDate(r['Online Start']||r['onlineStart']),e=fpParseSheetDate(r['Online End']||r['onlineEnd']);
+  if(!s&&!e)return true;
+  var t=new Date();t=new Date(t.getFullYear(),t.getMonth(),t.getDate());
+  if(s&&t<s)return false;
+  if(e&&t>e)return false;
+  return true;
+}
 function fpFreshRows(sectionKey,rows){
   if(!rows||rows.length<2||SECTION_SEQUENCING[sectionKey]!==false)return rows||[];
   return fpSeededShuffle(rows,fpFreshSeed(sectionKey));
@@ -508,7 +528,7 @@ async function renderProductSection(sectionKey,gridId){
   var grid=$(gridId);if(!grid)return;
   // Legacy global toggle for Deal of the Day still works.
   if(sectionKey==='dealOfDay'&&!getSetting('show_deal_of_the_day',true)){hide('fp-sec-dod');return;}
-  var rows=SECTION_DATA[sectionKey]||[];
+  var rows=(SECTION_DATA[sectionKey]||[]).filter(fpRowLive); // v106: drop rows outside their Online Start/End
   if(!rows.length){hide('fp-sec-'+sectionKey);return;}
   rows=fpFreshRows(sectionKey,rows); // per-section daily freshness (Sequencing=Off)
   // Show skeleton
