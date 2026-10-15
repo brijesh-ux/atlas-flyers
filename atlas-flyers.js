@@ -1,3 +1,4 @@
+/* v109 (15OCT2026): out-of-stock tiles also sink to the end on CATEGORY pages (fp-cat-grid, after every endless-scroll page), SALE / SEARCH takeover grids, and every HOME page strip (sweep over the first 18s so enriched cards are covered). Same fpSinkOos() as v108. */
 /* v108 (15OCT2026): out-of-stock product tiles sink to the END of every section strip/grid (product sections, Top Brand Deals rows, Battery Platforms) — applied on first paint and after every lazy-loaded page via fpSinkOos(); in-stock tiles keep sheet/shuffle order. */
 /* v107 (15OCT2026): product sections honour per-row 'Online Start' / 'Online End' columns (d-Mon-yyyy or yyyy-mm-dd, blank = no limit): a row outside its window is skipped on the page itself, so e.g. an expired Free Tool Kit promo disappears the day it ends, not at the next Friday refresh. Helpers fpParseSheetDate / fpRowLive. */
 /* v106 (13OCT2026): /monthlyflyer/ — "Monthly Flyer" page heading hidden and the theme's top whitespace (.body/main margins, empty <p>) removed so the flip-book sits right under the header; style injected immediately so the heading never flashes. Base: v105. */
@@ -3311,7 +3312,7 @@ async function initCategoryTiles(rerun){
         ssTotalPages=(d1.pagination&&d1.pagination.totalPages)||1;
         var ssIts=d1.results.map(ssResultItem).filter(Boolean);
         await fpFetchProductsCached(ssIts.map(function(x){return x.id;}));
-        wrap.innerHTML=cardsHtml(ssIts);
+        wrap.innerHTML=cardsHtml(ssIts);fpSinkOos(wrap);
         if(!wrap.children.length){
           wrap.innerHTML='<div class="fp-fb-none">No products match these filters.</div>';
         }
@@ -3330,7 +3331,7 @@ async function initCategoryTiles(rerun){
         await fpFetchProductsCached(items.map(function(x){return x.id;}));
         var got=items.filter(function(x){return PRODUCT_CACHE[x.id];});
         if(got.length<items.length*0.7){console.warn('[Atlas Tiles] GraphQL incomplete ('+got.length+'/'+items.length+') \u2014 native grid kept');return;}
-        wrap.innerHTML=cardsHtml(got);
+        wrap.innerHTML=cardsHtml(got);fpSinkOos(wrap);
         if(!wrap.children.length)return;
       }
     }
@@ -3411,7 +3412,7 @@ async function initCategoryTiles(rerun){
       await fpFetchProductsCached(pageItems.map(function(x){return x.id;}));
       var h=cardsHtml(pageItems);
       if(h){
-        wrap.insertAdjacentHTML('beforeend',h);
+        wrap.insertAdjacentHTML('beforeend',h);fpSinkOos(wrap);
         applyCartStateToButtons();
         console.log('[Atlas Tiles] +page '+pageN+': grid now '+wrap.children.length+' cards');
       }
@@ -3437,7 +3438,7 @@ async function initCategoryTiles(rerun){
       [].slice.call(wrap.querySelectorAll('.fp-skel')).forEach(function(el){el.parentNode.removeChild(el);});
       var h=cardsHtml(items);
       if(h){
-        wrap.insertAdjacentHTML('beforeend',h);
+        wrap.insertAdjacentHTML('beforeend',h);fpSinkOos(wrap);
         applyCartStateToButtons();
         console.log('[Atlas Tiles] +newest: grid now '+wrap.children.length+' cards');
       }
@@ -3453,7 +3454,7 @@ async function initCategoryTiles(rerun){
       await fpFetchProductsCached(its.map(function(x){return x.id;}));
       var h=cardsHtml(its);
       if(h){
-        wrap.insertAdjacentHTML('beforeend',h);
+        wrap.insertAdjacentHTML('beforeend',h);fpSinkOos(wrap);
         applyCartStateToButtons();
         console.log('[Atlas Tiles] +ss page '+ssPage+': grid now '+wrap.children.length+' cards');
       }
@@ -3770,7 +3771,7 @@ if('MutationObserver' in window){
         }
         var h=cardsHtml(its);
         if(h){
-          wrap.insertAdjacentHTML('beforeend',h);
+          wrap.insertAdjacentHTML('beforeend',h);fpSinkOos(wrap);
           applyCartStateToButtons();
           console.log('[Atlas Tiles] '+mode+': +page '+ssPage+' \u2014 '+wrap.children.length+' cards');
         }
@@ -4045,6 +4046,14 @@ if('MutationObserver' in window){
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
 
+// v109: out-of-stock tiles sink to the end of every home-page strip (Featured, Shop Deals,
+// You May Also Like, New Arrivals and any other fp strip). Re-run over the first seconds
+// because the theme-card enrichment swaps cards in after load.
+(function(){
+  if(!(location.pathname==='/'||location.pathname==='/index.php'))return;
+  function sweep(){[].slice.call(document.querySelectorAll('.fp-home-strip .fp-rich-grid, .fp-rich-grid[data-product-type]')).forEach(fpSinkOos);}
+  [2500,5000,8000,12000,18000].forEach(function(ms){setTimeout(sweep,ms);});
+})();
 // ==================== SEARCHSPRING RECOMMENDATION RESKIN ====================
 // SearchSpring recommendation carousels (PDP "Customers Also Viewed", cart
 // "You May Also Like", etc.) keep SearchSpring's product picks but get repainted
