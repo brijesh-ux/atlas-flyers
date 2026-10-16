@@ -1,3 +1,4 @@
+/* v117 (16OCT2026): smoother gliding rows on phones - row scroll-behavior forced to auto (the theme's smooth scrolling made every pause/restart slide), restart waits until a swipe has stopped coasting, and the address bar showing/hiding no longer counts as a resize. */
 /* v116 (16OCT2026): new MAKITA STARTER KIT DEALS section (Section ID makitaKits, tab gid 1971726171; container built by fpEnsureSection). */
 /* v115 (16OCT2026): flyer tiles at the top now actually glide - fpPlatGlide waits (up to 20s) until a row overflows before starting; the flyer row was still unsized when it rendered, so v114 skipped it. */
 /* v114 (16OCT2026): hide the retired Carpenters / Electricians blocks (fp-sec-clearance, fp-sec-newArrivals) that are still in the BC page HTML - v113 stopped listing them, so they showed as two empty boxes at the top of the page. FAQs heading back to plain black text (no red tag). Battery row glide now moves an inner track with a GPU transform animation (was scrollLeft every frame - jittery on phones). Gap between the menu and the flyer tiles cut from ~35px to 8px. The flyer tiles at the top and the Shop by Trade tiles glide the same way as an endless one-way loop (a hidden copy of the tiles follows the first set) (fpPlatGlide(bar,host); pauses while hovering the row or its arrows). */
@@ -1610,6 +1611,9 @@ function fpPlatGlide(bar,host){
   var cs=getComputedStyle(bar);track.style.gap=cs.columnGap||cs.gap;
   while(bar.firstChild)track.appendChild(bar.firstChild);
   bar.appendChild(track);
+  // v117: the theme sets scroll-behavior:smooth on these rows, which turned every
+  // pause/restart below into a visible slide. Arrow buttons ask for smooth explicitly.
+  bar.style.scrollBehavior='auto';
   function fit(){var c=getComputedStyle(bar);track.style.width=Math.max(0,bar.clientWidth-parseFloat(c.paddingLeft)-parseFloat(c.paddingRight))+'px';}
   fit();
   var SPEED=0.035, anim=null, stopped=false, timer=0, dist=0, orig=null, tries=0;
@@ -1639,12 +1643,20 @@ function fpPlatGlide(bar,host){
     anim.currentTime=cur/SPEED;
   }
   function later(){clearTimeout(timer);timer=setTimeout(start,1500);}
-  host.addEventListener('mouseenter',hold,{passive:true});
-  host.addEventListener('touchstart',hold,{passive:true});
-  host.addEventListener('mouseleave',later,{passive:true});
-  host.addEventListener('touchend',later,{passive:true});
+  var over=false;
+  function enter(){over=true;hold();}
+  function leave(){over=false;later();}
+  host.addEventListener('mouseenter',enter,{passive:true});
+  host.addEventListener('touchstart',enter,{passive:true});
+  host.addEventListener('mouseleave',leave,{passive:true});
+  host.addEventListener('touchend',leave,{passive:true});
+  // v117: a swipe keeps coasting after the finger lifts - restart only once the row has been still for 1.5s
+  bar.addEventListener('scroll',function(){if(!anim&&!over&&!stopped)later();},{passive:true});
   bar.addEventListener('click',function(e){if(e.target.closest('.fp-plat-tab')){stopped=true;hold();}});
-  window.addEventListener('resize',function(){var on=!!anim;hold();fit();measure();if(on)later();});
+  // v117: phones fire 'resize' whenever the address bar shows/hides while scrolling the
+  // page; only re-measure when the width really changes (that was pausing the row).
+  var lastW=window.innerWidth;
+  window.addEventListener('resize',function(){if(window.innerWidth===lastW)return;lastW=window.innerWidth;var on=!!anim;hold();fit();measure();if(on)later();});
   document.addEventListener('visibilitychange',function(){if(document.hidden)hold();else later();});
 }
 
