@@ -1,3 +1,4 @@
+/* v121 (16OCT2026): gap under the flyer tiles = the gap between sections (18px desktop / 14px phones). */
 /* v120 (16OCT2026): tile photos are ready-made cut-outs in BC Image Manager (product_images/uploaded_images/atlas-tile-*.png): Battery Image URL points at them and SHOP BY TRADE has a new Tile Image URLs column (3 per trade) - used as-is, no browser work. The in-browser cut-out only runs for a photo that is not one of those. */
 /* v119 (16OCT2026): speed - (1) strips no longer load every product in the background (was ~1,100 cards / 23k elements on first visit); they load more as the shopper scrolls / taps Load More (Settings key background_fill_strips = yes turns the old behaviour back on); (2) tile cut-out photos are made one at a time in idle moments at 240px and cached in the browser for 7 days. */
 /* v118 (16OCT2026): auto-scroll switched OFF on the flyer tiles, Battery Platforms and Shop by Trade rows (Brijesh) - rows are plain swipe/arrow rows again. fpPlatGlide kept but no longer called. (Replaces the uncommitted v117 phone-glide tweaks.) */
@@ -1818,6 +1819,7 @@ function fpPageCss(){
   var F='.flyers-page', T=F+' .fp-plat-tab', I='!important';
   var css=[
     F+'{background:#f2f2f0'+I+';padding-top:6px'+I+'}',
+    F+'>.fp-flyer-wrap{margin-bottom:18px'+I+'}', // v121: same gap under the flyer tiles as between sections
     F+'>.fp-section{background:#fff;border-radius:16px;margin:0 10px 18px'+I+';padding:0 0 14px'+I+';box-shadow:0 2px 10px rgba(0,0,0,.06);overflow:hidden}',
     F+' .fp-section-head{border-top:0'+I+';padding:0 var(--p,16px) 6px'+I+';margin:0 0 4px'+I+';display:flex;align-items:flex-start;justify-content:space-between}',
     F+' .fp-section-title{display:inline-block'+I+';background:#e31b23'+I+';color:#fff'+I+';padding:6px 16px'+I+';border-radius:0 0 6px 6px;box-shadow:3px 3px 0 #111;font-family:Roboto,sans-serif'+I+';font-size:20px'+I+';font-weight:700'+I+';letter-spacing:1.2px'+I+'}',
@@ -1860,6 +1862,7 @@ function fpPageCss(){
     '@media(max-width:600px){'+
       F+'{width:100vw'+I+';max-width:100vw'+I+';margin-left:calc(50% - 50vw)'+I+';margin-right:0'+I+'}'+
       F+'>.fp-section{margin:0 8px 14px'+I+'}'+
+      F+'>.fp-flyer-wrap{margin-bottom:14px'+I+'}'+
       F+' .fp-section-title{font-size:15px'+I+';padding:5px 12px'+I+';letter-spacing:.6px'+I+'}'+
       F+' .fp-plat-tabs{gap:10px'+I+';padding-left:14px'+I+';padding-right:14px'+I+'}'+
       F+' .pt-track{gap:10px}'+
