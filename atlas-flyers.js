@@ -1,3 +1,5 @@
+/* v120 (16OCT2026): tile photos are ready-made cut-outs in BC Image Manager (product_images/uploaded_images/atlas-tile-*.png): Battery Image URL points at them and SHOP BY TRADE has a new Tile Image URLs column (3 per trade) - used as-is, no browser work. The in-browser cut-out only runs for a photo that is not one of those. */
+/* v119 (16OCT2026): speed - (1) strips no longer load every product in the background (was ~1,100 cards / 23k elements on first visit); they load more as the shopper scrolls / taps Load More (Settings key background_fill_strips = yes turns the old behaviour back on); (2) tile cut-out photos are made one at a time in idle moments at 240px and cached in the browser for 7 days. */
 /* v118 (16OCT2026): auto-scroll switched OFF on the flyer tiles, Battery Platforms and Shop by Trade rows (Brijesh) - rows are plain swipe/arrow rows again. fpPlatGlide kept but no longer called. (Replaces the uncommitted v117 phone-glide tweaks.) */
 /* v116 (16OCT2026): new MAKITA STARTER KIT DEALS section (Section ID makitaKits, tab gid 1971726171; container built by fpEnsureSection). */
 /* v115 (16OCT2026): flyer tiles at the top now actually glide - fpPlatGlide waits (up to 20s) until a row overflows before starting; the flyer row was still unsized when it rendered, so v114 skipped it. */
@@ -1046,6 +1048,11 @@ async function renderBrandRows(){
 // until all its products are loaded. Throttled so it never floods the BC API or
 // blocks interaction. Expanded strips are left to their Load More button.
 function backgroundFillBrandStrips(){
+  // v119: switched off for speed. Loading every product of every strip in the
+  // background meant ~1,100 product cards / 23k page elements on first visit
+  // (Top Brand Deals alone ~800). Strips now load the next page only when the
+  // shopper scrolls near its end (sentinel, wireBrandLazyLoad) or taps Load More.
+  if(!getSetting('background_fill_strips',false))return;
   Object.keys(BRAND_STRIP_STATE).forEach(function(gid){
     (function pump(){
       var st=BRAND_STRIP_STATE[gid];
@@ -1501,21 +1508,42 @@ var TRADE_ROWS=[], TRADE_GID='fp-trade-strip';
 // Battery Image URL: #shadow also removes a grey floor shadow, #trimleft=0.11 crops
 // 11% off the left (e.g. a badge printed next to the product).
 var FP_CUT_CACHE={};
+// v120: an image already cut out and uploaded to Image Manager needs no work
+function fpReadyCut(url){return /\/product_images\/uploaded_images\//.test(url||'');}
 function fpCutout(url){
   if(!url)return Promise.resolve('');
   if(FP_CUT_CACHE[url])return FP_CUT_CACHE[url];
   var parts=url.split('#'), src=parts[0], flags=parts[1]||'';
   var shadow=/shadow/.test(flags), trim=parseFloat((flags.match(/trimleft=([\d.]+)/)||[])[1]||0);
+  // v119: (1) finished cut-outs are kept in the browser (localStorage, 7 days) so
+  // repeat visits skip the work; (2) new ones are made one at a time in idle
+  // moments (requestIdleCallback) instead of all at once while the page loads.
+  var key='fp_cut_'+fpStrHash(url);
+  try{var hit=JSON.parse(localStorage.getItem(key)||'null');if(hit&&Date.now()-hit.t<7*864e5)return(FP_CUT_CACHE[url]=Promise.resolve(hit.d));}catch(e){}
   FP_CUT_CACHE[url]=new Promise(function(res){
     var im=new Image();im.crossOrigin='anonymous';
-    im.onload=function(){try{res(fpCutCanvas(im,shadow,trim));}catch(e){res(src);}};
+    im.onload=function(){fpIdle(function(){
+      var out;try{out=fpCutCanvas(im,shadow,trim);}catch(e){out=src;}
+      if(out.indexOf('data:')===0){try{localStorage.setItem(key,JSON.stringify({t:Date.now(),d:out}));}catch(e){}}
+      res(out);
+    });};
     im.onerror=function(){res(src);};
     im.src=src;
   });
   return FP_CUT_CACHE[url];
 }
+// one cut-out job per idle slot, in order
+var FP_IDLE_Q=[], FP_IDLE_ON=false;
+function fpIdle(fn){
+  FP_IDLE_Q.push(fn);if(FP_IDLE_ON)return;FP_IDLE_ON=true;
+  var ric=window.requestIdleCallback||function(cb){return setTimeout(cb,30);};
+  (function next(){
+    if(!FP_IDLE_Q.length){FP_IDLE_ON=false;return;}
+    ric(function(){var f=FP_IDLE_Q.shift();try{f();}catch(e){}next();},{timeout:1500});
+  })();
+}
 function fpCutCanvas(im,shadow,trim){
-  var sc=Math.min(1,420/Math.max(im.naturalWidth,im.naturalHeight));
+  var sc=Math.min(1,240/Math.max(im.naturalWidth,im.naturalHeight)); // v119: 240px is plenty for 80px tiles on 2x screens
   var w=Math.max(1,Math.round(im.naturalWidth*sc)), h=Math.max(1,Math.round(im.naturalHeight*sc));
   var c=document.createElement('canvas');c.width=w;c.height=h;
   var x=c.getContext('2d');x.drawImage(im,0,0,w,h);
@@ -1707,7 +1735,9 @@ async function renderTrades(){
   PLAT_ROWS.forEach(function(p,i){
     if(!p.img)return;
     // querySelectorAll: the glide loop's copy of each tile needs the photo too
-    fpCutout(p.img).then(function(u){if(u)[].forEach.call(bar.querySelectorAll('.fp-plat-tab[data-i="'+i+'"] img'),function(im){im.src=u;});});
+    var set=function(u){if(u)[].forEach.call(bar.querySelectorAll('.fp-plat-tab[data-i="'+i+'"] img'),function(im){im.src=u;});};
+    // v120: ready-made cut-outs in Image Manager are used as-is; only other photos get cut in the browser
+    if(fpReadyCut(p.img))set(p.img);else fpCutout(p.img).then(set);
   });
   show('fp-sec-trades');
   await fpPlatShow(0);
@@ -1743,11 +1773,13 @@ async function renderTradeDeals(){
     if(!name||!ids.length)return null;
     if(seqOff)ids=fpSeededShuffle(ids,seed+fpStrHash(name)+i);
     var hero=parseIds(r['Hero Product IDs']||'');
-    return {name:name,ids:ids,hero:hero.length?hero.slice(0,3):ids.slice(0,3)};
+    // v120: 'Tile Image URLs' = the 3 ready-made cut-outs (Image Manager), comma separated
+    var tiles=(r['Tile Image URLs']||'').split(/\s*,\s*/).filter(Boolean).slice(0,3);
+    return {name:name,ids:ids,hero:hero.length?hero.slice(0,3):ids.slice(0,3),tiles:tiles};
   }).filter(Boolean);
   if(!TRADE_ROWS.length){hide('fp-sec-tradeDeals');return;}
   var need=[];
-  TRADE_ROWS.forEach(function(t){need=need.concat(t.ids.slice(0,BRAND_FIRST_PAINT),t.hero);});
+  TRADE_ROWS.forEach(function(t){need=need.concat(t.ids.slice(0,BRAND_FIRST_PAINT),t.tiles.length?[]:t.hero);});
   await fetchProducts(need);
   TRADE_ROWS=TRADE_ROWS.filter(function(t){return t.ids.slice(0,BRAND_FIRST_PAINT).some(function(id){return isShowable(PRODUCT_CACHE[id]);});});
   if(!TRADE_ROWS.length){hide('fp-sec-tradeDeals');return;}
@@ -1762,6 +1794,10 @@ async function renderTradeDeals(){
   var bar=host.querySelector('.fp-plat-tabs');
   TRADE_ROWS.forEach(function(t,i){
     var fan=bar.querySelector('.fp-plat-tab[data-i="'+i+'"] .pt-fan');
+    if(t.tiles.length){
+      t.tiles.forEach(function(u,k){var im=document.createElement('img');im.alt='';im.className='f'+k;im.src=u;fan.appendChild(im);});
+      return;
+    }
     t.hero.forEach(function(id,k){
       var p=PRODUCT_CACHE[id];var u=p&&p.defaultImage&&p.defaultImage.url;if(!u)return;
       var im=document.createElement('img');im.alt='';im.className='f'+k;fan.appendChild(im);
