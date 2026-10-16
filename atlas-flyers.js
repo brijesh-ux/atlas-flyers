@@ -1,3 +1,4 @@
+/* v114 (16OCT2026): hide the retired Carpenters / Electricians blocks (fp-sec-clearance, fp-sec-newArrivals) that are still in the BC page HTML - v113 stopped listing them, so they showed as two empty boxes at the top of the page. FAQs heading back to plain black text (no red tag). Battery row glide now moves an inner track with a GPU transform animation (was scrollLeft every frame - jittery on phones). Gap between the menu and the flyer tiles cut from ~35px to 8px. The flyer tiles at the top and the Shop by Trade tiles glide the same way as an endless one-way loop (a hidden copy of the tiles follows the first set) (fpPlatGlide(bar,host); pauses while hovering the row or its arrows). */
 /* v113 (16OCT2026): page redesign + sheet clean-up. (1) BATTERY PLATFORMS: battery-shaped tiles in the platform colour with a cut-out battery photo (new 'Battery Image URL' column; #shadow / #trimleft=0.11 flags), sorted by deal count with similar colours kept apart, row glides until the shopper interacts, VIEW ALL under the tiles; setting show_battery_platforms. (2) SHOP BY TRADE: new section (Section ID tradeDeals, tab gid 2129344817): 'Top tools for <Trade>' cards with 3 cut-out hero photos (Hero Product IDs) driving one strip; replaces the Carpenters / Electricians sections (clearance / newArrivals removed). (3) TOOL STORAGE section (toolStorage, gid 1902185686), container built by fpEnsureSection. (4) Look: white section cards on light grey, red heading tag on the card edge, Roboto 700, full-width phone layout (fpPageCss). (5) Clean Section IDs (bareToolDeals, seasonalDeals, over20Off, outdoorPower, framingTools, tapeMeasures, top100Sellers, batteryPlatforms) via SECTION_ID_ALIAS; old IDs still accepted. */
 /* v112 (16OCT2026): Battery Platform tiles now use the sheet brand colour for the whole battery body and show a real product photo (first in-stock product of that platform) in a white window; logo from Icon Image URL shown above the name if set. Inactive tiles slightly dimmed, active one gets white+brand ring and full charge bar. */
 /* v111 (16OCT2026): Battery Platforms restyled — pills drawn as battery packs (dark body, terminal nub, charge bar + bolt in platform colour; active pack fills with colour, glows, bar fully charged) and a striped banner above the strip that fades into the active platform colour with 'BATTERY PLATFORM' eyebrow + big platform name. Still no deal counts. */
@@ -719,6 +720,7 @@ function renderFlyerTabs(){
     window.scrollTo({top:y<0?0:y,behavior:'smooth'});
   });
   setupFlyerArrows();
+  fpPlatGlide(el,$('fp-flyer-tabs-wrap')); // v114: flyer tiles glide like the battery row
 }
 // Horizontal scroll row + arrow controls. Arrows scroll ~80% of a view and
 // auto-hide at each end so users see the row is scrollable.
@@ -1589,27 +1591,53 @@ function fpColourGap(rows){
   }
   return out;
 }
-// the battery row glides slowly back and forth until the shopper interacts
-function fpPlatGlide(bar){
+// the battery row glides slowly back and forth until the shopper interacts.
+// v114: the tiles sit in an inner track that is moved with a GPU transform
+// animation (was: scrollLeft set every frame, which stuttered on phones).
+// Hover / touch hands the spot back to normal scrolling; it resumes 1.5s
+// after the shopper lets go, and stops for good once a tile is picked.
+// Also used for the flyer tiles at the top (host = the wrap holding their arrows,
+// so hovering an arrow pauses too). The track keeps the row's own width, so tiles
+// sized in % of the row stay the same size inside it.
+function fpPlatGlide(bar,host){
   if(!bar||bar._glide)return;bar._glide=1;
-  if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)return;
-  var paused=false,stopped=false,dir=1,pos=0,last=0,rs=function(){setTimeout(function(){paused=false;pos=bar.scrollLeft;},1500);};
-  bar.addEventListener('mouseenter',function(){paused=true;},{passive:true});
-  bar.addEventListener('touchstart',function(){paused=true;},{passive:true});
-  bar.addEventListener('mouseleave',rs,{passive:true});
-  bar.addEventListener('touchend',rs,{passive:true});
-  bar.addEventListener('click',function(e){if(e.target.closest('.fp-plat-tab'))stopped=true;});
-  function tick(now){
-    if(stopped)return;
-    var dt=last?Math.min(now-last,50):0;last=now;
-    var max=bar.scrollWidth-bar.clientWidth;
-    if(!paused&&!document.hidden&&max>4){
-      pos+=dir*dt*0.035;if(pos>=max){pos=max;dir=-1;}if(pos<=0){pos=0;dir=1;}
-      bar.scrollLeft=pos;
-    }
-    requestAnimationFrame(tick);
+  if(!bar.animate||(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches))return;
+  host=host||bar;
+  var track=document.createElement('div');track.className='pt-track';
+  var cs=getComputedStyle(bar);track.style.gap=cs.columnGap||cs.gap;
+  while(bar.firstChild)track.appendChild(bar.firstChild);
+  bar.appendChild(track);
+  function fit(){var c=getComputedStyle(bar);track.style.width=Math.max(0,bar.clientWidth-parseFloat(c.paddingLeft)-parseFloat(c.paddingRight))+'px';}
+  fit();
+  if(bar.scrollWidth-bar.clientWidth<5)return; // everything fits: nothing to glide
+  // Endless one-way loop: a second (hidden-from-screen-readers) copy of the tiles
+  // follows the first, and the track slides exactly one set width, then repeats.
+  var orig=[].slice.call(track.children);
+  orig.forEach(function(n){var c=n.cloneNode(true);c.setAttribute('aria-hidden','true');c.setAttribute('tabindex','-1');c.classList.add('fp-glide-copy');track.appendChild(c);});
+  var SPEED=0.035, anim=null, stopped=false, timer=0, dist=0;
+  function measure(){var a=orig[0],b=track.children[orig.length];dist=(a&&b)?b.offsetLeft-a.offsetLeft:0;}
+  measure();
+  function curX(){var m=getComputedStyle(track).transform;if(!m||m==='none')return 0;try{return new DOMMatrixReadOnly(m).m41;}catch(e){return 0;}}
+  function hold(){
+    clearTimeout(timer);if(!anim)return;
+    var x=curX();anim.cancel();anim=null;track.style.transform='';bar.scrollLeft=-x;
   }
-  requestAnimationFrame(tick);
+  function start(){
+    if(stopped||anim||document.hidden||dist<5)return;
+    var cur=bar.scrollLeft%dist;
+    bar.scrollLeft=0;
+    anim=track.animate([{transform:'translateX(0px)'},{transform:'translateX('+(-dist)+'px)'}],{duration:dist/SPEED,easing:'linear',iterations:Infinity});
+    anim.currentTime=cur/SPEED;
+  }
+  function later(){clearTimeout(timer);timer=setTimeout(start,1500);}
+  host.addEventListener('mouseenter',hold,{passive:true});
+  host.addEventListener('touchstart',hold,{passive:true});
+  host.addEventListener('mouseleave',later,{passive:true});
+  host.addEventListener('touchend',later,{passive:true});
+  bar.addEventListener('click',function(e){if(e.target.closest('.fp-plat-tab')){stopped=true;hold();}});
+  window.addEventListener('resize',function(){var on=!!anim;hold();fit();measure();if(on)later();});
+  document.addEventListener('visibilitychange',function(){if(document.hidden)hold();else later();});
+  requestAnimationFrame(start);
 }
 
 // ---- BATTERY PLATFORMS
@@ -1658,7 +1686,8 @@ async function renderTrades(){
   var bar=host.querySelector('.fp-plat-tabs');
   PLAT_ROWS.forEach(function(p,i){
     if(!p.img)return;
-    fpCutout(p.img).then(function(u){var im=bar.querySelector('.fp-plat-tab[data-i="'+i+'"] img');if(im&&u)im.src=u;});
+    // querySelectorAll: the glide loop's copy of each tile needs the photo too
+    fpCutout(p.img).then(function(u){if(u)[].forEach.call(bar.querySelectorAll('.fp-plat-tab[data-i="'+i+'"] img'),function(im){im.src=u;});});
   });
   show('fp-sec-trades');
   await fpPlatShow(0);
@@ -1716,11 +1745,13 @@ async function renderTradeDeals(){
     t.hero.forEach(function(id,k){
       var p=PRODUCT_CACHE[id];var u=p&&p.defaultImage&&p.defaultImage.url;if(!u)return;
       var im=document.createElement('img');im.alt='';im.className='f'+k;fan.appendChild(im);
-      fpCutout(u).then(function(c){if(c)im.src=c;});
+      // fill this tile and its glide-loop copy
+      fpCutout(u).then(function(c){if(c)[].forEach.call(bar.querySelectorAll('.fp-plat-tab[data-i="'+i+'"] .pt-fan img.f'+k),function(x){x.src=c;});});
     });
   });
   show('fp-sec-tradeDeals');
   await fpTradeShow(0);
+  fpPlatGlide(bar); // v114: trade tiles glide too
 }
 
 // ---- page look (v113): white section cards on light grey, red heading tag on
@@ -1735,9 +1766,13 @@ function fpPageCss(){
     F+' .fp-section-head{border-top:0'+I+';padding:0 var(--p,16px) 6px'+I+';margin:0 0 4px'+I+';display:flex;align-items:flex-start;justify-content:space-between}',
     F+' .fp-section-title{display:inline-block'+I+';background:#e31b23'+I+';color:#fff'+I+';padding:6px 16px'+I+';border-radius:0 0 6px 6px;box-shadow:3px 3px 0 #111;font-family:Roboto,sans-serif'+I+';font-size:20px'+I+';font-weight:700'+I+';letter-spacing:1.2px'+I+'}',
     F+' .fp-section-head .fp-section-btn{margin-top:10px'+I+'}',
+    // FAQs keep the old plain black heading (v114)
+    '#fp-sec-faqs .fp-section-head{padding-top:18px'+I+'}',
+    '#fp-sec-faqs .fp-section-title{background:none'+I+';color:#111'+I+';box-shadow:none'+I+';border-radius:0'+I+';padding:0'+I+'}',
     // tile rows
     F+' .fp-plat-tabs{display:flex'+I+';flex-wrap:nowrap'+I+';gap:14px'+I+';overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:10px var(--p,16px) 14px'+I+';margin:0'+I+'}',
     F+' .fp-plat-tabs::-webkit-scrollbar{display:none}',
+    F+' .pt-track{display:flex;flex:0 0 auto;gap:14px;will-change:transform}',
     T+'{all:unset;box-sizing:border-box;position:relative;flex:0 0 auto;cursor:pointer;display:flex'+I+';align-items:center;justify-content:space-between;gap:10px;font-family:Roboto,sans-serif;transition:transform .2s,opacity .2s,box-shadow .2s}',
     F+' .pt-name{display:flex;flex-direction:column;line-height:1.15;font-weight:700'+I+';font-size:14px;letter-spacing:.3px;text-transform:uppercase}',
     F+' .pt-vab{display:flex;justify-content:flex-end;margin:0 var(--p,16px) 10px}',
@@ -1771,6 +1806,7 @@ function fpPageCss(){
       F+'>.fp-section{margin:0 8px 14px'+I+'}'+
       F+' .fp-section-title{font-size:15px'+I+';padding:5px 12px'+I+';letter-spacing:.6px'+I+'}'+
       F+' .fp-plat-tabs{gap:10px'+I+';padding-left:14px'+I+';padding-right:14px'+I+'}'+
+      F+' .pt-track{gap:10px}'+
       T+':not(.pt-tr){width:190px;height:62px;padding-left:26px}'+
       F+' .pt-img{flex-basis:62px;width:62px;height:44px}'+
       T+':not(.pt-tr) .pt-name{font-size:12.5px}'+
@@ -1782,6 +1818,10 @@ function fpPageCss(){
   ].join('\n');
   var st=document.createElement('style');st.id='fp-page-css';st.textContent=css;
   document.head.appendChild(st);
+  // v114: tighter gap under the menu (theme gives the page a 29px top margin, plus our 6px)
+  var fp=document.querySelector('.flyers-page'), pg=fp&&fp.closest('.page');
+  if(pg)pg.style.marginTop='8px';
+  if(fp)fp.style.setProperty('padding-top','0','important');
 }
 
 // ==================== PROMO BANNERS ====================
@@ -1887,7 +1927,8 @@ function applySectionOrder(){
   });
 
   // First, hide ALL sections (we'll show only those listed in Section Order)
-  Object.values(SECTION_ID_TO_DOM).forEach(function(domId){
+  // v114: plus the retired Carpenters / Electricians blocks still in the BC page HTML
+  Object.values(SECTION_ID_TO_DOM).concat(['fp-sec-clearance','fp-sec-newArrivals']).forEach(function(domId){
     var el=document.getElementById(domId);
     if(el)el.classList.add('fp-hidden');
   });
