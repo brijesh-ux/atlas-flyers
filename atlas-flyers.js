@@ -1,4 +1,4 @@
-/* v117 (16OCT2026): smoother gliding rows on phones - row scroll-behavior forced to auto (the theme's smooth scrolling made every pause/restart slide), restart waits until a swipe has stopped coasting, and the address bar showing/hiding no longer counts as a resize. */
+/* v118 (16OCT2026): auto-scroll switched OFF on the flyer tiles, Battery Platforms and Shop by Trade rows (Brijesh) - rows are plain swipe/arrow rows again. fpPlatGlide kept but no longer called. (Replaces the uncommitted v117 phone-glide tweaks.) */
 /* v116 (16OCT2026): new MAKITA STARTER KIT DEALS section (Section ID makitaKits, tab gid 1971726171; container built by fpEnsureSection). */
 /* v115 (16OCT2026): flyer tiles at the top now actually glide - fpPlatGlide waits (up to 20s) until a row overflows before starting; the flyer row was still unsized when it rendered, so v114 skipped it. */
 /* v114 (16OCT2026): hide the retired Carpenters / Electricians blocks (fp-sec-clearance, fp-sec-newArrivals) that are still in the BC page HTML - v113 stopped listing them, so they showed as two empty boxes at the top of the page. FAQs heading back to plain black text (no red tag). Battery row glide now moves an inner track with a GPU transform animation (was scrollLeft every frame - jittery on phones). Gap between the menu and the flyer tiles cut from ~35px to 8px. The flyer tiles at the top and the Shop by Trade tiles glide the same way as an endless one-way loop (a hidden copy of the tiles follows the first set) (fpPlatGlide(bar,host); pauses while hovering the row or its arrows). */
@@ -724,7 +724,7 @@ function renderFlyerTabs(){
     window.scrollTo({top:y<0?0:y,behavior:'smooth'});
   });
   setupFlyerArrows();
-  fpPlatGlide(el,$('fp-flyer-tabs-wrap')); // v114: flyer tiles glide like the battery row
+  // fpPlatGlide(el,$('fp-flyer-tabs-wrap')); // v114: flyer tiles glide like the battery row  -- v118: auto-scroll switched off (Brijesh)
 }
 // Horizontal scroll row + arrow controls. Arrows scroll ~80% of a view and
 // auto-hide at each end so users see the row is scrollable.
@@ -1711,7 +1711,7 @@ async function renderTrades(){
   });
   show('fp-sec-trades');
   await fpPlatShow(0);
-  fpPlatGlide(bar);
+  // fpPlatGlide(bar);  -- v118: auto-scroll switched off (Brijesh)
 }
 
 // ---- SHOP BY TRADE
@@ -1771,7 +1771,7 @@ async function renderTradeDeals(){
   });
   show('fp-sec-tradeDeals');
   await fpTradeShow(0);
-  fpPlatGlide(bar); // v114: trade tiles glide too
+  // fpPlatGlide(bar); // v114: trade tiles glide too  -- v118: auto-scroll switched off (Brijesh)
 }
 
 // ---- page look (v113): white section cards on light grey, red heading tag on
