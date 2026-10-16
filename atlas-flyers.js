@@ -1,3 +1,4 @@
+/* v116 (16OCT2026): new MAKITA STARTER KIT DEALS section (Section ID makitaKits, tab gid 1971726171; container built by fpEnsureSection). */
 /* v115 (16OCT2026): flyer tiles at the top now actually glide - fpPlatGlide waits (up to 20s) until a row overflows before starting; the flyer row was still unsized when it rendered, so v114 skipped it. */
 /* v114 (16OCT2026): hide the retired Carpenters / Electricians blocks (fp-sec-clearance, fp-sec-newArrivals) that are still in the BC page HTML - v113 stopped listing them, so they showed as two empty boxes at the top of the page. FAQs heading back to plain black text (no red tag). Battery row glide now moves an inner track with a GPU transform animation (was scrollLeft every frame - jittery on phones). Gap between the menu and the flyer tiles cut from ~35px to 8px. The flyer tiles at the top and the Shop by Trade tiles glide the same way as an endless one-way loop (a hidden copy of the tiles follows the first set) (fpPlatGlide(bar,host); pauses while hovering the row or its arrows). */
 /* v113 (16OCT2026): page redesign + sheet clean-up. (1) BATTERY PLATFORMS: battery-shaped tiles in the platform colour with a cut-out battery photo (new 'Battery Image URL' column; #shadow / #trimleft=0.11 flags), sorted by deal count with similar colours kept apart, row glides until the shopper interacts, VIEW ALL under the tiles; setting show_battery_platforms. (2) SHOP BY TRADE: new section (Section ID tradeDeals, tab gid 2129344817): 'Top tools for <Trade>' cards with 3 cut-out hero photos (Hero Product IDs) driving one strip; replaces the Carpenters / Electricians sections (clearance / newArrivals removed). (3) TOOL STORAGE section (toolStorage, gid 1902185686), container built by fpEnsureSection. (4) Look: white section cards on light grey, red heading tag on the card edge, Roboto 700, full-width phone layout (fpPageCss). (5) Clean Section IDs (bareToolDeals, seasonalDeals, over20Off, outdoorPower, framingTools, tapeMeasures, top100Sellers, batteryPlatforms) via SECTION_ID_ALIAS; old IDs still accepted. */
@@ -51,6 +52,7 @@ var GIDS = {
   lastChance: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1769613080',
   videoSection: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1630459149',
   shopByTrade: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1407344995',
+  makitaKits: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1971726171',
   toolStorage: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1902185686',
   tradeDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2129344817',
   promoBanners: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2007099777',
@@ -1868,6 +1870,7 @@ var SECTION_ID_TO_DOM = {
   monthlyFlyer:'fp-sec-monthlyFlyer',
   endingSoon:'fp-sec-ending',
   toolStorage:'fp-sec-toolStorage',
+  makitaKits:'fp-sec-makitaKits',
   tradeDeals:'fp-sec-tradeDeals'
 };
 // v113: clean Section IDs for the sheet. The Section Order tab may use either
@@ -2584,7 +2587,7 @@ async function init(){
   setupScrollSave();
 
   // 2) Fetch all other CSVs in parallel (plus the live cart, so tiles can show "in cart")
-  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','lastChance','videoSection','shopByTrade','tradeDeals','toolStorage','promoBanners','faqs','sectionOrder','allCoupons'];
+  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','lastChance','videoSection','shopByTrade','tradeDeals','toolStorage','makitaKits','promoBanners','faqs','sectionOrder','allCoupons'];
   var promises=keys.map(function(k){return fetchCSV(k,GIDS[k]);});
   var results=await Promise.all(promises.concat([loadServerCart()]));
   keys.forEach(function(k,i){SECTION_DATA[k]=results[i]||[];});
@@ -2642,6 +2645,7 @@ async function init(){
   // renderTrades() moved: v102 renders it after renderBrandRows (shared strip engine)
   fpPageCss();
   fpEnsureSection('toolStorage','TOOL STORAGE'); // v113: sections with no container in the page HTML
+  fpEnsureSection('makitaKits','MAKITA STARTER KIT DEALS'); // v116
   fpEnsureTradeSection();
   applySectionOrder();
 
