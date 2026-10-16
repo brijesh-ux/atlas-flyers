@@ -1,3 +1,4 @@
+/* v123 (16OCT2026): HURRY UP (countdown) tiles now use the standard product tile (brand tag, SKU, stock, viewers, savings ribbon, linked name, same fonts) with the countdown bar on top. */
 /* v122 (16OCT2026): HURRY UP (countdown) tiles - product name now links to the product page like every other tile. */
 /* v121 (16OCT2026): gap under the flyer tiles = the gap between sections (18px desktop / 14px phones). */
 /* v120 (16OCT2026): tile photos are ready-made cut-outs in BC Image Manager (product_images/uploaded_images/atlas-tile-*.png): Battery Image URL points at them and SHOP BY TRADE has a new Tile Image URLs column (3 per trade) - used as-is, no browser work. The in-browser cut-out only runs for a photo that is not one of those. */
@@ -787,26 +788,19 @@ async function renderCountdown(){
   grid.innerHTML=items.map(function(it,i){
     var p=PRODUCT_CACHE[it.id];
     if(!p)return'';
-    var pr=p.prices&&p.prices.price?p.prices.price.value:null;
-    var sl=p.prices&&p.prices.salePrice?p.prices.salePrice.value:null;
-    var os=sl&&sl<pr;
-    var img=p.defaultImage?p.defaultImage.url:'';
-    var bid='cdadd-'+i+'-'+Math.random().toString(36).substr(2,3);
+    // v123: the standard product tile (brand tag, SKU, stock, viewers, ribbon,
+    // linked name, Add to Cart) with the countdown bar on top, so HURRY UP
+    // matches every other section.
     COUNTDOWN_TIMERS.push({end:it.end,el:'cd-t-'+i,color:it.color});
-    return '<div class="fp-cd-card" id="cd-card-'+i+'">'+
-      '<div class="fp-cd-timer" id="cd-t-'+i+'" style="background:'+it.color+'">'+
+    var timer='<div class="fp-cd-timer" id="cd-t-'+i+'" style="background:'+it.color+'">'+
         '<div class="fp-cd-unit"><div class="fp-cd-num" data-u="d">0</div><div class="fp-cd-lbl">Days</div></div>'+
         '<div class="fp-cd-unit"><div class="fp-cd-num" data-u="h">0</div><div class="fp-cd-lbl">Hrs</div></div>'+
         '<div class="fp-cd-unit"><div class="fp-cd-num" data-u="m">0</div><div class="fp-cd-lbl">Min</div></div>'+
         '<div class="fp-cd-unit"><div class="fp-cd-num" data-u="s">0</div><div class="fp-cd-lbl">Sec</div></div>'+
-      '</div>'+
-      '<div class="fp-cd-img-wrap" onclick="fpQuickView('+it.id+')">'+(img?'<img src="'+img+'" loading="lazy">':'\ud83d\udd27')+'</div>'+
-      // v122: name links to the product page, same as the other product tiles
-      '<a class="fp-cd-name" href="'+esc(p.path||'#')+'" onclick="fpTrackRecent('+it.id+')" style="display:block;color:inherit;text-decoration:none">'+esc(cleanName(p.name,p.sku))+'</a>'+
-      '<div class="fp-cd-prices"><span class="fp-cd-sale">$'+(os?sl.toFixed(2):pr?pr.toFixed(2):'?')+'</span>'+(os?'<span class="fp-cd-was">$'+pr.toFixed(2)+'</span>':'')+'</div>'+
-      '<button class="fp-cd-add'+(inCartLabel(it.id)?' added':'')+'" id="'+bid+'" data-pid="'+it.id+'" onclick="fpAdd('+it.id+','+(os?sl:pr)+',\''+esc((cleanName(p.name,p.sku)||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+bid+'\')">'+(inCartLabel(it.id)||'Add to Cart')+'</button>'+
-    '</div>';
+      '</div>';
+    return richCard(p,{brand:it.brand,st:'in',_sectionKey:'countdown',showTag:false}).replace(/^(<div class="fp-rich"[^>]*>)/,'$1'+timer);
   }).filter(Boolean).join('');
+  grid.classList.remove('fp-countdown-grid');grid.classList.add('fp-rich-grid');
   show('fp-sec-countdown');
   tickCountdowns();
   setInterval(tickCountdowns,1000);
