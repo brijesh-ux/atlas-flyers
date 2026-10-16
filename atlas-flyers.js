@@ -1,3 +1,4 @@
+/* v115 (16OCT2026): flyer tiles at the top now actually glide - fpPlatGlide waits (up to 20s) until a row overflows before starting; the flyer row was still unsized when it rendered, so v114 skipped it. */
 /* v114 (16OCT2026): hide the retired Carpenters / Electricians blocks (fp-sec-clearance, fp-sec-newArrivals) that are still in the BC page HTML - v113 stopped listing them, so they showed as two empty boxes at the top of the page. FAQs heading back to plain black text (no red tag). Battery row glide now moves an inner track with a GPU transform animation (was scrollLeft every frame - jittery on phones). Gap between the menu and the flyer tiles cut from ~35px to 8px. The flyer tiles at the top and the Shop by Trade tiles glide the same way as an endless one-way loop (a hidden copy of the tiles follows the first set) (fpPlatGlide(bar,host); pauses while hovering the row or its arrows). */
 /* v113 (16OCT2026): page redesign + sheet clean-up. (1) BATTERY PLATFORMS: battery-shaped tiles in the platform colour with a cut-out battery photo (new 'Battery Image URL' column; #shadow / #trimleft=0.11 flags), sorted by deal count with similar colours kept apart, row glides until the shopper interacts, VIEW ALL under the tiles; setting show_battery_platforms. (2) SHOP BY TRADE: new section (Section ID tradeDeals, tab gid 2129344817): 'Top tools for <Trade>' cards with 3 cut-out hero photos (Hero Product IDs) driving one strip; replaces the Carpenters / Electricians sections (clearance / newArrivals removed). (3) TOOL STORAGE section (toolStorage, gid 1902185686), container built by fpEnsureSection. (4) Look: white section cards on light grey, red heading tag on the card edge, Roboto 700, full-width phone layout (fpPageCss). (5) Clean Section IDs (bareToolDeals, seasonalDeals, over20Off, outdoorPower, framingTools, tapeMeasures, top100Sellers, batteryPlatforms) via SECTION_ID_ALIAS; old IDs still accepted. */
 /* v112 (16OCT2026): Battery Platform tiles now use the sheet brand colour for the whole battery body and show a real product photo (first in-stock product of that platform) in a white window; logo from Icon Image URL shown above the name if set. Inactive tiles slightly dimmed, active one gets white+brand ring and full charge bar. */
@@ -1609,14 +1610,20 @@ function fpPlatGlide(bar,host){
   bar.appendChild(track);
   function fit(){var c=getComputedStyle(bar);track.style.width=Math.max(0,bar.clientWidth-parseFloat(c.paddingLeft)-parseFloat(c.paddingRight))+'px';}
   fit();
-  if(bar.scrollWidth-bar.clientWidth<5)return; // everything fits: nothing to glide
-  // Endless one-way loop: a second (hidden-from-screen-readers) copy of the tiles
-  // follows the first, and the track slides exactly one set width, then repeats.
-  var orig=[].slice.call(track.children);
-  orig.forEach(function(n){var c=n.cloneNode(true);c.setAttribute('aria-hidden','true');c.setAttribute('tabindex','-1');c.classList.add('fp-glide-copy');track.appendChild(c);});
-  var SPEED=0.035, anim=null, stopped=false, timer=0, dist=0;
-  function measure(){var a=orig[0],b=track.children[orig.length];dist=(a&&b)?b.offsetLeft-a.offsetLeft:0;}
-  measure();
+  var SPEED=0.035, anim=null, stopped=false, timer=0, dist=0, orig=null, tries=0;
+  // v114b: the row can still be hidden / unsized when this runs (the flyer tiles
+  // render before the page is laid out), so wait until it actually overflows.
+  (function arm(){
+    fit();
+    if(bar.scrollWidth-bar.clientWidth<5){ if(++tries<40)setTimeout(arm,500); return; }
+    // Endless one-way loop: a second (hidden-from-screen-readers) copy of the tiles
+    // follows the first, and the track slides exactly one set width, then repeats.
+    orig=[].slice.call(track.children);
+    orig.forEach(function(n){var c=n.cloneNode(true);c.setAttribute('aria-hidden','true');c.setAttribute('tabindex','-1');c.classList.add('fp-glide-copy');track.appendChild(c);});
+    measure();
+    requestAnimationFrame(start);
+  })();
+  function measure(){if(!orig)return;var a=orig[0],b=track.children[orig.length];dist=(a&&b)?b.offsetLeft-a.offsetLeft:0;}
   function curX(){var m=getComputedStyle(track).transform;if(!m||m==='none')return 0;try{return new DOMMatrixReadOnly(m).m41;}catch(e){return 0;}}
   function hold(){
     clearTimeout(timer);if(!anim)return;
@@ -1637,7 +1644,6 @@ function fpPlatGlide(bar,host){
   bar.addEventListener('click',function(e){if(e.target.closest('.fp-plat-tab')){stopped=true;hold();}});
   window.addEventListener('resize',function(){var on=!!anim;hold();fit();measure();if(on)later();});
   document.addEventListener('visibilitychange',function(){if(document.hidden)hold();else later();});
-  requestAnimationFrame(start);
 }
 
 // ---- BATTERY PLATFORMS
