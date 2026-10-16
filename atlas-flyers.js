@@ -1,3 +1,6 @@
+/* v113 (16OCT2026): page redesign + sheet clean-up. (1) BATTERY PLATFORMS: battery-shaped tiles in the platform colour with a cut-out battery photo (new 'Battery Image URL' column; #shadow / #trimleft=0.11 flags), sorted by deal count with similar colours kept apart, row glides until the shopper interacts, VIEW ALL under the tiles; setting show_battery_platforms. (2) SHOP BY TRADE: new section (Section ID tradeDeals, tab gid 2129344817): 'Top tools for <Trade>' cards with 3 cut-out hero photos (Hero Product IDs) driving one strip; replaces the Carpenters / Electricians sections (clearance / newArrivals removed). (3) TOOL STORAGE section (toolStorage, gid 1902185686), container built by fpEnsureSection. (4) Look: white section cards on light grey, red heading tag on the card edge, Roboto 700, full-width phone layout (fpPageCss). (5) Clean Section IDs (bareToolDeals, seasonalDeals, over20Off, outdoorPower, framingTools, tapeMeasures, top100Sellers, batteryPlatforms) via SECTION_ID_ALIAS; old IDs still accepted. */
+/* v112 (16OCT2026): Battery Platform tiles now use the sheet brand colour for the whole battery body and show a real product photo (first in-stock product of that platform) in a white window; logo from Icon Image URL shown above the name if set. Inactive tiles slightly dimmed, active one gets white+brand ring and full charge bar. */
+/* v111 (16OCT2026): Battery Platforms restyled — pills drawn as battery packs (dark body, terminal nub, charge bar + bolt in platform colour; active pack fills with colour, glows, bar fully charged) and a striped banner above the strip that fades into the active platform colour with 'BATTERY PLATFORM' eyebrow + big platform name. Still no deal counts. */
 /* v110 (15OCT2026): CONTACT FOR PRICING tiles sink to the end of every strip/grid as well (everywhere v108/v109 sinks out-of-stock). Order within a section: in stock, then contact-for-pricing, then out-of-stock. Card button carries class fp-rich-cfp. */
 /* v109 (15OCT2026): out-of-stock tiles also sink to the end on CATEGORY pages (fp-cat-grid, after every endless-scroll page), SALE / SEARCH takeover grids, and every HOME page strip (sweep over the first 18s so enriched cards are covered). Same fpSinkOos() as v108. */
 /* v108 (15OCT2026): out-of-stock product tiles sink to the END of every section strip/grid (product sections, Top Brand Deals rows, Battery Platforms) — applied on first paint and after every lazy-loaded page via fpSinkOos(); in-stock tiles keep sheet/shuffle order. */
@@ -37,17 +40,17 @@ var GIDS = {
   bogo: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1459478364',
   hotDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1235088137',
   under99: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=233862134',
-  clearance: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1183687874',
   freeKit: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=802382066',
   freeBattery: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=508008394',
   atlasExclusive: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=98700911',
   countdown: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=43270678',
   dealOfDay: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=836075056',
   staffPicks: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=764019041',
-  newArrivals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=135808860',
   lastChance: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1769613080',
   videoSection: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1630459149',
   shopByTrade: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1407344995',
+  toolStorage: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1902185686',
+  tradeDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2129344817',
   promoBanners: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2007099777',
   faqs: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=807514654',
   sectionOrder: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1373796339',
@@ -615,6 +618,17 @@ async function renderProductSection(sectionKey,gridId){
   applyBrandFilter();
   wirePagerLazyLoad();
   if(typeof setupScrollArrows==='function')setupScrollArrows();
+}
+
+// v113: product sections added after the BC page HTML was written get their container
+// built here (same markup as the page's own sections); applySectionOrder then places it.
+function fpEnsureSection(key,title){
+  if($('fp-sec-'+key))return;
+  var page=document.querySelector('.flyers-page');if(!page)return;
+  var d=document.createElement('div');d.className='fp-section fp-hidden';d.id='fp-sec-'+key;
+  d.innerHTML='<div class="fp-section-head"><span class="fp-section-title">'+esc(title)+'</span><button class="fp-section-btn" onclick="fpToggleSection(\'fp-'+key+'\',this)">VIEW ALL</button></div>'+
+    '<div class="fp-scroll-wrap"><div class="fp-rich-grid" id="fp-'+key+'" data-section="'+key+'"></div></div>';
+  page.appendChild(d);
 }
 
 // ==================== LAZY LOAD ====================
@@ -1463,63 +1477,157 @@ function renderVideos(){
   if($('fp-videos').innerHTML.trim())show('fp-sec-videos');else hide('fp-sec-videos');
 }
 
-// ==================== BATTERY PLATFORM DEALS — TABBED (v103) ====================
-// "Shop by Trade" tab (gid 1407344995, named "Battery Platform Deals"): one
-// compact section. A row of coloured pills (Trade Name + deal count, colours
-// from Background Color / Text Color) sits above ONE product strip; clicking a
-// pill swaps the strip to that platform's Product IDs. The strip reuses the
-// brand-strip engine (BRAND_STRIP_STATE / loadBrandPage / lazy load / VIEW ALL),
-// so this still runs after renderBrandRows().
-var PLAT_ROWS=[];
-var PLAT_GID='fp-plat-strip';
-function platCss(){
-  if($('fp-plat-css'))return;
-  var st=document.createElement('style');st.id='fp-plat-css';
-  st.textContent=
-    '.flyers-page .fp-plat-tabs{display:flex!important;flex-wrap:nowrap;gap:12px!important;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:6px var(--p) 18px!important;margin:0!important}'+
-    '.flyers-page .fp-plat-tabs::-webkit-scrollbar{display:none}'+
-    '@media(min-width:900px){.flyers-page .fp-plat-tabs{flex-wrap:wrap;overflow:visible}}'+
-    '.flyers-page .fp-plat-tab{flex:0 0 auto;min-width:180px;height:58px;display:inline-flex!important;align-items:center;justify-content:center;border:2px solid var(--pc,#1a1a1a)!important;background:#fff!important;color:#1a1a1a!important;border-radius:12px!important;padding:0 22px!important;margin:0!important;font-size:15px!important;line-height:1.1!important;font-weight:800!important;letter-spacing:.4px;text-transform:uppercase;cursor:pointer;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.08)!important;transition:background .15s,color .15s,transform .12s,box-shadow .15s}'+
-    '.flyers-page .fp-plat-tab.fp-plat-on{background:var(--pc,#1a1a1a)!important;color:var(--pt,#fff)!important;box-shadow:0 6px 16px rgba(0,0,0,.18)!important}'+
-    '.flyers-page .fp-plat-tab:hover{transform:translateY(-1px)}'+
-    '.flyers-page .fp-plat-tab:active{transform:scale(.97)}'+
-    '.flyers-page .fp-plat-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 var(--p)!important;margin:6px 0 12px!important}'+
-    '.flyers-page .fp-plat-label{font-size:16px!important;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-left:6px solid var(--pc,#1a1a1a);padding-left:12px!important}';
-  document.head.appendChild(st);
+// ==================== BATTERY PLATFORMS + SHOP BY TRADE (v113) ====================
+// Two tile rows that each drive ONE product strip (brand-strip engine: lazy load,
+// VIEW ALL, Load More, scroll arrows).
+//  - BATTERY PLATFORMS (Section ID batteryPlatforms, internal key shopByTrade, tab
+//    BATTERY PLATFORMS): battery-shaped tiles in the platform colour (Background /
+//    Text Color) with a cut-out battery photo (Battery Image URL). Tiles sort by
+//    number of deals (most first) and never put two similar colours side by side.
+//    The row glides slowly on its own until a shopper hovers / touches / picks one.
+//  - SHOP BY TRADE (Section ID tradeDeals, tab SHOP BY TRADE): light rounded cards
+//    "Top tools for <Trade>" with 3 cut-out tool photos (Hero Product IDs).
+var PLAT_ROWS=[], PLAT_GID='fp-plat-strip';
+var TRADE_ROWS=[], TRADE_GID='fp-trade-strip';
+
+// ---- cut-out photos: remove the white studio background so the product sits on
+// the tile. Runs in the browser on BC CDN images (CORS allowed). Hash flags on a
+// Battery Image URL: #shadow also removes a grey floor shadow, #trimleft=0.11 crops
+// 11% off the left (e.g. a badge printed next to the product).
+var FP_CUT_CACHE={};
+function fpCutout(url){
+  if(!url)return Promise.resolve('');
+  if(FP_CUT_CACHE[url])return FP_CUT_CACHE[url];
+  var parts=url.split('#'), src=parts[0], flags=parts[1]||'';
+  var shadow=/shadow/.test(flags), trim=parseFloat((flags.match(/trimleft=([\d.]+)/)||[])[1]||0);
+  FP_CUT_CACHE[url]=new Promise(function(res){
+    var im=new Image();im.crossOrigin='anonymous';
+    im.onload=function(){try{res(fpCutCanvas(im,shadow,trim));}catch(e){res(src);}};
+    im.onerror=function(){res(src);};
+    im.src=src;
+  });
+  return FP_CUT_CACHE[url];
 }
-async function fpPlatShow(i){
-  var p=PLAT_ROWS[i];if(!p)return;
-  var host=$('fp-trades');if(!host)return;
-  [].forEach.call(host.querySelectorAll('.fp-plat-tab'),function(t,j){t.classList.toggle('fp-plat-on',j===i);t.setAttribute('aria-selected',j===i?'true':'false');});
-  var label=host.querySelector('.fp-plat-label');
-  if(label){label.textContent=p.name;label.style.setProperty('--pc',p.bg);}
-  var grid=$(PLAT_GID);if(!grid)return;
-  // Reset the single strip for the chosen platform.
-  delete BRAND_STRIP_STATE[PLAT_GID];
+function fpCutCanvas(im,shadow,trim){
+  var sc=Math.min(1,420/Math.max(im.naturalWidth,im.naturalHeight));
+  var w=Math.max(1,Math.round(im.naturalWidth*sc)), h=Math.max(1,Math.round(im.naturalHeight*sc));
+  var c=document.createElement('canvas');c.width=w;c.height=h;
+  var x=c.getContext('2d');x.drawImage(im,0,0,w,h);
+  var d=x.getImageData(0,0,w,h), p=d.data, n=w*h, i, j;
+  function mn(i){return Math.min(p[i*4],p[i*4+1],p[i*4+2]);}
+  function sat(i){return Math.max(p[i*4],p[i*4+1],p[i*4+2])-mn(i);}
+  function bg(i){return p[i*4+3]<10||(shadow?(mn(i)>150&&sat(i)<22):mn(i)>232);}
+  // 1) flood-fill the background in from the edges
+  var seen=new Uint8Array(n), st=[];
+  for(i=0;i<w;i++)st.push(i,(h-1)*w+i);
+  for(j=0;j<h;j++)st.push(j*w,j*w+w-1);
+  while(st.length){
+    i=st.pop();if(seen[i]||!bg(i))continue;seen[i]=1;p[i*4+3]=0;
+    var X=i%w,Y=(i/w)|0;
+    if(X>0)st.push(i-1);if(X<w-1)st.push(i+1);if(Y>0)st.push(i-w);if(Y<h-1)st.push(i+w);
+  }
+  // 2) white pockets the fill can't reach (between plier handles, inside a saw frame)
+  var lab=new Uint8Array(n), minA=Math.max(25,n*0.0015);
+  function wh(i){return p[i*4+3]>0&&mn(i)>228&&sat(i)<18;}
+  for(var s=0;s<n;s++){
+    if(lab[s]||!wh(s))continue;
+    var q=[s],reg=[];lab[s]=1;
+    while(q.length){
+      i=q.pop();reg.push(i);var X2=i%w,Y2=(i/w)|0;
+      var nb=[X2>0?i-1:-1,X2<w-1?i+1:-1,Y2>0?i-w:-1,Y2<h-1?i+w:-1];
+      for(var k=0;k<4;k++){j=nb[k];if(j>=0&&!lab[j]&&wh(j)){lab[j]=1;q.push(j);}}
+    }
+    if(reg.length>=minA)for(k=0;k<reg.length;k++)p[reg[k]*4+3]=0;
+  }
+  // 3) soften the light fringe left around the product
+  for(i=0;i<n;i++){
+    if(p[i*4+3]===0)continue;var X3=i%w,Y3=(i/w)|0;
+    if((X3>0&&p[(i-1)*4+3]===0)||(X3<w-1&&p[(i+1)*4+3]===0)||(Y3>0&&p[(i-w)*4+3]===0)||(Y3<h-1&&p[(i+w)*4+3]===0)){if(mn(i)>200)p[i*4+3]=120;}
+  }
+  x.putImageData(d,0,0);
+  // 4) trim to the product (and the optional left crop)
+  var a=w,b=h,e=0,f=0;
+  for(i=0;i<n;i++)if(p[i*4+3]>0){var X4=i%w,Y4=(i/w)|0;if(X4<a)a=X4;if(Y4<b)b=Y4;if(X4>e)e=X4;if(Y4>f)f=Y4;}
+  if(e<a)return c.toDataURL('image/png');
+  a+=Math.round((e-a)*trim);
+  var o=document.createElement('canvas');o.width=e-a+1;o.height=f-b+1;
+  o.getContext('2d').drawImage(c,a,b,o.width,o.height,0,0,o.width,o.height);
+  return o.toDataURL('image/png');
+}
+
+// ---- shared: point one strip at a new ID list
+async function fpStripShow(gid,ids){
+  var grid=$(gid);if(!grid)return;
+  delete BRAND_STRIP_STATE[gid];
   var wrap=grid.closest('.fp-scroll-wrap');
-  if(wrap&&wrap.parentNode){var lm=wrap.parentNode.querySelector('.fp-loadmore[data-gid="'+PLAT_GID+'"]');if(lm)lm.parentNode.removeChild(lm);}
+  var host=(wrap||grid).parentNode;
+  if(host){var lm=host.querySelector('.fp-loadmore[data-gid="'+gid+'"]');if(lm)lm.parentNode.removeChild(lm);}
   grid.removeAttribute('data-ex');
-  grid.innerHTML='<span class="fp-brow-sentinel" data-gid="'+PLAT_GID+'"></span>';
+  grid.innerHTML='<span class="fp-brow-sentinel" data-gid="'+gid+'"></span>';
   grid.scrollLeft=0;
-  BRAND_STRIP_STATE[PLAT_GID]={ids:p.ids,shown:0,brand:null,loading:false};
-  await loadBrandPage(PLAT_GID,BRAND_FIRST_PAINT);
+  BRAND_STRIP_STATE[gid]={ids:ids,shown:0,brand:null,loading:false};
+  await loadBrandPage(gid,BRAND_FIRST_PAINT);
   wireBrandLazyLoad();
   backgroundFillBrandStrips();
   if(typeof setupScrollArrows==='function')setupScrollArrows();
   if(typeof refreshScrollArrows==='function')refreshScrollArrows(grid);
-  // keep the chosen pill in view
-  var tab=host.querySelectorAll('.fp-plat-tab')[i],bar=host.querySelector('.fp-plat-tabs');
-  if(tab&&bar&&bar.scrollTo)bar.scrollTo({left:tab.offsetLeft-bar.clientWidth/2+tab.offsetWidth/2,behavior:'smooth'});
+}
+function fpTabsOn(bar,i){
+  [].forEach.call(bar.querySelectorAll('.fp-plat-tab'),function(t){
+    var on=+t.getAttribute('data-i')===i;
+    t.classList.toggle('fp-plat-on',on);t.setAttribute('aria-selected',on?'true':'false');
+  });
+}
+// tiles never put two similar colours next to each other (keeps the given order otherwise)
+function fpHexRgb(h){h=String(h||'').trim().replace('#','');if(h.length===3)h=h.replace(/./g,'$&$&');var v=parseInt(h,16);return isNaN(v)?[0,0,0]:[v>>16&255,v>>8&255,v&255];}
+function fpColourGap(rows){
+  var left=rows.slice(),out=[];if(!left.length)return out;out.push(left.shift());
+  while(left.length){
+    var pv=fpHexRgb(out[out.length-1].bg),k=0;
+    for(var j=0;j<left.length;j++){var c=fpHexRgb(left[j].bg);if(Math.sqrt(Math.pow(c[0]-pv[0],2)+Math.pow(c[1]-pv[1],2)+Math.pow(c[2]-pv[2],2))>120){k=j;break;}}
+    out.push(left.splice(k,1)[0]);
+  }
+  return out;
+}
+// the battery row glides slowly back and forth until the shopper interacts
+function fpPlatGlide(bar){
+  if(!bar||bar._glide)return;bar._glide=1;
+  if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  var paused=false,stopped=false,dir=1,pos=0,last=0,rs=function(){setTimeout(function(){paused=false;pos=bar.scrollLeft;},1500);};
+  bar.addEventListener('mouseenter',function(){paused=true;},{passive:true});
+  bar.addEventListener('touchstart',function(){paused=true;},{passive:true});
+  bar.addEventListener('mouseleave',rs,{passive:true});
+  bar.addEventListener('touchend',rs,{passive:true});
+  bar.addEventListener('click',function(e){if(e.target.closest('.fp-plat-tab'))stopped=true;});
+  function tick(now){
+    if(stopped)return;
+    var dt=last?Math.min(now-last,50):0;last=now;
+    var max=bar.scrollWidth-bar.clientWidth;
+    if(!paused&&!document.hidden&&max>4){
+      pos+=dir*dt*0.035;if(pos>=max){pos=max;dir=-1;}if(pos<=0){pos=0;dir=1;}
+      bar.scrollLeft=pos;
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// ---- BATTERY PLATFORMS
+async function fpPlatShow(i){
+  var p=PLAT_ROWS[i];if(!p)return;
+  var host=$('fp-trades');if(!host)return;
+  var bar=host.querySelector('.fp-plat-tabs');
+  fpTabsOn(bar,i);
+  await fpStripShow(PLAT_GID,p.ids);
 }
 window.fpPlatShow=fpPlatShow;
 async function renderTrades(){
-  if(!getSetting('show_shop_by_trade',true)){hide('fp-sec-trades');return;}
+  if(!getSetting('show_battery_platforms',true)){hide('fp-sec-trades');return;}
   var rows=SECTION_DATA.shopByTrade||[];
   if(!rows.length){hide('fp-sec-trades');return;}
   rows=fpFreshRows('shopByTrade',rows); // freshness (Sequencing=Off)
   var host=$('fp-trades');
   if(!host)return;
-  platCss();
   var seqOff=SECTION_SEQUENCING['shopByTrade']===false;
   var seed=seqOff?fpFreshSeed('shopByTrade'):0;
   PLAT_ROWS=rows.map(function(r,i){
@@ -1527,35 +1635,154 @@ async function renderTrades(){
     var ids=parseIds(r['Product IDs']||'');
     if(!name||!ids.length)return null;
     if(seqOff)ids=fpSeededShuffle(ids,seed+fpStrHash(name)+i);
-    return {name:name,icon:(r['Icon Image URL']||'').trim(),bg:r['Background Color']||'#1a1a1a',tc:r['Text Color']||'#fff',ids:ids};
+    return {name:name,img:(r['Battery Image URL']||'').trim(),bg:r['Background Color']||'#1a1a1a',tc:r['Text Color']||'#fff',ids:ids};
   }).filter(Boolean);
   if(!PLAT_ROWS.length){hide('fp-sec-trades');return;}
-  // Drop platforms whose first batch has nothing showable (all OOS).
+  // Drop platforms whose first batch has nothing showable.
   var firstIds=[];
   PLAT_ROWS.forEach(function(p){firstIds=firstIds.concat(p.ids.slice(0,BRAND_FIRST_PAINT));});
   if(firstIds.length)await fetchProducts(firstIds);
   PLAT_ROWS=PLAT_ROWS.filter(function(p){return p.ids.slice(0,BRAND_FIRST_PAINT).some(function(id){return isShowable(PRODUCT_CACHE[id]);});});
   if(!PLAT_ROWS.length){hide('fp-sec-trades');return;}
+  // Most deals first, then keep matching colours apart.
+  PLAT_ROWS.sort(function(a,b){return b.ids.length-a.ids.length;});
+  PLAT_ROWS=fpColourGap(PLAT_ROWS);
   host.className='fp-plat';
   host.innerHTML=
     '<div class="fp-plat-tabs" role="tablist">'+PLAT_ROWS.map(function(p,i){
-      return '<button type="button" role="tab" class="fp-plat-tab" style="--pc:'+esc(p.bg)+';--pt:'+esc(p.tc)+'" onclick="fpPlatShow('+i+')">'+
-        (p.icon?'<img src="'+esc(p.icon)+'" alt="" style="height:22px;width:auto;margin-right:10px">':'')+esc(p.name)+'</button>';
+      return '<button type="button" role="tab" class="fp-plat-tab" data-i="'+i+'" style="--pc:'+esc(p.bg)+';--pt:'+esc(p.tc)+'" onclick="fpPlatShow('+i+')">'+
+        '<span class="pt-name">'+esc(p.name)+'</span>'+(p.img?'<span class="pt-img"><img alt=""></span>':'')+'</button>';
     }).join('')+'</div>'+
-    '<div class="fp-plat-head"><span class="fp-plat-label"></span>'+
-      '<button class="fp-section-btn" onclick="fpToggleSection(\''+PLAT_GID+'\',this)">VIEW ALL</button></div>'+
+    '<div class="pt-vab"><button class="fp-section-btn" onclick="fpToggleSection(\''+PLAT_GID+'\',this)">VIEW ALL</button></div>'+
     '<div class="fp-rich-grid" id="'+PLAT_GID+'" data-lead="0"><span class="fp-brow-sentinel" data-gid="'+PLAT_GID+'"></span></div>';
+  var bar=host.querySelector('.fp-plat-tabs');
+  PLAT_ROWS.forEach(function(p,i){
+    if(!p.img)return;
+    fpCutout(p.img).then(function(u){var im=bar.querySelector('.fp-plat-tab[data-i="'+i+'"] img');if(im&&u)im.src=u;});
+  });
   show('fp-sec-trades');
   await fpPlatShow(0);
+  fpPlatGlide(bar);
 }
-window.fpTradeFilter=function(i){
-  var rows=SECTION_DATA.shopByTrade||[];
-  var r=rows[i];if(!r)return;
-  var ids=parseIds(r['Product IDs']||'');
-  if(!ids.length){toast('No products listed for this trade yet');return;}
-  // Open a quick modal listing matching products
-  fpMultiQuickView(ids,r['Trade Name']+' \u2014 Recommended');
-};
+
+// ---- SHOP BY TRADE
+function fpEnsureTradeSection(){
+  if($('fp-sec-tradeDeals'))return;
+  var page=document.querySelector('.flyers-page');if(!page)return;
+  var d=document.createElement('div');d.className='fp-section fp-hidden';d.id='fp-sec-tradeDeals';
+  d.innerHTML='<div class="fp-section-head"><span class="fp-section-title">SHOP BY TRADE</span></div><div id="fp-tradeDeals"></div>';
+  page.appendChild(d);
+}
+async function fpTradeShow(i){
+  var t=TRADE_ROWS[i];if(!t)return;
+  var host=$('fp-tradeDeals');if(!host)return;
+  fpTabsOn(host.querySelector('.fp-plat-tabs'),i);
+  await fpStripShow(TRADE_GID,t.ids);
+}
+window.fpTradeShow=fpTradeShow;
+async function renderTradeDeals(){
+  if(!getSetting('show_trade_deals',true)){hide('fp-sec-tradeDeals');return;}
+  var rows=SECTION_DATA.tradeDeals||[];
+  var host=$('fp-tradeDeals');
+  if(!rows.length||!host){hide('fp-sec-tradeDeals');return;}
+  rows=fpFreshRows('tradeDeals',rows);
+  var seqOff=SECTION_SEQUENCING['tradeDeals']===false;
+  var seed=seqOff?fpFreshSeed('tradeDeals'):0;
+  TRADE_ROWS=rows.map(function(r,i){
+    var name=(r['Trade Name']||'').trim();
+    var ids=parseIds(r['Product IDs']||'');
+    if(!name||!ids.length)return null;
+    if(seqOff)ids=fpSeededShuffle(ids,seed+fpStrHash(name)+i);
+    var hero=parseIds(r['Hero Product IDs']||'');
+    return {name:name,ids:ids,hero:hero.length?hero.slice(0,3):ids.slice(0,3)};
+  }).filter(Boolean);
+  if(!TRADE_ROWS.length){hide('fp-sec-tradeDeals');return;}
+  var need=[];
+  TRADE_ROWS.forEach(function(t){need=need.concat(t.ids.slice(0,BRAND_FIRST_PAINT),t.hero);});
+  await fetchProducts(need);
+  TRADE_ROWS=TRADE_ROWS.filter(function(t){return t.ids.slice(0,BRAND_FIRST_PAINT).some(function(id){return isShowable(PRODUCT_CACHE[id]);});});
+  if(!TRADE_ROWS.length){hide('fp-sec-tradeDeals');return;}
+  host.className='fp-plat';
+  host.innerHTML=
+    '<div class="fp-plat-tabs pt-trade" role="tablist">'+TRADE_ROWS.map(function(t,i){
+      return '<button type="button" role="tab" class="fp-plat-tab pt-tr" data-i="'+i+'" onclick="fpTradeShow('+i+')">'+
+        '<span class="pt-name"><small>Top tools for</small>'+esc(t.name)+'</span><span class="pt-fan"></span></button>';
+    }).join('')+'</div>'+
+    '<div class="pt-vab"><button class="fp-section-btn" onclick="fpToggleSection(\''+TRADE_GID+'\',this)">VIEW ALL</button></div>'+
+    '<div class="fp-rich-grid" id="'+TRADE_GID+'" data-lead="0"><span class="fp-brow-sentinel" data-gid="'+TRADE_GID+'"></span></div>';
+  var bar=host.querySelector('.fp-plat-tabs');
+  TRADE_ROWS.forEach(function(t,i){
+    var fan=bar.querySelector('.fp-plat-tab[data-i="'+i+'"] .pt-fan');
+    t.hero.forEach(function(id,k){
+      var p=PRODUCT_CACHE[id];var u=p&&p.defaultImage&&p.defaultImage.url;if(!u)return;
+      var im=document.createElement('img');im.alt='';im.className='f'+k;fan.appendChild(im);
+      fpCutout(u).then(function(c){if(c)im.src=c;});
+    });
+  });
+  show('fp-sec-tradeDeals');
+  await fpTradeShow(0);
+}
+
+// ---- page look (v113): white section cards on light grey, red heading tag on
+// the card's top edge, battery / trade tiles, full-width layout on phones.
+// !important because the theme's widget reset flattens buttons and spacing.
+function fpPageCss(){
+  if($('fp-page-css'))return;
+  var F='.flyers-page', T=F+' .fp-plat-tab', I='!important';
+  var css=[
+    F+'{background:#f2f2f0'+I+';padding-top:6px'+I+'}',
+    F+'>.fp-section{background:#fff;border-radius:16px;margin:0 10px 18px'+I+';padding:0 0 14px'+I+';box-shadow:0 2px 10px rgba(0,0,0,.06);overflow:hidden}',
+    F+' .fp-section-head{border-top:0'+I+';padding:0 var(--p,16px) 6px'+I+';margin:0 0 4px'+I+';display:flex;align-items:flex-start;justify-content:space-between}',
+    F+' .fp-section-title{display:inline-block'+I+';background:#e31b23'+I+';color:#fff'+I+';padding:6px 16px'+I+';border-radius:0 0 6px 6px;box-shadow:3px 3px 0 #111;font-family:Roboto,sans-serif'+I+';font-size:20px'+I+';font-weight:700'+I+';letter-spacing:1.2px'+I+'}',
+    F+' .fp-section-head .fp-section-btn{margin-top:10px'+I+'}',
+    // tile rows
+    F+' .fp-plat-tabs{display:flex'+I+';flex-wrap:nowrap'+I+';gap:14px'+I+';overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:10px var(--p,16px) 14px'+I+';margin:0'+I+'}',
+    F+' .fp-plat-tabs::-webkit-scrollbar{display:none}',
+    T+'{all:unset;box-sizing:border-box;position:relative;flex:0 0 auto;cursor:pointer;display:flex'+I+';align-items:center;justify-content:space-between;gap:10px;font-family:Roboto,sans-serif;transition:transform .2s,opacity .2s,box-shadow .2s}',
+    F+' .pt-name{display:flex;flex-direction:column;line-height:1.15;font-weight:700'+I+';font-size:14px;letter-spacing:.3px;text-transform:uppercase}',
+    F+' .pt-vab{display:flex;justify-content:flex-end;margin:0 var(--p,16px) 10px}',
+    F+' .pt-vab .fp-section-btn{background:#fff'+I+';color:#111'+I+';border:1.5px solid #111'+I+'}',
+    // battery tiles
+    T+':not(.pt-tr){width:230px;height:74px;padding:6px 14px 6px 30px;margin-right:12px;border-radius:14px'+I+';border:1.5px solid color-mix(in srgb,var(--pc) 65%,#000);background:linear-gradient(150deg,color-mix(in srgb,var(--pc) 80%,#fff) 0%,var(--pc) 40%,color-mix(in srgb,var(--pc) 75%,#000) 100%);color:var(--pt,#fff);opacity:.9}',
+    T+':not(.pt-tr):hover{opacity:1;transform:translateY(-2px)}',
+    T+':not(.pt-tr):before{content:"";position:absolute;left:11px;top:12px;bottom:12px;width:8px;border-radius:3px;background:repeating-linear-gradient(to top,var(--pt,#fff) 0 12%,transparent 12% 20%);opacity:.35}',
+    T+':not(.pt-tr):after{content:"";position:absolute;right:-11px;top:50%;width:9px;height:30px;margin-top:-15px;background:color-mix(in srgb,var(--pc) 75%,#000);border:1.5px solid color-mix(in srgb,var(--pc) 65%,#000);border-left:0;border-radius:0 6px 6px 0}',
+    T+':not(.pt-tr).fp-plat-on{opacity:1;border-color:#fff;box-shadow:0 0 0 2px var(--pc),0 0 8px color-mix(in srgb,var(--pc) 45%,transparent)}',
+    T+':not(.pt-tr).fp-plat-on:before{opacity:1;animation:fpCharge 1.4s steps(5) infinite}',
+    T+':not(.pt-tr).fp-plat-on:after{background:#fff;border-color:#fff}',
+    '@keyframes fpCharge{0%{clip-path:inset(100% 0 0 0)}100%{clip-path:inset(0 0 0 0)}}',
+    F+' .pt-img{flex:0 0 80px;width:80px;height:54px;display:flex;align-items:center;justify-content:center}',
+    F+' .pt-img img{width:100%'+I+';height:100%'+I+';object-fit:contain;filter:drop-shadow(0 6px 8px rgba(0,0,0,.4));transition:transform .3s}',
+    T+':hover .pt-img img{transform:scale(1.06)}',
+    // trade tiles
+    T+'.pt-tr{width:230px;height:74px;padding:0 8px 0 14px;gap:4px;border-radius:14px'+I+';border:1px solid #e4e2dd;background:#f4f3f0;color:#111;overflow:hidden}',
+    T+'.pt-tr:hover{transform:translateY(-2px)}',
+    T+'.pt-tr.fp-plat-on{background:#1c1c1c;border-color:#1c1c1c;box-shadow:0 8px 20px rgba(0,0,0,.18)}',
+    F+' .pt-tr .pt-name{font-size:15px;font-weight:900'+I+';color:#111;letter-spacing:.2px;line-height:1.05}',
+    F+' .pt-tr .pt-name small{display:block;font-size:8.5px;letter-spacing:1.4px;font-weight:800;color:#e31b23;margin-bottom:3px}',
+    F+' .pt-tr.fp-plat-on .pt-name{color:#fff}',
+    F+' .pt-tr.fp-plat-on .pt-name small{color:#ff6b70}',
+    F+' .pt-fan{flex:0 0 104px;display:flex;align-items:center;justify-content:flex-end;gap:1px}',
+    F+' .pt-fan img{width:34px'+I+';height:48px'+I+';object-fit:contain;filter:drop-shadow(0 5px 6px rgba(0,0,0,.28));transition:transform .35s}',
+    T+'.pt-tr:hover .pt-fan img{transform:translateY(-3px)}',
+    // phones: use the full width (the theme pads the page) and smaller tiles so the next one peeks in
+    '@media(max-width:600px){'+
+      F+'{width:100vw'+I+';max-width:100vw'+I+';margin-left:calc(50% - 50vw)'+I+';margin-right:0'+I+'}'+
+      F+'>.fp-section{margin:0 8px 14px'+I+'}'+
+      F+' .fp-section-title{font-size:15px'+I+';padding:5px 12px'+I+';letter-spacing:.6px'+I+'}'+
+      F+' .fp-plat-tabs{gap:10px'+I+';padding-left:14px'+I+';padding-right:14px'+I+'}'+
+      T+':not(.pt-tr){width:190px;height:62px;padding-left:26px}'+
+      F+' .pt-img{flex-basis:62px;width:62px;height:44px}'+
+      T+':not(.pt-tr) .pt-name{font-size:12.5px}'+
+      T+'.pt-tr{width:190px;height:62px;padding:0 6px 0 12px}'+
+      F+' .pt-tr .pt-name{font-size:13.5px}'+
+      F+' .pt-fan{flex-basis:84px}'+
+      F+' .pt-fan img{width:27px'+I+';height:40px'+I+'}'+
+    '}'
+  ].join('\n');
+  var st=document.createElement('style');st.id='fp-page-css';st.textContent=css;
+  document.head.appendChild(st);
+}
 
 // ==================== PROMO BANNERS ====================
 // ==================== SECTION ORDER ====================
@@ -1578,12 +1805,10 @@ var SECTION_ID_TO_DOM = {
   bogo:'fp-sec-bogo',
   hotDeals:'fp-sec-hotDeals',
   under99:'fp-sec-under99',
-  clearance:'fp-sec-clearance',
   freeKit:'fp-sec-freeKit',
   freeBattery:'fp-sec-freeBattery',
   atlasExclusive:'fp-sec-atlasExclusive',
   lastChance:'fp-sec-lastChance',
-  newArrivals:'fp-sec-newArrivals',
   shopByBrand:'fp-sec-shopByBrand-wrap',
   trendingProducts:'fp-sec-trendingProducts',
   trendingDeals:'fp-sec-trendingDeals',
@@ -1595,8 +1820,25 @@ var SECTION_ID_TO_DOM = {
   videoSection:'fp-sec-videos',
   coupons:'fp-sec-coupons',
   monthlyFlyer:'fp-sec-monthlyFlyer',
-  endingSoon:'fp-sec-ending'
+  endingSoon:'fp-sec-ending',
+  toolStorage:'fp-sec-toolStorage',
+  tradeDeals:'fp-sec-tradeDeals'
 };
+// v113: clean Section IDs for the sheet. The Section Order tab may use either
+// the new name (left) or the old one (right); internally the old key is used,
+// so section data, freshness and visitor-count settings all keep working.
+var SECTION_ID_ALIAS = {
+  bareToolDeals:'priceDrop',
+  seasonalDeals:'bogo',
+  over20Off:'dealOfDay',
+  outdoorPower:'trendingProducts',
+  framingTools:'topSearched',
+  tapeMeasures:'newFeatured',
+  top100Sellers:'atlasExclusive',
+  batteryPlatforms:'shopByTrade'
+};
+for(var _al in SECTION_ID_ALIAS){SECTION_ID_TO_DOM[_al]=SECTION_ID_TO_DOM[SECTION_ID_ALIAS[_al]];}
+function fpSectionKey(id){return SECTION_ID_ALIAS[id]||id;}
 // Display Name (lowercased) -> DOM id, populated as sections are placed. Lets
 // flyer-tab banners scroll to a section by its Display Name (column E).
 var SECTION_NAME_TO_DOM = {};
@@ -1607,7 +1849,7 @@ function applySectionOrder(){
 
   // Parse rows into entries with order
   var entries=rows.map(function(r){
-    var id=(r['Section ID']||r['sectionId']||r['section_id']||'').trim();
+    var id=fpSectionKey((r['Section ID']||r['sectionId']||r['section_id']||'').trim());
     var name=(r['Display Name']||r['displayName']||r['name']||'').trim();
     var order=parseFloat(r['Order']||r['order']||0);
     var active=(r['Active']||r['active']||'yes').toString().toLowerCase();
@@ -1702,7 +1944,7 @@ function applySectionOrder(){
     // Same emptiness guard for custom (non-grid) sections that are driven by their
     // own sheet tab \u2014 trades, coupons, videos. If the tab has no rows, keep the
     // section hidden so we don't show a lonely header with no content.
-    var customDataKey={ 'fp-sec-trades':'shopByTrade', 'fp-sec-coupons':'coupons', 'fp-sec-videos':'videoSection' }[domId];
+    var customDataKey={ 'fp-sec-trades':'shopByTrade', 'fp-sec-tradeDeals':'tradeDeals', 'fp-sec-coupons':'coupons', 'fp-sec-videos':'videoSection' }[domId];
     if(customDataKey){
       if(!(SECTION_DATA[customDataKey]&&SECTION_DATA[customDataKey].length)){
         fragment.appendChild(el); // keep position, leave hidden
@@ -2295,7 +2537,7 @@ async function init(){
   setupScrollSave();
 
   // 2) Fetch all other CSVs in parallel (plus the live cart, so tiles can show "in cart")
-  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','clearance','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','newArrivals','lastChance','videoSection','shopByTrade','promoBanners','faqs','sectionOrder','allCoupons'];
+  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','lastChance','videoSection','shopByTrade','tradeDeals','toolStorage','promoBanners','faqs','sectionOrder','allCoupons'];
   var promises=keys.map(function(k){return fetchCSV(k,GIDS[k]);});
   var results=await Promise.all(promises.concat([loadServerCart()]));
   keys.forEach(function(k,i){SECTION_DATA[k]=results[i]||[];});
@@ -2351,6 +2593,9 @@ async function init(){
   renderCoupons();
   renderVideos();
   // renderTrades() moved: v102 renders it after renderBrandRows (shared strip engine)
+  fpPageCss();
+  fpEnsureSection('toolStorage','TOOL STORAGE'); // v113: sections with no container in the page HTML
+  fpEnsureTradeSection();
   applySectionOrder();
 
   // Sections are now ordered and the empty ones hidden \u2014 reveal the page (it was
@@ -2374,7 +2619,7 @@ async function init(){
   // 7) Async: bundles, staff picks, shop-by-brand rows (don't block)
   renderBundles();
   renderStaff();
-  renderBrandRows().then(function(){return renderTrades();}).catch(function(e){console.warn("[Atlas Flyers] trades/platform rows:",e&&e.message);});
+  renderBrandRows().then(function(){return renderTrades();}).then(function(){return renderTradeDeals();}).catch(function(e){console.warn("[Atlas Flyers] trades/platform rows:",e&&e.message);});
 
   // Wrap any horizontal product strips with scroll arrows (idempotent; also
   // called by the section/brand renderers as they populate on scroll).
