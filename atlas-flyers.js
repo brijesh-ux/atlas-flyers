@@ -1,3 +1,4 @@
+/* v124 (16OCT2026): ?section= deep link no longer locks the page - any scroll (wheel, trackpad, keys, finger, scrollbar) releases it at once, and the aligner retires 2.5s after the page settles instead of holding for 45s. */
 /* v123 (16OCT2026): HURRY UP (countdown) tiles now use the standard product tile (brand tag, SKU, stock, viewers, savings ribbon, linked name, same fonts) with the countdown bar on top. */
 /* v122 (16OCT2026): HURRY UP (countdown) tiles - product name now links to the product page like every other tile. */
 /* v121 (16OCT2026): gap under the flyer tiles = the gap between sections (18px desktop / 14px phones). */
@@ -2830,23 +2831,39 @@ window.fpScrollToSectionKey=fpScrollToSectionKey;
   var m=/[?&]section=([^&#]+)/.exec(location.search); if(!m) return;
   var bk=decodeURIComponent(m[1].replace(/\+/g,' '));
   try{ sessionStorage.removeItem('fp_scroll'); }catch(e){}
-  var done=false,t0=Date.now(),lastRun=0,lastInputAt=0,ourWriteAt=0,userScrolled=false,mo=null,ro=null;
-  ['wheel','touchstart','keydown'].forEach(function(ev){window.addEventListener(ev,function(){lastInputAt=Date.now();},{passive:true});});
-  window.addEventListener('scroll',function(){var now=Date.now();if(now-ourWriteAt<120)return;if(now-lastInputAt<800)userScrolled=true;},{passive:true});
+  var done=false,t0=Date.now(),lastRun=0,lastWrite=0,alignedSince=0,mo=null,ro=null;
+  function stop(){done=true;if(mo)mo.disconnect();if(ro)ro.disconnect();mo=ro=null;}
+  // v124: ANY real scroll input releases the page at once (wheel, trackpad, arrow/page/space keys,
+  // a finger that actually moves, a scrollbar drag). The old release needed a scroll event to land
+  // inside an 800ms input window but outside a 120ms blackout after our own writes - with tiles
+  // lazy-loading the DOM mutates constantly, so we re-wrote every few ms and the page stayed pinned
+  // to the section for the full 45s.
+  window.addEventListener('wheel',stop,{passive:true});
+  window.addEventListener('touchmove',stop,{passive:true});
+  window.addEventListener('keydown',function(e){if(/^(Arrow(Up|Down)|Page(Up|Down)|Home|End| |Spacebar)$/.test(e.key))stop();},{passive:true});
+  window.addEventListener('mousedown',function(e){if(e.clientX>=document.documentElement.clientWidth-20)stop();},{passive:true});
+  var lastInputAt=0; window.addEventListener('mousedown',function(){lastInputAt=Date.now();},{passive:true});
+  window.addEventListener('scroll',function(){if(Date.now()-lastWrite>250&&Date.now()-lastInputAt<1000)stop();},{passive:true});
   function align(force){
-    if(userScrolled||(!force&&(done||Date.now()-t0>45000))){done=true;if(mo)mo.disconnect();if(ro)ro.disconnect();return;}
+    if(done)return;
+    if(!force&&Date.now()-t0>45000){stop();return;}
     if(!force){var n=performance.now();if(n-lastRun<50)return;lastRun=n;}
     var el=fpResolveSection(bk); if(!el)return;
     var r=el.getBoundingClientRect(); if(r.height<40)return;
     var maxY=Math.max(0,(document.documentElement.scrollHeight||0)-window.innerHeight);
     var want=Math.min(maxY,Math.max(0,r.top+window.pageYOffset-fpSectionOffset()-8));
-    if(Math.abs(window.pageYOffset-want)>4){ourWriteAt=Date.now();window.scrollTo({top:want,behavior:'auto'});}
+    var fp=document.querySelector('.flyers-page'), ready=!fp||fp.classList.contains('fp-ready');
+    if(Math.abs(window.pageYOffset-want)>4){alignedSince=0;lastWrite=Date.now();window.scrollTo({top:want,behavior:'auto'});}
+    else if(ready){ // v124: retire 2.5s after the page is revealed and the section has stopped moving
+      if(!alignedSince)alignedSince=Date.now(); else if(Date.now()-alignedSince>2500)stop();
+    }
   }
   window.__fpDeepAlign=align;
   mo=new MutationObserver(function(){align(false);});
   mo.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class','hidden']});
   if('ResizeObserver' in window){ro=new ResizeObserver(function(){align(false);});ro.observe(document.body||document.documentElement);}
   document.addEventListener('load',function(){align(false);},true);
+  var tick=setInterval(function(){if(done)clearInterval(tick);else align(false);},400);
   align(false);
 })();
 
