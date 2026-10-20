@@ -1,6 +1,4 @@
-/* v126 (16OCT2026): section clean-up - outdoorPower, framingTools, tapeMeasures, top100Sellers, bareToolDeals, seasonalDeals, over20Off are now the REAL keys and DOM ids (fp-sec-outdoorPower ...), containers built by fpEnsureSection; the old trendingProducts/topSearched/newFeatured/atlasExclusive/priceDrop/bogo/dod blocks in the page HTML are hidden. Alias layer reduced to batteryPlatforms only. */
-/* v125 (16OCT2026): ?section= deep link - no more jitter on phones: re-anchoring now runs inside ResizeObserver callbacks (after layout, before paint) on every section, so growth above the target is compensated in the same frame; plus the page stays invisible until the position is stable for 500ms after reveal (cap 3s). */
-/* v124 (16OCT2026): ?section= deep link no longer locks the page - any scroll (wheel, trackpad, keys, finger, scrollbar) releases it at once, and the aligner retires 2.5s after the page settles instead of holding for 45s. */
+/* v124 (20OCT2026): new STIHL CHAINSAW DEALS section (Section ID stihlSaws, tab gid 557208454; container built by fpEnsureSection). */
 /* v123 (16OCT2026): HURRY UP (countdown) tiles now use the standard product tile (brand tag, SKU, stock, viewers, savings ribbon, linked name, same fonts) with the countdown bar on top. */
 /* v122 (16OCT2026): HURRY UP (countdown) tiles - product name now links to the product page like every other tile. */
 /* v121 (16OCT2026): gap under the flyer tiles = the gap between sections (18px desktop / 14px phones). */
@@ -43,25 +41,26 @@ var GIDS = {
   shopByBrand: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1445162861',
   bundles: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=474417584',
   coupons: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1414086002',
-  outdoorPower: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1873477847',
+  trendingProducts: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1873477847',
   trendingDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=944897374',
-  tapeMeasures: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=277942993',
-  framingTools: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1645931725',
+  newFeatured: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=277942993',
+  topSearched: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1645931725',
   flashSales: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=837564454',
-  bareToolDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=262903610',
-  seasonalDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1459478364',
+  priceDrop: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=262903610',
+  bogo: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1459478364',
   hotDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1235088137',
   under99: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=233862134',
   freeKit: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=802382066',
   freeBattery: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=508008394',
-  top100Sellers: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=98700911',
+  atlasExclusive: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=98700911',
   countdown: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=43270678',
-  over20Off: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=836075056',
+  dealOfDay: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=836075056',
   staffPicks: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=764019041',
   lastChance: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1769613080',
   videoSection: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1630459149',
   shopByTrade: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1407344995',
   makitaKits: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1971726171',
+  stihlSaws: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=557208454',
   toolStorage: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1902185686',
   tradeDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2129344817',
   promoBanners: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2007099777',
@@ -102,22 +101,22 @@ var TAG_CLS = {sale:'fp-t-drop',hot:'fp-t-hot',free:'fp-t-free',new:'fp-t-new',b
 // Section -> default deal tag
 var SECTION_DEFAULTS = {
   flashSales: {tag:'FLASH SALE', cls:'fp-t-flash'},
-  bareToolDeals: {tag:'PRICE DROP', cls:'fp-t-drop'},
-  seasonalDeals: {tag:'BUY 1 GET 1', cls:'fp-t-best'},
+  priceDrop: {tag:'PRICE DROP', cls:'fp-t-drop'},
+  bogo: {tag:'BUY 1 GET 1', cls:'fp-t-best'},
   hotDeals: {tag:'HOT DEAL', cls:'fp-t-hot'},
   under99: {tag:'UNDER $99', cls:'fp-t-99'},
   clearance: {tag:'CLEARANCE', cls:'fp-t-clr'},
   freeKit: {tag:'\ud83c\udf81 FREE KIT', cls:'fp-t-free'},
   freeBattery: {tag:'\ud83d\udd0b FREE BATTERY', cls:'fp-t-free'},
-  top100Sellers: {tag:'ATLAS EXCLUSIVE', cls:'fp-t-excl'},
-  outdoorPower: {tag:'TRENDING', cls:'fp-t-hot'},
+  atlasExclusive: {tag:'ATLAS EXCLUSIVE', cls:'fp-t-excl'},
+  trendingProducts: {tag:'TRENDING', cls:'fp-t-hot'},
   trendingDeals: {tag:'TRENDING', cls:'fp-t-hot'},
-  tapeMeasures: {tag:'FEATURED', cls:'fp-t-new'},
-  framingTools: {tag:'TOP PICK', cls:'fp-t-best'},
+  newFeatured: {tag:'FEATURED', cls:'fp-t-new'},
+  topSearched: {tag:'TOP PICK', cls:'fp-t-best'},
   newArrivals: {tag:'NEW', cls:'fp-t-new'},
   lastChance: {tag:'LOW STOCK', cls:'fp-t-clr'},
   monthlyFlyer: {tag:'COUPON DEAL', cls:'fp-t-hot'},
-  over20Off: {tag:"TODAY'S STEAL", cls:'fp-t-hot'}
+  dealOfDay: {tag:"TODAY'S STEAL", cls:'fp-t-hot'}
 };
 
 // ==================== UTILS ====================
@@ -558,7 +557,7 @@ function richCard(p,m){
 async function renderProductSection(sectionKey,gridId){
   var grid=$(gridId);if(!grid)return;
   // Legacy global toggle for Deal of the Day still works.
-  if(sectionKey==='over20Off'&&!getSetting('show_deal_of_the_day',true)){hide('fp-sec-over20Off');return;}
+  if(sectionKey==='dealOfDay'&&!getSetting('show_deal_of_the_day',true)){hide('fp-sec-dod');return;}
   var rows=(SECTION_DATA[sectionKey]||[]).filter(fpRowLive); // v106: drop rows outside their Online Start/End
   if(!rows.length){hide('fp-sec-'+sectionKey);return;}
   rows=fpFreshRows(sectionKey,rows); // per-section daily freshness (Sequencing=Off)
@@ -760,7 +759,7 @@ function setupFlyerArrows(){
 
 // ==================== DEAL OF THE DAY ====================
 // Deal of the Day is now a standard product section: it renders through
-// renderProductSection (via data-section="over20Off") showing ALL products from
+// renderProductSection (via data-section="dealOfDay") showing ALL products from
 // the Deal of the Day tab as tiles, and is positioned via the Section Order tab.
 // The old single-product daily-rotation banner has been retired. The legacy
 // show_deal_of_the_day setting is still honoured (see renderProductSection).
@@ -1895,23 +1894,23 @@ var SECTION_SEQUENCING = {};
 var SECTION_ROTATE_DAYS = {};
 var SECTION_ID_TO_DOM = {
   flyerTabs:'fp-flyer-tabs-wrap',
-  over20Off:'fp-sec-over20Off',
+  dealOfDay:'fp-sec-dod',
   recentlyViewed:'fp-sec-recent',
   countdown:'fp-sec-countdown',
   flashSales:'fp-sec-flashSales',
-  bareToolDeals:'fp-sec-bareToolDeals',
-  seasonalDeals:'fp-sec-seasonalDeals',
+  priceDrop:'fp-sec-priceDrop',
+  bogo:'fp-sec-bogo',
   hotDeals:'fp-sec-hotDeals',
   under99:'fp-sec-under99',
   freeKit:'fp-sec-freeKit',
   freeBattery:'fp-sec-freeBattery',
-  top100Sellers:'fp-sec-top100Sellers',
+  atlasExclusive:'fp-sec-atlasExclusive',
   lastChance:'fp-sec-lastChance',
   shopByBrand:'fp-sec-shopByBrand-wrap',
-  outdoorPower:'fp-sec-outdoorPower',
+  trendingProducts:'fp-sec-trendingProducts',
   trendingDeals:'fp-sec-trendingDeals',
-  tapeMeasures:'fp-sec-tapeMeasures',
-  framingTools:'fp-sec-framingTools',
+  newFeatured:'fp-sec-newFeatured',
+  topSearched:'fp-sec-topSearched',
   bundles:'fp-sec-bundles',
   shopByTrade:'fp-sec-trades',
   staffPicks:'fp-sec-staff',
@@ -1921,13 +1920,21 @@ var SECTION_ID_TO_DOM = {
   endingSoon:'fp-sec-ending',
   toolStorage:'fp-sec-toolStorage',
   makitaKits:'fp-sec-makitaKits',
+  stihlSaws:'fp-sec-stihlSaws',
   tradeDeals:'fp-sec-tradeDeals'
 };
-// v126: the seven product sections now use the sheet's Section IDs as their real keys and DOM
-// ids (fp-sec-outdoorPower etc.); their old hard-coded blocks in the BC page HTML are hidden and
-// the containers are built by fpEnsureSection. Only Battery Platforms still needs an alias.
+// v113: clean Section IDs for the sheet. The Section Order tab may use either
+// the new name (left) or the old one (right); internally the old key is used,
+// so section data, freshness and visitor-count settings all keep working.
 var SECTION_ID_ALIAS = {
-  batteryPlatforms:'shopByTrade' // custom renderer (fpEnsureTradeSection / fp-sec-trades) keeps its internal key
+  bareToolDeals:'priceDrop',
+  seasonalDeals:'bogo',
+  over20Off:'dealOfDay',
+  outdoorPower:'trendingProducts',
+  framingTools:'topSearched',
+  tapeMeasures:'newFeatured',
+  top100Sellers:'atlasExclusive',
+  batteryPlatforms:'shopByTrade'
 };
 for(var _al in SECTION_ID_ALIAS){SECTION_ID_TO_DOM[_al]=SECTION_ID_TO_DOM[SECTION_ID_ALIAS[_al]];}
 function fpSectionKey(id){return SECTION_ID_ALIAS[id]||id;}
@@ -1980,8 +1987,7 @@ function applySectionOrder(){
 
   // First, hide ALL sections (we'll show only those listed in Section Order)
   // v114: plus the retired Carpenters / Electricians blocks still in the BC page HTML
-  Object.values(SECTION_ID_TO_DOM).concat(['fp-sec-clearance','fp-sec-newArrivals',
-    'fp-sec-trendingProducts','fp-sec-topSearched','fp-sec-newFeatured','fp-sec-atlasExclusive','fp-sec-priceDrop','fp-sec-bogo','fp-sec-dod' /* v126: retired blocks */]).forEach(function(domId){
+  Object.values(SECTION_ID_TO_DOM).concat(['fp-sec-clearance','fp-sec-newArrivals']).forEach(function(domId){
     var el=document.getElementById(domId);
     if(el)el.classList.add('fp-hidden');
   });
@@ -2631,7 +2637,7 @@ async function init(){
   setupScrollSave();
 
   // 2) Fetch all other CSVs in parallel (plus the live cart, so tiles can show "in cart")
-  var keys=['flyerTabs','shopByBrand','bundles','coupons','outdoorPower','trendingDeals','tapeMeasures','framingTools','flashSales','bareToolDeals','seasonalDeals','hotDeals','under99','freeKit','freeBattery','top100Sellers','countdown','over20Off','staffPicks','lastChance','videoSection','shopByTrade','tradeDeals','toolStorage','makitaKits','promoBanners','faqs','sectionOrder','allCoupons'];
+  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','lastChance','videoSection','shopByTrade','tradeDeals','toolStorage','makitaKits','stihlSaws','promoBanners','faqs','sectionOrder','allCoupons'];
   var promises=keys.map(function(k){return fetchCSV(k,GIDS[k]);});
   var results=await Promise.all(promises.concat([loadServerCart()]));
   keys.forEach(function(k,i){SECTION_DATA[k]=results[i]||[];});
@@ -2690,14 +2696,7 @@ async function init(){
   fpPageCss();
   fpEnsureSection('toolStorage','TOOL STORAGE'); // v113: sections with no container in the page HTML
   fpEnsureSection('makitaKits','MAKITA STARTER KIT DEALS'); // v116
-  // v126: the seven renamed product sections (old page-HTML blocks are hidden in applySectionOrder)
-  fpEnsureSection('outdoorPower','OUTDOOR POWER EQUIPMENT');
-  fpEnsureSection('framingTools','FRAMING TOOLS');
-  fpEnsureSection('tapeMeasures','TAPE MEASURE PRODUCTS');
-  fpEnsureSection('top100Sellers','TOP 100 SELLERS');
-  fpEnsureSection('bareToolDeals','BARE TOOL DEALS');
-  fpEnsureSection('seasonalDeals','SEASONAL DEALS');
-  fpEnsureSection('over20Off','MORE THAN 20% OFF');
+  fpEnsureSection('stihlSaws','STIHL CHAINSAW DEALS'); // v124
   fpEnsureTradeSection();
   applySectionOrder();
 
@@ -2835,56 +2834,23 @@ window.fpScrollToSectionKey=fpScrollToSectionKey;
   var m=/[?&]section=([^&#]+)/.exec(location.search); if(!m) return;
   var bk=decodeURIComponent(m[1].replace(/\+/g,' '));
   try{ sessionStorage.removeItem('fp_scroll'); }catch(e){}
-  var done=false,t0=Date.now(),lastRun=0,lastWrite=0,alignedSince=0,mo=null,ro=null,readyAt=0,observed=[];
-  // v125: (1) corrections now run inside ResizeObserver callbacks on every section - those fire
-  // after layout but BEFORE paint, so when a section above the target grows the page is already
-  // re-anchored in the same frame (no visible jump). The old path corrected on a throttled mutation
-  // callback / timer tick, so the browser painted the wrong position first - the "jitter".
-  // (2) the page stays invisible until the position has been stable for 500ms after the reveal
-  // (cap 3s after reveal, 8s absolute), covering the big re-order shuffle right at reveal.
-  var HOLD='fp-dl-hold', de=document.documentElement;
-  try{var st=document.createElement('style');st.textContent='html.'+HOLD+' .flyers-page.fp-ready{opacity:0!important}';document.head.appendChild(st);de.classList.add(HOLD);}catch(e){}
-  function release(){de.classList.remove(HOLD);}
-  function stop(){done=true;release();if(mo)mo.disconnect();if(ro)ro.disconnect();mo=ro=null;}
-  setTimeout(release,8000);
-  // v124: ANY real scroll input releases the page at once (wheel, trackpad, arrow/page/space keys,
-  // a finger that actually moves, a scrollbar drag).
-  window.addEventListener('wheel',stop,{passive:true});
-  window.addEventListener('touchmove',stop,{passive:true});
-  window.addEventListener('keydown',function(e){if(/^(Arrow(Up|Down)|Page(Up|Down)|Home|End| |Spacebar)$/.test(e.key))stop();},{passive:true});
-  window.addEventListener('mousedown',function(e){if(e.clientX>=document.documentElement.clientWidth-20)stop();},{passive:true});
-  var lastInputAt=0; window.addEventListener('mousedown',function(){lastInputAt=Date.now();},{passive:true});
-  window.addEventListener('scroll',function(){if(Date.now()-lastWrite>250&&Date.now()-lastInputAt<1000)stop();},{passive:true});
+  var done=false,t0=Date.now(),lastRun=0,lastInputAt=0,ourWriteAt=0,userScrolled=false,mo=null,ro=null;
+  ['wheel','touchstart','keydown'].forEach(function(ev){window.addEventListener(ev,function(){lastInputAt=Date.now();},{passive:true});});
+  window.addEventListener('scroll',function(){var now=Date.now();if(now-ourWriteAt<120)return;if(now-lastInputAt<800)userScrolled=true;},{passive:true});
   function align(force){
-    if(done)return;
-    if(!force&&Date.now()-t0>45000){stop();return;}
+    if(userScrolled||(!force&&(done||Date.now()-t0>45000))){done=true;if(mo)mo.disconnect();if(ro)ro.disconnect();return;}
     if(!force){var n=performance.now();if(n-lastRun<50)return;lastRun=n;}
-    var fp=document.querySelector('.flyers-page'), ready=!fp||fp.classList.contains('fp-ready');
-    if(ready&&!readyAt)readyAt=Date.now();
-    if(readyAt&&Date.now()-readyAt>3000)release();
-    var el=fpResolveSection(bk); if(!el){if(ready)release();return;}
-    var r=el.getBoundingClientRect(); if(r.height<40){if(ready)release();return;}
+    var el=fpResolveSection(bk); if(!el)return;
+    var r=el.getBoundingClientRect(); if(r.height<40)return;
     var maxY=Math.max(0,(document.documentElement.scrollHeight||0)-window.innerHeight);
     var want=Math.min(maxY,Math.max(0,r.top+window.pageYOffset-fpSectionOffset()-8));
-    if(Math.abs(window.pageYOffset-want)>4){alignedSince=0;lastWrite=Date.now();window.scrollTo({top:want,behavior:'auto'});}
-    else if(ready){ // stable: reveal after 500ms, retire after 2.5s
-      if(!alignedSince)alignedSince=Date.now();
-      else if(Date.now()-alignedSince>500)release();
-      if(alignedSince&&Date.now()-alignedSince>2500)stop();
-    }
-  }
-  function watchSections(){ // observe every section + page so growth above the target is caught pre-paint
-    if(!ro)return;
-    document.querySelectorAll('.flyers-page,.fp-section,[id^=fp-sec-]').forEach(function(el){
-      if(observed.indexOf(el)<0){observed.push(el);ro.observe(el);}
-    });
+    if(Math.abs(window.pageYOffset-want)>4){ourWriteAt=Date.now();window.scrollTo({top:want,behavior:'auto'});}
   }
   window.__fpDeepAlign=align;
-  mo=new MutationObserver(function(){align(false);watchSections();});
+  mo=new MutationObserver(function(){align(false);});
   mo.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class','hidden']});
-  if('ResizeObserver' in window){ro=new ResizeObserver(function(){align(true);});ro.observe(document.body||document.documentElement);watchSections();}
-  document.addEventListener('load',function(){align(true);},true);
-  var tick=setInterval(function(){if(done)clearInterval(tick);else align(false);},200);
+  if('ResizeObserver' in window){ro=new ResizeObserver(function(){align(false);});ro.observe(document.body||document.documentElement);}
+  document.addEventListener('load',function(){align(false);},true);
   align(false);
 })();
 
