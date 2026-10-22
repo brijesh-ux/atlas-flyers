@@ -1,3 +1,5 @@
+/* v126 (22OCT2026): window.fpRichCard = the standard product tile builder (richCard) exposed for the brand pages (STIHL/Festool/ToughBuilt/Metabo HPT), so they render the site's own tiles instead of a copy. */
+/* v125 (22OCT2026): HOME PAGE "Continue where you left off" strip under Featured: products this browser last viewed / added to cart (localStorage fp_cw, 20 remembered), one badge per tile (Price dropped $/%, Back in stock, Only N left via SearchSpring inventory_level, Still in your cart -> green CHECKOUT NOW), bought/hidden/OOS/expired items drop off, Clear history link. OFF until Settings show_continue_strip=yes; preview with ?fpcw=1. */
 /* v124 (20OCT2026): new STIHL CHAINSAW DEALS section (Section ID stihlSaws, tab gid 557208454; container built by fpEnsureSection). */
 /* v123 (16OCT2026): HURRY UP (countdown) tiles now use the standard product tile (brand tag, SKU, stock, viewers, savings ribbon, linked name, same fonts) with the countdown bar on top. */
 /* v122 (16OCT2026): HURRY UP (countdown) tiles - product name now links to the product page like every other tile. */
@@ -425,6 +427,9 @@ function fpVisitorShow(p,savePct){
   var ratio=parseInt(getSetting('live_visitor_show_ratio',3),10)||3;
   return Math.floor(fpSeeded(id*31+fpBucket()+7)*ratio)===0;
 }
+// Brand pages (brand-page-engine) render tiles through this so they always match the site's tiles.
+window.fpRichCard=function(p,m){return richCard(p,m||{showTag:false,_sectionKey:"brandPage"})};
+window.fpTileDataReady=function(){return fpEnsureTileData()}; // brand pages wait for brand styles / coupons before their first render
 function richCard(p,m){
   if(!p)return'<div class="fp-rich"><div style="padding:30px 10px;text-align:center;color:#bbb;font-size:11px">Product unavailable</div></div>';
   var pr=p.prices&&p.prices.price?p.prices.price.value:null;
@@ -4741,6 +4746,234 @@ function fpRecsBoot(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',fpRecsBoot);else fpRecsBoot();
 
+
+// ==================== CONTINUE WHERE YOU LEFT OFF (v125) ====================
+// Home-page strip of the products this shopper last looked at / put in the cart,
+// remembered in THIS browser (localStorage 'fp_cw'). Inserted right under the
+// Featured strip. Per tile, at most ONE badge, in this priority:
+//   Price dropped  - current price lower than the price seen (>= $20, or >= 10%)
+//   Back in stock  - was out of stock when viewed, in stock now
+//   Only N left    - SearchSpring inventory_level <= continue_strip_low_stock_max
+//   Still in cart  - product is in the live BC cart (button becomes green CHECKOUT NOW)
+// What adds a product: viewing its product page (any source: email, SMS, search...),
+// any add-to-cart (the live cart is merged in on every home visit). What removes
+// one: bought (the cart it sat in is gone and a different cart exists, or the
+// order-confirmation page was seen), hidden/unavailable/out of stock now, older
+// than continue_strip_days, or the shopper's "Clear history" link.
+// Settings tab: show_continue_strip (yes/no, default no), continue_strip_title,
+// continue_strip_max (20), continue_strip_low_stock_max (3), continue_strip_days (30).
+// Preview while the setting is off: add ?fpcw=1 to the home URL.
+(function(){
+  var KEY='fp_cw';
+  function now(){return Date.now();}
+  function load(){try{var s=JSON.parse(localStorage.getItem(KEY)||'{}');if(!s.items)s.items=[];if(!s.cartIds)s.cartIds=[];return s;}catch(e){return {items:[],cartIds:[]};}}
+  function save(s){try{localStorage.setItem(KEY,JSON.stringify(s));}catch(e){}}
+  function maxItems(){return 20;}   // always remember 20; continue_strip_max caps what is SHOWN
+  // Add / refresh one product. info = {price, inStock, sku, via:'view'|'cart'}
+  function track(id,info){
+    id=parseInt(id,10);if(!(id>0))return;
+    info=info||{};
+    var s=load();
+    var old=null;
+    s.items=s.items.filter(function(x){if(x.id===id){old=x;return false;}return true;});
+    var it=old||{id:id};
+    it.t=now();
+    if(info.sku)it.sku=info.sku;
+    if(info.via==='cart'){it.c=now();}
+    else{
+      it.v=now();
+      if(typeof info.price==='number'&&info.price>0)it.p=info.price;   // price seen on the PDP
+      if(typeof info.inStock==='boolean')it.s=info.inStock?1:0;        // stock seen on the PDP
+    }
+    s.items.unshift(it);
+    s.items=s.items.slice(0,maxItems());
+    save(s);
+  }
+  window.fpCwTrack=track;
+  window.fpCwClear=function(){
+    var s=load();s.items=[];s.cleared=now();save(s);
+    var sec=document.querySelector('[data-fp-home="continue"]');if(sec)sec.remove();
+  };
+  // Pure helpers (also exposed for the unit test in continue-strip.test.js)
+  var L=window.fpCwLogic={
+    // "$86 less than when you looked" / "25% less than when you looked" / '' (no badge)
+    dropLine:function(seen,current){
+      if(!(seen>0)||!(current>0)||current>=seen)return '';
+      var diff=seen-current,pct=Math.round(diff/seen*100);
+      if(diff>=20)return '$'+(diff%1?diff.toFixed(2):diff)+' less than when you looked';
+      if(pct>=10)return pct+'% less than when you looked';
+      return '';
+    },
+    ago:function(t,ref){
+      var d=(ref||now())-t;if(!(d>=0))return '';
+      var m=d/60000,h=m/60,dd=h/24;
+      if(m<60)return 'just now';
+      if(h<24)return Math.floor(h)+(h<2?' hour ago':' hours ago');
+      if(dd<2)return 'yesterday';
+      if(dd<7)return Math.floor(dd)+' days ago';
+      if(dd<14)return 'last week';
+      return Math.floor(dd/7)+' weeks ago';
+    },
+    // Decide the one badge for a remembered item. p = live BC product, qty = SS inventory_level
+    // (number or null), inCart = bool. Returns {kind, label, sub} or null.
+    badge:function(it,p,qty,inCart,lowMax){
+      var pr=p.prices&&p.prices.price?p.prices.price.value:null;
+      var sl=p.prices&&p.prices.salePrice?p.prices.salePrice.value:null;
+      var cur=(sl&&pr&&sl<pr)?sl:pr;
+      var line=L.dropLine(it.p,cur);
+      if(line)return {kind:'drop',label:'▼ Price dropped',sub:line};
+      if(it.s===0&&isPurchasable(p))return {kind:'back',label:'✓ Back in stock',sub:''};
+      if(qty!=null&&qty>0&&qty<=lowMax)return {kind:'low',label:'⚠ Only '+qty+' left',sub:''};
+      if(inCart)return {kind:'cart',label:'🛒 Still in your cart',sub:''};
+      return null;
+    },
+    rank:{drop:0,back:1,low:2,cart:3},
+    // Cart reconciliation. prev = {cartId, cartIds}, cart = live {id, ids} or null.
+    // Returns {purchased:[ids], added:[ids]}.
+    reconcile:function(prev,cart){
+      var purchased=[],added=[];
+      var liveIds=cart?cart.ids:[];
+      if(prev.cartId&&cart&&cart.id!==prev.cartId){   // a different cart now exists -> the old one was checked out
+        purchased=prev.cartIds.filter(function(id){return liveIds.indexOf(id)===-1;});
+      }
+      added=liveIds.slice();
+      return {purchased:purchased,added:added};
+    }
+  };
+
+  // ---- Product page: remember the view ----
+  function pdpTrack(){
+    var inp=document.querySelector('input[name="product_id"]');
+    if(!inp||!document.body.classList.contains('product-page'))return;
+    var a=window.BCData&&BCData.product_attributes;
+    var price=a&&a.price&&a.price.without_tax?a.price.without_tax.value:null;
+    var skuEl=document.querySelector('.title-sku span,.productView-info [data-product-sku],.productView .sku');
+    track(inp.value,{price:price,inStock:a?!!a.instock:undefined,sku:(a&&a.sku)||(skuEl&&skuEl.textContent.trim())||'',via:'view'});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',pdpTrack);else pdpTrack();
+
+  // ---- Order confirmation: everything that was in the cart is bought ----
+  if(/order-confirmation/.test(location.pathname)){
+    var so=load();
+    if(so.cartIds.length){so.items=so.items.filter(function(x){return so.cartIds.indexOf(x.id)===-1;});so.cartIds=[];so.cartId=null;save(so);}
+  }
+
+  // ---- Quick-add from any fp tile: remember it as a cart add ----
+  if(typeof window.fpAdd==='function'){
+    var _cwAdd=window.fpAdd;
+    window.fpAdd=async function(id){var r=await _cwAdd.apply(this,arguments);if(CART_QTY[id]>0)track(id,{via:'cart'});return r;};
+  }
+
+  // ---- Home page strip ----
+  if(!(location.pathname==='/'||location.pathname==='/index.php'))return;
+  var CSS='.fp-cw-badge{position:absolute;top:44px;left:8px;z-index:2;font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;padding:4px 8px;border-radius:6px;box-shadow:rgba(0,0,0,.18) 0 2px 4px;display:inline-flex;align-items:center;gap:4px;line-height:1.1;color:#fff}'
+    +'.fp-cw-drop{background:#db2026}.fp-cw-back{background:#1a8a3c}.fp-cw-low{background:#ff6b00}.fp-cw-cart{background:#0f0f0f}'
+    +'.fp-cw-viewed{font-size:10px;color:#999;margin-top:-2px}.fp-cw-sub{font-size:10px;font-weight:600;color:#db2026;margin-top:-3px}'
+    +'a.fp-rich-add.fp-cw-checkout{background:#1a8a3c;color:#fff;display:flex;align-items:center;justify-content:center;text-decoration:none}'
+    +'.fp-cw-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}.fp-cw-clear{font-size:12px;color:#888;text-decoration:underline;cursor:pointer;background:none;border:0;padding:0;font-family:inherit}'
+    +'.fp-cw-note{font-size:13px;color:#666;margin:0 0 6px}';
+  async function liveCart(){
+    try{
+      var r=await fetch('/api/storefront/carts',{credentials:'same-origin'});
+      if(!r.ok)return null;
+      var carts=await r.json();
+      if(!carts||!carts.length)return null;
+      var li=carts[0].lineItems||{};
+      var ids=(li.physicalItems||[]).concat(li.digitalItems||[]).map(function(x){return parseInt(x.productId,10);}).filter(function(x){return x>0;});
+      return {id:carts[0].id,ids:ids};
+    }catch(e){return null;}
+  }
+  async function ssQty(skus){
+    var out={};
+    if(!skus.length)return out;
+    try{
+      var u='https://'+SS_SITE_ID+'.a.searchspring.io/api/search/search.json?siteId='+SS_SITE_ID+'&resultsFormat=native&resultsPerPage='+Math.max(20,skus.length)+skus.map(function(s){return '&filter.sku='+encodeURIComponent(s);}).join('');
+      var d=await fetch(u).then(function(r){return r.ok?r.json():null;});
+      ((d&&d.results)||[]).forEach(function(r){var q=parseInt(r.inventory_level,10);if(r.sku&&!isNaN(q))out[r.sku]=q;});
+    }catch(e){}
+    return out;
+  }
+  function featuredSection(){
+    var g=document.querySelector('.fp-rich-grid[data-product-type="featured"]');
+    return g?g.closest('.container-wide'):null;
+  }
+  async function run(){
+    if(window.__fpCw)return;window.__fpCw=1;
+    await fpEnsureTileData();
+    var preview=/[?&]fpcw=1/.test(location.search);
+    if(!getSetting('show_continue_strip',false)&&!preview)return;
+    var s=load();
+    // 1) cart reconciliation: purchases out, cart adds in
+    var cart=await liveCart();
+    var rec=L.reconcile({cartId:s.cartId,cartIds:s.cartIds},cart);
+    if(rec.purchased.length)s.items=s.items.filter(function(x){return rec.purchased.indexOf(x.id)===-1;});
+    s.cartId=cart?cart.id:s.cartId;s.cartIds=cart?cart.ids:s.cartIds;
+    save(s);
+    rec.added.forEach(function(id){if(!s.items.some(function(x){return x.id===id;}))track(id,{via:'cart'});});
+    s=load();
+    // 2) expiry
+    var days=getSetting('continue_strip_days',30),cut=now()-days*86400000;
+    s.items=s.items.filter(function(x){return (x.t||0)>=cut;});save(s);
+    if(!s.items.length)return;
+    // 3) live product data
+    var ids=s.items.map(function(x){return x.id;});
+    await fpFetchProductsCached(ids);
+    if(!ids.some(function(id){return PRODUCT_CACHE[id];})){
+      STORE_TOKEN=window.BC_STOREFRONT_TOKEN||window.global_bct||STORE_TOKEN||'';
+      await fpFetchProductsCached(ids);
+    }
+    var live=s.items.filter(function(x){var p=PRODUCT_CACHE[x.id];return p&&isShowable(p)&&isPurchasable(p);});
+    if(!live.length)return;
+    var qty=await ssQty(live.map(function(x){return (PRODUCT_CACHE[x.id].sku||x.sku||'').trim();}).filter(Boolean));
+    var lowMax=getSetting('continue_strip_low_stock_max',3);
+    var inCartIds=cart?cart.ids:[];
+    var rows=live.map(function(x){
+      var p=PRODUCT_CACHE[x.id];
+      var q=qty[(p.sku||'').trim()];
+      var b=L.badge(x,p,q==null?null:q,inCartIds.indexOf(x.id)!==-1,lowMax);
+      return {it:x,p:p,b:b};
+    });
+    rows.sort(function(a,b){
+      var ra=a.b?L.rank[a.b.kind]:9,rb=b.b?L.rank[b.b.kind]:9;
+      return ra!==rb?ra-rb:(b.it.t||0)-(a.it.t||0);
+    });
+    rows=rows.slice(0,getSetting('continue_strip_max',20));
+    // 4) render: standard tile + badge/viewed/sub lines
+    var tmp=document.createElement('div');
+    var html=rows.map(function(r){
+      var p=r.p,hasOpts=p.productOptions&&p.productOptions.edges&&p.productOptions.edges.length>0;
+      tmp.innerHTML=richCard(p,{showTag:false,_sectionKey:'homeContinue',optionsUrl:hasOpts?p.path:null});
+      var el=tmp.firstElementChild;if(!el)return '';
+      el.setAttribute('data-cw-id',p.entityId);   // NOT data-entity-id: that would make enrichThemeCards re-render the tile and wipe the badge
+      if(r.b)el.insertAdjacentHTML('afterbegin','<span class="fp-cw-badge fp-cw-'+r.b.kind+'">'+esc(r.b.label)+'</span>');
+      var meta=el.querySelector('.fp-rich-meta');
+      var when=(r.it.c&&(!r.it.v||r.it.c>r.it.v))?'Added to cart '+L.ago(r.it.c):'Viewed '+L.ago(r.it.v||r.it.t);
+      if(meta)meta.insertAdjacentHTML('afterend','<div class="fp-cw-viewed">'+esc(when)+'</div>');
+      if(r.b&&r.b.sub){var pr=el.querySelector('.fp-rich-prices');if(pr)pr.insertAdjacentHTML('afterend','<div class="fp-cw-sub">'+esc(r.b.sub)+'</div>');}
+      if(r.b&&r.b.kind==='cart'){var btn=el.querySelector('.fp-rich-add');if(btn)btn.outerHTML='<a class="fp-rich-add fp-cw-checkout" href="/checkout">Checkout Now</a>';}
+      return el.outerHTML;
+    }).join('');
+    if(!html)return;
+    if(!document.getElementById('fp-cw-css')){var st=document.createElement('style');st.id='fp-cw-css';st.textContent=CSS;document.head.appendChild(st);}
+    var title=esc(getSetting('continue_strip_title','<span>Continue </span>where you left off')).replace(/&lt;(\/?span)&gt;/g,'<$1>');
+    var sec=document.createElement('div');
+    sec.className='container-wide fp-home-sheet';
+    sec.setAttribute('data-fp-home','continue');
+    sec.innerHTML='<div><div class="fp-cw-head"><h2 class="main-heading">'+title+'</h2><button type="button" class="fp-cw-clear" onclick="fpCwClear()">Clear history</button></div>'
+      +'<div class="custom-product-carousel"><div class="fp-section fp-home-strip"><div class="fp-rich-grid" data-product-type="continue">'+html+'</div></div></div></div>';
+    var feat=null;
+    for(var t=0;t<14&&!feat;t++){feat=featuredSection();if(!feat)await new Promise(function(r){setTimeout(r,1000);});}
+    var anchor=feat||document.querySelector('#main-content > .hero-section');
+    if(!anchor)return;
+    anchor.insertAdjacentElement('afterend',sec);
+    applyCartStateToButtons();
+    if(typeof setupScrollArrows==='function'){try{setupScrollArrows();}catch(e){}}
+    console.log('[Atlas Home] continue strip: '+rows.length+' products'+(preview?' (preview)':''));
+  }
+  function start(){run().catch(function(e){console.warn('[Atlas Home] continue strip:',e&&e.message);});}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
+})();
+
 })();
 
 
@@ -5003,4 +5236,6 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);
   else boot();
+
+
 })();
