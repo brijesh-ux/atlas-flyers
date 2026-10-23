@@ -1,3 +1,4 @@
+/* v128 (23OCT2026): two Continue strip fixes. (1) The 15-min product cache (fp_prod2_*) was never pruned, so browser storage filled (~5.2M chars per site in Chrome) and every later write failed silently, including the strip's history: new product views stopped showing. Expired entries are now pruned once per page, and a full storage frees cache space (expired first, then oldest) and retries; the strip history write frees the whole product cache if needed. (2) "Added to cart just now" only shows while the product is still in the cart; after removal the tile says "Viewed ...". */
 /* v127 (23OCT2026): the deals page HTML now carries the clean Section IDs (fp-sec-bareToolDeals, over20Off, seasonalDeals, top100Sellers, outdoorPower, tapeMeasures, framingTools) while the script keyed data on the old names (priceDrop, dealOfDay, ...), so those seven sections rendered empty and were hidden. Section containers and data-section grids now resolve through SECTION_ID_ALIAS either way. */
 /* v126 (22OCT2026): window.fpRichCard = the standard product tile builder (richCard) exposed for the brand pages (STIHL/Festool/ToughBuilt/Metabo HPT), so they render the site's own tiles instead of a copy. */
 /* v125 (22OCT2026): HOME PAGE "Continue where you left off" strip under Featured: products this browser last viewed / added to cart (localStorage fp_cw, 20 remembered), one badge per tile (Price dropped $/%, Back in stock, Only N left via SearchSpring inventory_level, Still in your cart -> green CHECKOUT NOW), bought/hidden/OOS/expired items drop off, Clear history link. OFF until Settings show_continue_strip=yes; preview with ?fpcw=1. */
@@ -4605,8 +4606,29 @@ function fpCacheGet(k,ttlMs){
   return null;
 }
 function fpCacheSet(k,v){
-  try{localStorage.setItem(k,JSON.stringify({t:Date.now(),v:v}));}catch(e){}
+  var s=JSON.stringify({t:Date.now(),v:v});
+  try{localStorage.setItem(k,s);}catch(e){fpCacheFree(s.length*2);try{localStorage.setItem(k,s);}catch(e2){}}
 }
+// v128: the product cache used to grow forever and fill browser storage, after
+// which every write failed silently (the Continue strip history included).
+// Removes fp_prod2_* entries older than 15 min; when 'need' chars are still
+// required, keeps removing the oldest until that much has been freed.
+function fpCacheFree(need){
+  try{
+    var rows=[],freed=0;
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i);if(k.indexOf('fp_prod2_')!==0)continue;
+      var raw=localStorage.getItem(k)||'',m=/^\{"t":(\d+)/.exec(raw),t=m?+m[1]:0;   // fpCacheSet writes t first
+      rows.push({k:k,t:t,n:raw.length+k.length});
+    }
+    rows.sort(function(a,b){return a.t-b.t;});
+    var cut=Date.now()-900000;
+    rows.forEach(function(r){
+      if(r.t<cut||(need&&freed<need)){localStorage.removeItem(r.k);freed+=r.n;}
+    });
+  }catch(e){}
+}
+fpCacheFree(0);
 // GraphQL product fetch with a 15-min localStorage layer: repeat page views
 // render tiles instantly instead of waiting on the network.
 async function fpFetchProductsCached(ids){
@@ -4780,7 +4802,8 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   var KEY='fp_cw';
   function now(){return Date.now();}
   function load(){try{var s=JSON.parse(localStorage.getItem(KEY)||'{}');if(!s.items)s.items=[];if(!s.cartIds)s.cartIds=[];return s;}catch(e){return {items:[],cartIds:[]};}}
-  function save(s){try{localStorage.setItem(KEY,JSON.stringify(s));}catch(e){}}
+  // v128: if storage is full, drop the whole product cache (it refills itself) and retry
+  function save(s){var j=JSON.stringify(s);try{localStorage.setItem(KEY,j);}catch(e){fpCacheFree(1e9);try{localStorage.setItem(KEY,j);}catch(e2){}}}
   function maxItems(){return 20;}   // always remember 20; continue_strip_max caps what is SHOWN
   // Add / refresh one product. info = {price, inStock, sku, via:'view'|'cart'}
   function track(id,info){
@@ -4960,7 +4983,9 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       el.setAttribute('data-cw-id',p.entityId);   // NOT data-entity-id: that would make enrichThemeCards re-render the tile and wipe the badge
       if(r.b)el.insertAdjacentHTML('afterbegin','<span class="fp-cw-badge fp-cw-'+r.b.kind+'">'+esc(r.b.label)+'</span>');
       var meta=el.querySelector('.fp-rich-meta');
-      var when=(r.it.c&&(!r.it.v||r.it.c>r.it.v))?'Added to cart '+L.ago(r.it.c):'Viewed '+L.ago(r.it.v||r.it.t);
+      // v128: "Added to cart" only while it is still in the cart
+      var inCartNow=inCartIds.indexOf(r.it.id)!==-1;
+      var when=(inCartNow&&r.it.c&&(!r.it.v||r.it.c>r.it.v))?'Added to cart '+L.ago(r.it.c):'Viewed '+L.ago(r.it.v||r.it.t);
       if(meta)meta.insertAdjacentHTML('afterend','<div class="fp-cw-viewed">'+esc(when)+'</div>');
       if(r.b&&r.b.sub){var pr=el.querySelector('.fp-rich-prices');if(pr)pr.insertAdjacentHTML('afterend','<div class="fp-cw-sub">'+esc(r.b.sub)+'</div>');}
       if(r.b&&r.b.kind==='cart'){var btn=el.querySelector('.fp-rich-add');if(btn)btn.outerHTML='<a class="fp-rich-add fp-cw-checkout" href="/checkout">Checkout Now</a>';}
