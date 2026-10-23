@@ -1,3 +1,4 @@
+/* v127 (23OCT2026): the deals page HTML now carries the clean Section IDs (fp-sec-bareToolDeals, over20Off, seasonalDeals, top100Sellers, outdoorPower, tapeMeasures, framingTools) while the script keyed data on the old names (priceDrop, dealOfDay, ...), so those seven sections rendered empty and were hidden. Section containers and data-section grids now resolve through SECTION_ID_ALIAS either way. */
 /* v126 (22OCT2026): window.fpRichCard = the standard product tile builder (richCard) exposed for the brand pages (STIHL/Festool/ToughBuilt/Metabo HPT), so they render the site's own tiles instead of a copy. */
 /* v125 (22OCT2026): HOME PAGE "Continue where you left off" strip under Featured: products this browser last viewed / added to cart (localStorage fp_cw, 20 remembered), one badge per tile (Price dropped $/%, Back in stock, Only N left via SearchSpring inventory_level, Still in your cart -> green CHECKOUT NOW), bought/hidden/OOS/expired items drop off, Clear history link. OFF until Settings show_continue_strip=yes; preview with ?fpcw=1. */
 /* v124 (20OCT2026): new STIHL CHAINSAW DEALS section (Section ID stihlSaws, tab gid 557208454; container built by fpEnsureSection). */
@@ -561,10 +562,13 @@ function richCard(p,m){
 // ==================== SECTION RENDERER ====================
 async function renderProductSection(sectionKey,gridId){
   var grid=$(gridId);if(!grid)return;
+  // v127: the grid may carry the clean Section ID (data-section="bareToolDeals"); data is keyed on the old name.
+  sectionKey=(typeof fpSectionKey==='function')?fpSectionKey(sectionKey):sectionKey;
+  var secEl=grid.closest?grid.closest('.fp-section'):null;
   // Legacy global toggle for Deal of the Day still works.
-  if(sectionKey==='dealOfDay'&&!getSetting('show_deal_of_the_day',true)){hide('fp-sec-dod');return;}
+  if(sectionKey==='dealOfDay'&&!getSetting('show_deal_of_the_day',true)){if(secEl)secEl.classList.add('fp-hidden');hide('fp-sec-dod');return;}
   var rows=(SECTION_DATA[sectionKey]||[]).filter(fpRowLive); // v106: drop rows outside their Online Start/End
-  if(!rows.length){hide('fp-sec-'+sectionKey);return;}
+  if(!rows.length){if(secEl)secEl.classList.add('fp-hidden');hide('fp-sec-'+sectionKey);return;}
   rows=fpFreshRows(sectionKey,rows); // per-section daily freshness (Sequencing=Off)
   // Show skeleton
   if(getSetting('enable_skeleton_screens',true)){
@@ -1943,11 +1947,20 @@ var SECTION_ID_ALIAS = {
 };
 for(var _al in SECTION_ID_ALIAS){SECTION_ID_TO_DOM[_al]=SECTION_ID_TO_DOM[SECTION_ID_ALIAS[_al]];}
 function fpSectionKey(id){return SECTION_ID_ALIAS[id]||id;}
+// v127: the page HTML may use the clean id as the container id (fp-sec-bareToolDeals) instead of the
+// old one (fp-sec-priceDrop). Point both keys at whichever container actually exists in the DOM.
+function fpResolveSectionDom(){
+  for(var a in SECTION_ID_ALIAS){
+    var old=SECTION_ID_ALIAS[a],oldDom=SECTION_ID_TO_DOM[old],newDom='fp-sec-'+a;
+    if(!document.getElementById(oldDom)&&document.getElementById(newDom)){SECTION_ID_TO_DOM[old]=newDom;SECTION_ID_TO_DOM[a]=newDom;}
+  }
+}
 // Display Name (lowercased) -> DOM id, populated as sections are placed. Lets
 // flyer-tab banners scroll to a section by its Display Name (column E).
 var SECTION_NAME_TO_DOM = {};
 
 function applySectionOrder(){
+  fpResolveSectionDom(); // v127
   var rows=SECTION_DATA.sectionOrder||[];
   if(!rows.length){console.log('[Atlas Flyers] No Section Order data \u2014 using default DOM order');return;}
 
@@ -2040,7 +2053,7 @@ function applySectionOrder(){
     // renderProductSection later hides it only if everything is out of stock.
     var pgrid=el.querySelector('[data-section]');
     if(pgrid){
-      var sk=pgrid.getAttribute('data-section');
+      var sk=fpSectionKey(pgrid.getAttribute('data-section')); // v127: grid may carry the clean id
       if(!(SECTION_DATA[sk]&&SECTION_DATA[sk].length)){
         fragment.appendChild(el); // keep position in order, but leave hidden
         return;
