@@ -1,3 +1,4 @@
+/* v129 (26OCT2026): STIHL battery product pages no longer show gas-engine items (MotoMix fuel, 2-cycle engine oil, HP Ultra) in the SearchSpring "Customers Also Bought / Viewed" strips (ticket ECOM-0010: a customer bought MotoMix suggested on an MSA 220 battery saw). Battery page = brand STIHL and a STIHL battery model SKU (MSA/FSA/BGA/HSA/RMA/KMA/AP/AK/AL...) or battery/cordless/lithium in the name. Bar & chain oil still shows. Gas STIHL pages and other brands unchanged. */
 /* v128 (23OCT2026): two Continue strip fixes. (1) The 15-min product cache (fp_prod2_*) was never pruned, so browser storage filled (~5.2M chars per site in Chrome) and every later write failed silently, including the strip's history: new product views stopped showing. Expired entries are now pruned once per page, and a full storage frees cache space (expired first, then oldest) and retries; the strip history write frees the whole product cache if needed. (2) "Added to cart just now" only shows while the product is still in the cart; after removal the tile says "Viewed ...". */
 /* v127 (23OCT2026): the deals page HTML now carries the clean Section IDs (fp-sec-bareToolDeals, over20Off, seasonalDeals, top100Sellers, outdoorPower, tapeMeasures, framingTools) while the script keyed data on the old names (priceDrop, dealOfDay, ...), so those seven sections rendered empty and were hidden. Section containers and data-section grids now resolve through SECTION_ID_ALIAS either way. */
 /* v126 (22OCT2026): window.fpRichCard = the standard product tile builder (richCard) exposed for the brand pages (STIHL/Festool/ToughBuilt/Metabo HPT), so they render the site's own tiles instead of a copy. */
@@ -4582,6 +4583,32 @@ function fpPageBrand(){
   });
   return b;
 }
+// v129: STIHL battery product pages never suggest gas-engine fuel or 2-cycle oil
+// (MotoMix, 2-cycle engine oil, HP Ultra). Bar & chain oil still shows (battery saws use it).
+var FP_STIHL_BATTERY_SKU=/^STIHL-(MSA|FSA|HSA|BGA|KMA|RMA|SEA|HLA|GTA|TSA|SGA|HTA|KGA|SHA|RGA|ASA|BRA|AP|AK|AS|AL|AR|AB|IMOW|IMI)\d/i;
+var FP_BATTERY_WORDS=/\b(battery|cordless|lithium|36v|10\.8v)\b/i;
+var FP_GAS_ENGINE_ITEM=/moto ?mix|pre-?mix|\b2[ -]?cycle\b|two[ -]?stroke|\b2[ -]?stroke\b|hp ultra/i;
+var FP_CHAIN_OIL=/chain oil|bar oil|bar (and|&) chain/i;
+function fpPageProductName(){
+  var n='';
+  [].slice.call(document.querySelectorAll('script[type="application/ld+json"]')).forEach(function(s){
+    if(n)return;
+    try{var d=JSON.parse(s.textContent);if(d&&d['@type']==='Product'&&d.name)n=String(d.name);}catch(e){}
+  });
+  if(!n){var h=document.querySelector('h1');n=h?h.textContent:'';}
+  return n;
+}
+function fpIsStihlBatteryPage(){
+  if(!/stihl/i.test(fpPageBrand()||''))return false;
+  var skuEl=document.querySelector('[data-product-sku]');
+  var sku=(_fpRecsSeed||(skuEl?skuEl.textContent:'')||'').replace(/^\s*SKU:?\s*/i,'').trim();
+  return FP_STIHL_BATTERY_SKU.test(sku)||FP_BATTERY_WORDS.test(fpPageProductName());
+}
+function fpIsGasEngineItem(p){
+  var n=(p&&p.name)||'';
+  if(FP_CHAIN_OIL.test(n))return false;
+  return FP_GAS_ENGINE_ITEM.test(n);
+}
 function fpSsViewedIds(){
   try{
     var d=JSON.parse(localStorage.getItem('ssViewedProducts')||'null');
@@ -4761,6 +4788,7 @@ async function initRecsDirect(){
       await pSheets;
       await fpFetchProductsCached(ids);
       ids=ids.filter(function(n){return isShowable(PRODUCT_CACHE[n]);});
+      if(fpIsStihlBatteryPage())ids=ids.filter(function(n){return !fpIsGasEngineItem(PRODUCT_CACHE[n]);});
       if(!ids.length){recRemoveSkeleton(e);recUnhide(e);return;}
       catInjectInfra();
       recRenderSection(e,(await pTitles)[i],ids);
