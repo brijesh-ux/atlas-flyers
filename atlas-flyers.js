@@ -1,3 +1,4 @@
+/* v130 (26OCT2026): SearchSpring tag landing pages (/shop/?tag=...) no longer print the campaign name above the banner: the theme h1.page-heading, the SearchSpring h3.ss__title and the breadcrumbs are hidden there, so the page is banner then products (Brijesh). Style is injected immediately so the heading never flashes. Base: v129. */
 /* v129 (26OCT2026): STIHL battery product pages no longer show gas-engine items (MotoMix fuel, 2-cycle engine oil, HP Ultra) in the SearchSpring "Customers Also Bought / Viewed" strips (ticket ECOM-0010: a customer bought MotoMix suggested on an MSA 220 battery saw). Battery page = brand STIHL and a STIHL battery model SKU (MSA/FSA/BGA/HSA/RMA/KMA/AP/AK/AL...) or battery/cordless/lithium in the name. Bar & chain oil still shows. Gas STIHL pages and other brands unchanged. */
 /* v128 (23OCT2026): two Continue strip fixes. (1) The 15-min product cache (fp_prod2_*) was never pruned, so browser storage filled (~5.2M chars per site in Chrome) and every later write failed silently, including the strip's history: new product views stopped showing. Expired entries are now pruned once per page, and a full storage frees cache space (expired first, then oldest) and retries; the strip history write frees the whole product cache if needed. (2) "Added to cart just now" only shows while the product is still in the cart; after removal the tile says "Viewed ...". */
 /* v127 (23OCT2026): the deals page HTML now carries the clean Section IDs (fp-sec-bareToolDeals, over20Off, seasonalDeals, top100Sellers, outdoorPower, tapeMeasures, framingTools) while the script keyed data on the old names (priceDrop, dealOfDay, ...), so those seven sections rendered empty and were hidden. Section containers and data-section grids now resolve through SECTION_ID_ALIAS either way. */
@@ -3878,6 +3879,23 @@ if('MutationObserver' in window){
     }).observe(document.body||document.documentElement,{childList:true,subtree:true});
   })();
 }
+
+// ==================== TAG LANDING PAGES: NO PAGE NAME ====================
+// v130: on /shop/?tag=<campaign> (SearchSpring landing pages) the campaign name was
+// printed twice above the banner (theme h1.page-heading + SearchSpring h3.ss__title).
+// Brijesh wants banner then products only, so both and the breadcrumbs are hidden.
+(function(){
+  try{
+    if(location.pathname.indexOf('/shop/')!==0)return;
+    var tag=new URLSearchParams(location.search).get('tag');
+    if(!tag||tag==='monthly-flyer')return;   // monthly-flyer redirects to /monthlyflyer/ (handled below)
+    if(document.getElementById('fp-tag-notitle'))return;
+    var s=document.createElement('style');s.id='fp-tag-notitle';
+    s.textContent='h1.page-heading,.ss__header>.ss__title,.breadcrumbs{display:none!important}'
+      +'main.page{margin-top:0!important;padding-top:0!important}';
+    (document.head||document.documentElement).appendChild(s);
+  }catch(e){}
+})();
 
 // ==================== MONTHLY FLYER LANDING (/monthlyflyer/) ====================
 // v99: the monthly flyer is now a plain web page at /monthlyflyer/ that is 100%
