@@ -1,3 +1,43 @@
+/* v131 (27OCT2026): product pages with options no longer leave the previous option's crossed-out "was" price on screen when the shopper picks an option that is not on sale (ticket ECOM-0015: Tuck Tape Blue showed $11.49 crossed out next to $12.99; 51 live products affected). Rule: when the theme hides the SAVE badge (picked option not on sale), the crossed-out lines are hidden too. Product area + sticky bar only. No price changes. */
+  // ==================== v131: OPTION PRICE CROSS-OFF FIX ====================
+  // Ticket ECOM-0015 (Tuck Tape): on a product with options where one option is on sale
+  // and another is not, picking the not-on-sale option left the previous option's
+  // crossed-out "was" price on screen (e.g. Blue: $11.49 crossed out next to $12.99).
+  // The theme correctly hides the SAVE badge for a not-on-sale option but never hides
+  // the old "was" price. Rule: in each product price box, when the SAVE badge is hidden,
+  // hide the crossed-out "was" lines too. Watches the price boxes in the product area and
+  // the sticky bar only (product tiles elsewhere are not touched). No prices are changed.
+  (function fpOptionCrossOffFix(){
+    var BOX = '.productView-price, .pv-stickybar';
+    var WAS = '.rrp-price--withoutTax, .rrp-price--withTax, .non-sale-price--withoutTax, .non-sale-price--withTax';
+    function shown(el){ return !!el && getComputedStyle(el).display !== 'none'; }
+    function fixBox(box){
+      var save = box.querySelector('.price-section--saving');
+      if (!save || shown(save)) return;                 // on sale (or no badge at all): leave as the theme drew it
+      // a price range (no option picked yet) keeps the theme's own display
+      var now = box.querySelector('[data-product-price-without-tax], [data-product-price-with-tax]');
+      if (now && /\s-\s/.test(now.textContent || '')) return;
+      [].slice.call(box.querySelectorAll(WAS)).forEach(function(el){
+        if (shown(el)) el.style.display = 'none';
+      });
+    }
+    var queued = false;
+    function scan(){
+      queued = false;
+      [].slice.call(document.querySelectorAll(BOX)).forEach(fixBox);
+    }
+    function queue(){ if (!queued) { queued = true; setTimeout(scan, 30); } }
+    function boot(){
+      var area = document.querySelector('.productView');
+      if (!area) return;                                 // not a product page
+      var obs = new MutationObserver(queue);
+      [].slice.call(document.querySelectorAll(BOX)).forEach(function(box){
+        obs.observe(box, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] });
+      });
+      queue();
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  })();
 /* v130 (26OCT2026): SearchSpring tag landing pages (/shop/?tag=...) no longer print the campaign name above the banner: the theme h1.page-heading, the SearchSpring h3.ss__title and the breadcrumbs are hidden there, so the page is banner then products (Brijesh). Style is injected immediately so the heading never flashes. Base: v129. */
 /* v129 (26OCT2026): STIHL battery product pages no longer show gas-engine items (MotoMix fuel, 2-cycle engine oil, HP Ultra) in the SearchSpring "Customers Also Bought / Viewed" strips (ticket ECOM-0010: a customer bought MotoMix suggested on an MSA 220 battery saw). Battery page = brand STIHL and a STIHL battery model SKU (MSA/FSA/BGA/HSA/RMA/KMA/AP/AK/AL...) or battery/cordless/lithium in the name. Bar & chain oil still shows. Gas STIHL pages and other brands unchanged. */
 /* v128 (23OCT2026): two Continue strip fixes. (1) The 15-min product cache (fp_prod2_*) was never pruned, so browser storage filled (~5.2M chars per site in Chrome) and every later write failed silently, including the strip's history: new product views stopped showing. Expired entries are now pruned once per page, and a full storage frees cache space (expired first, then oldest) and retries; the strip history write frees the whole product cache if needed. (2) "Added to cart just now" only shows while the product is still in the cart; after removal the tile says "Viewed ...". */
@@ -5320,6 +5360,8 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);
   else boot();
+
+
 
 
 })();
