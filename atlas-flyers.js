@@ -1,3 +1,4 @@
+/* v132 (28OCT2026): filter bar (Brand / Price / Availability) now shows on 18 category pages that only had "Sort" (e.g. /safety-equipment/, /tool-belt-systems/, /concrete-masonry/rotary-hammers/). Cause: the BigCommerce category name ends in a space ("Safety Equipment "), SearchSpring stores the path without it, so the facet lookup found 0 products. Fix: trailing spaces are trimmed from the category path before asking SearchSpring. Covers any future category with the same typo. Also: on category layouts where the page name sits inside the product list box (e.g. /safety-equipment/), the filter bar is placed BELOW the page name instead of above it. */
 /* v131 (27OCT2026): product pages with options no longer leave the previous option's crossed-out "was" price on screen when the shopper picks an option that is not on sale (ticket ECOM-0015: Tuck Tape Blue showed $11.49 crossed out next to $12.99; 51 live products affected). Rule: when the theme hides the SAVE badge (picked option not on sale), the crossed-out lines are hidden too. Product area + sticky bar only. No price changes. */
   // ==================== v131: OPTION PRICE CROSS-OFF FIX ====================
   // Ticket ECOM-0015 (Tuck Tape): on a product with options where one option is on sale
@@ -3336,7 +3337,7 @@ async function fpCatPathFromTree(){
   try{
     var ck='fp_catpath_'+location.pathname;
     var hit=fpCacheGet(ck,86400000);
-    if(hit)return hit;
+    if(hit)return String(hit).replace(/\s+$/,'');   // v132: old cached paths may end in a space
     STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
     if(!STORE_TOKEN)return null;
     var d=await fetch(STORE+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+STORE_TOKEN},body:JSON.stringify({query:'{site{categoryTree{name path children{name path children{name path children{name path}}}}}}'})}).then(function(r){return r.ok?r.json():null;});
@@ -3361,7 +3362,7 @@ async function fpCatPathFromTree(){
       fpCacheSet(ck,pb);
       return pb;
     }
-    var p=names.join('>');
+    var p=names.join('>').replace(/\s+$/,'');   // v132: SS stores the path with trailing spaces trimmed
     fpCacheSet(ck,p);
     return p;
   }catch(e){return null;}
@@ -3560,7 +3561,11 @@ function ssBuildFilterBar(facets,hostEl,sortSpec){
   document.addEventListener('click',function(){
     [].slice.call(bar.querySelectorAll('.fp-fb-group.open')).forEach(function(x){x.classList.remove('open');});
   });
-  host.parentNode.insertBefore(bar,host);
+  // v132: some category templates put the h1 INSIDE #product-listing-container
+  // (e.g. /safety-equipment/) -- keep the bar below the page name there
+  var hd=!hostEl&&host.querySelector(':scope > h1.page-heading');
+  if(hd){var rg=hd.nextElementSibling;hd.parentNode.insertBefore(bar,(rg&&rg.matches('[data-content-region]'))?rg.nextSibling:hd.nextSibling);}
+  else host.parentNode.insertBefore(bar,host);
 }
 // floating FILTERS & SORT pill (replaces the theme's dead floating buttons on
 // taken-over pages): shows when the fp bar is scrolled out of view; tapping it
