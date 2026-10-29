@@ -1,3 +1,4 @@
+/* v133 (29OCT2026): deals page (/flyers-and-deals/), /monthlyflyer/ and home went blank because Google Sheets refused the ~30 separate tab downloads per visit (429 "too many requests"). Fix: the sheet is now published (Atlas > Publish to site menu, and after every Friday push) as ONE file on our own server, /content/atlas-flyers-feed.json, and the site reads only that file. If the file cannot be read, each tab falls back to the old Google download, and if that also fails, the last good copy saved in the browser is used instead of showing nothing. */
 /* v132 (28OCT2026): filter bar (Brand / Price / Availability) now shows on 18 category pages that only had "Sort" (e.g. /safety-equipment/, /tool-belt-systems/, /concrete-masonry/rotary-hammers/). Cause: the BigCommerce category name ends in a space ("Safety Equipment "), SearchSpring stores the path without it, so the facet lookup found 0 products. Fix: trailing spaces are trimmed from the category path before asking SearchSpring. Covers any future category with the same typo. Also: on category layouts where the page name sits inside the product list box (e.g. /safety-equipment/), the filter bar is placed BELOW the page name instead of above it. */
 /* v131 (27OCT2026): product pages with options no longer leave the previous option's crossed-out "was" price on screen when the shopper picks an option that is not on sale (ticket ECOM-0015: Tuck Tape Blue showed $11.49 crossed out next to $12.99; 51 live products affected). Rule: when the theme hides the SAVE badge (picked option not on sale), the crossed-out lines are hidden too. Product area + sticky bar only. No price changes. */
   // ==================== v131: OPTION PRICE CROSS-OFF FIX ====================
@@ -287,6 +288,29 @@ function parseIds(raw){
 }
 
 // ==================== CACHED FETCH ====================
+// v133: one file on our own server holds every tab as CSV keyed by gid (written by the sheet's Publish to site).
+// ?v= changes every 2 minutes so a new publish shows within ~2 minutes.
+var FEED_URL='/content/atlas-flyers-feed.json';
+function loadFeed(){
+  if(window.__fpFeedP)return window.__fpFeedP;
+  window.__fpFeedP=(async function(){
+    try{
+      var ac=('AbortController' in window)?new AbortController():null;
+      var tk=ac?setTimeout(function(){ac.abort();},10000):null;
+      var r=await fetch(FEED_URL+'?v='+Math.floor(Date.now()/120000),ac?{signal:ac.signal}:{});
+      if(tk)clearTimeout(tk);
+      if(!r.ok)return null;
+      var j=await r.json();
+      return (j&&j.tabs)?j.tabs:null;
+    }catch(e){console.warn('[Atlas] feed failed',e.message);return null;}
+  })();
+  return window.__fpFeedP;
+}
+window.fpLoadFeed=loadFeed;
+function staleCSV(key){
+  try{var raw=localStorage.getItem('fp_csv_'+key);if(raw){var c=JSON.parse(raw);if(c.d)return parseCSV(c.d);}}catch(e){}
+  return [];
+}
 async function fetchCSV(key,url){
   if(!url)return [];
   // Short cache (5 min) for section order so reorders show up fast.
@@ -301,18 +325,24 @@ async function fetchCSV(key,url){
       }
     }catch(e){}
   }
+  var gm=/gid=(\d+)/.exec(url),feed=gm?await loadFeed():null;
+  if(feed&&typeof feed[gm[1]]==='string'){
+    var ft=feed[gm[1]];
+    if(cacheH>0){try{localStorage.setItem('fp_csv_'+key,JSON.stringify({t:Date.now(),d:ft}));}catch(e){}}
+    return parseCSV(ft);
+  }
   try{
     var ac=('AbortController' in window)?new AbortController():null;
     var tk=ac?setTimeout(function(){ac.abort();},8000):null;
     var r=await fetch(url,ac?{signal:ac.signal}:{});
     if(tk)clearTimeout(tk);
-    if(!r.ok){console.warn('[Atlas] CSV fetch failed',key,r.status);return[];}
+    if(!r.ok){console.warn('[Atlas] CSV fetch failed',key,r.status);return staleCSV(key);}
     var text=await r.text();
     if(cacheH>0){
       try{localStorage.setItem('fp_csv_'+key,JSON.stringify({t:Date.now(),d:text}));}catch(e){}
     }
     return parseCSV(text);
-  }catch(e){console.error('[Atlas] CSV error',key,e.message);return[];}
+  }catch(e){console.error('[Atlas] CSV error',key,e.message);return staleCSV(key);}
 }
 
 // ==================== BIGCOMMERCE FETCH (batched) ====================
@@ -5355,7 +5385,10 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       var cached=null;
       try{cached=sessionStorage.getItem(KEY);}catch(e){}
       if(cached){ try{apply(parseCSV(cached));}catch(e){} }
-      fetch(SHEET).then(function(r){return r.ok?r.text():'';}).then(function(t){
+      (window.fpLoadFeed?window.fpLoadFeed():Promise.resolve(null)).then(function(f){
+        if(f&&typeof f['108791889']==='string')return f['108791889'];
+        return fetch(SHEET).then(function(r){return r.ok?r.text():'';});
+      }).then(function(t){
         if(!t||t.charAt(0)==='<')return;
         var changed=(t!==cached);
         try{sessionStorage.setItem(KEY,t);}catch(e){}
