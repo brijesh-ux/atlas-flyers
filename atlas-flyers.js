@@ -1,3 +1,4 @@
+/* v134 (29OCT2026): MAKITA STARTER KIT DEALS, STIHL CHAINSAW DEALS and TOOL STORAGE now get the left/right scroll arrows like every other section. Cause: these sections are built by the script (not in the page HTML) and were already wrapped in the scroll box, so the arrow code thought the arrows were there and skipped them. */
 /* v133 (29OCT2026): deals page (/flyers-and-deals/), /monthlyflyer/ and home went blank because Google Sheets refused the ~30 separate tab downloads per visit (429 "too many requests"). Fix: the sheet is now published (Atlas > Publish to site menu, and after every Friday push) as ONE file on our own server, /content/atlas-flyers-feed.json, and the site reads only that file. If the file cannot be read, each tab falls back to the old Google download, and if that also fails, the last good copy saved in the browser is used instead of showing nothing. */
 /* v132 (28OCT2026): filter bar (Brand / Price / Availability) now shows on 18 category pages that only had "Sort" (e.g. /safety-equipment/, /tool-belt-systems/, /concrete-masonry/rotary-hammers/). Cause: the BigCommerce category name ends in a space ("Safety Equipment "), SearchSpring stores the path without it, so the facet lookup found 0 products. Fix: trailing spaces are trimmed from the category path before asking SearchSpring. Covers any future category with the same typo. Also: on category layouts where the page name sits inside the product list box (e.g. /safety-equipment/), the filter bar is placed BELOW the page name instead of above it. */
 /* v131 (27OCT2026): product pages with options no longer leave the previous option's crossed-out "was" price on screen when the shopper picks an option that is not on sale (ticket ECOM-0015: Tuck Tape Blue showed $11.49 crossed out next to $12.99; 51 live products affected). Rule: when the theme hides the SAVE badge (picked option not on sale), the crossed-out lines are hidden too. Product area + sticky bar only. No price changes. */
@@ -722,7 +723,7 @@ function fpEnsureSection(key,title){
   var page=document.querySelector('.flyers-page');if(!page)return;
   var d=document.createElement('div');d.className='fp-section fp-hidden';d.id='fp-sec-'+key;
   d.innerHTML='<div class="fp-section-head"><span class="fp-section-title">'+esc(title)+'</span><button class="fp-section-btn" onclick="fpToggleSection(\'fp-'+key+'\',this)">VIEW ALL</button></div>'+
-    '<div class="fp-scroll-wrap"><div class="fp-rich-grid" id="fp-'+key+'" data-section="'+key+'"></div></div>';
+    '<div class="fp-rich-grid" id="fp-'+key+'" data-section="'+key+'"></div>'; // v134: no fp-scroll-wrap here; setupScrollArrows wraps it AND adds the arrows
   page.appendChild(d);
 }
 
