@@ -1,3 +1,4 @@
+/* v135 (30OCT2026): new BONUS GOODS section (Section ID bonusGoods, tab gid 1398708499; container built by fpEnsureSection). Filled every Friday only from the purchasing Deal / Bonus Good Tracker BONUS GOODS tab, online dates in columns P and Q; rows outside their Online Start / Online End are hidden by fpRowLive. */
 /* v134 (29OCT2026): MAKITA STARTER KIT DEALS, STIHL CHAINSAW DEALS and TOOL STORAGE now get the left/right scroll arrows like every other section. Cause: these sections are built by the script (not in the page HTML) and were already wrapped in the scroll box, so the arrow code thought the arrows were there and skipped them. */
 /* v133 (29OCT2026): deals page (/flyers-and-deals/), /monthlyflyer/ and home went blank because Google Sheets refused the ~30 separate tab downloads per visit (429 "too many requests"). Fix: the sheet is now published (Atlas > Publish to site menu, and after every Friday push) as ONE file on our own server, /content/atlas-flyers-feed.json, and the site reads only that file. If the file cannot be read, each tab falls back to the old Google download, and if that also fails, the last good copy saved in the browser is used instead of showing nothing. */
 /* v132 (28OCT2026): filter bar (Brand / Price / Availability) now shows on 18 category pages that only had "Sort" (e.g. /safety-equipment/, /tool-belt-systems/, /concrete-masonry/rotary-hammers/). Cause: the BigCommerce category name ends in a space ("Safety Equipment "), SearchSpring stores the path without it, so the facet lookup found 0 products. Fix: trailing spaces are trimmed from the category path before asking SearchSpring. Covers any future category with the same typo. Also: on category layouts where the page name sits inside the product list box (e.g. /safety-equipment/), the filter bar is placed BELOW the page name instead of above it. */
@@ -110,6 +111,7 @@ var GIDS = {
   shopByTrade: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1407344995',
   makitaKits: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1971726171',
   stihlSaws: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=557208454',
+  bonusGoods: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1398708499',
   toolStorage: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1902185686',
   tradeDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2129344817',
   promoBanners: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2007099777',
@@ -156,6 +158,7 @@ var SECTION_DEFAULTS = {
   under99: {tag:'UNDER $99', cls:'fp-t-99'},
   clearance: {tag:'CLEARANCE', cls:'fp-t-clr'},
   freeKit: {tag:'\ud83c\udf81 FREE KIT', cls:'fp-t-free'},
+  bonusGoods: {tag:'\ud83c\udf81 FREE BONUS', cls:'fp-t-free'},
   freeBattery: {tag:'\ud83d\udd0b FREE BATTERY', cls:'fp-t-free'},
   atlasExclusive: {tag:'ATLAS EXCLUSIVE', cls:'fp-t-excl'},
   trendingProducts: {tag:'TRENDING', cls:'fp-t-hot'},
@@ -2005,6 +2008,7 @@ var SECTION_ID_TO_DOM = {
   toolStorage:'fp-sec-toolStorage',
   makitaKits:'fp-sec-makitaKits',
   stihlSaws:'fp-sec-stihlSaws',
+  bonusGoods:'fp-sec-bonusGoods',
   tradeDeals:'fp-sec-tradeDeals'
 };
 // v113: clean Section IDs for the sheet. The Section Order tab may use either
@@ -2730,7 +2734,7 @@ async function init(){
   setupScrollSave();
 
   // 2) Fetch all other CSVs in parallel (plus the live cart, so tiles can show "in cart")
-  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','lastChance','videoSection','shopByTrade','tradeDeals','toolStorage','makitaKits','stihlSaws','promoBanners','faqs','sectionOrder','allCoupons'];
+  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','lastChance','videoSection','shopByTrade','tradeDeals','toolStorage','makitaKits','stihlSaws','bonusGoods','promoBanners','faqs','sectionOrder','allCoupons'];
   var promises=keys.map(function(k){return fetchCSV(k,GIDS[k]);});
   var results=await Promise.all(promises.concat([loadServerCart()]));
   keys.forEach(function(k,i){SECTION_DATA[k]=results[i]||[];});
@@ -2790,6 +2794,7 @@ async function init(){
   fpEnsureSection('toolStorage','TOOL STORAGE'); // v113: sections with no container in the page HTML
   fpEnsureSection('makitaKits','MAKITA STARTER KIT DEALS'); // v116
   fpEnsureSection('stihlSaws','STIHL CHAINSAW DEALS'); // v124
+  fpEnsureSection('bonusGoods','BONUS GOODS'); // v135
   fpEnsureTradeSection();
   applySectionOrder();
 
