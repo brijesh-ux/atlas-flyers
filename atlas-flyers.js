@@ -1,3 +1,4 @@
+/* v138 (02NOV2026): HOTFIX deals page stuck after a ?section= link (e.g. the STIHL home banner): once the page is shown, the script stops snapping back to the section, and any finger drag, wheel, key or click hands the page to the visitor right away. Before, a finger drag on a phone was not seen as "the visitor is scrolling", so the page kept being pulled back to the section for up to 45s. */
 /* v137 (02NOV2026): home page banners open on the FIRST tap on phones (was two taps: the carousel's swipe code swallowed the first). A quick tap (under 500ms, under 10px of movement) on the carousel opens the slide that is showing; swipes, dots and arrows work as before. */
 /* v136 (02NOV2026): ?section= deep links (home banners, ads, emails) no longer flicker on the deals page. The page stays under a plain white "Loading deals" cover while sections above the target load, and shows once the page height and the target have both held still for 1.2s (or after 5s, or as soon as the visitor scrolls or taps). */
 /* v135 (30OCT2026): new BONUS GOODS section (Section ID bonusGoods, tab gid 1398708499; container built by fpEnsureSection). Filled every Friday only from the purchasing Deal / Bonus Good Tracker BONUS GOODS tab, online dates in columns P and Q; rows outside their Online Start / Online End are hidden by fpRowLive. */
@@ -2959,7 +2960,8 @@ window.fpScrollToSectionKey=fpScrollToSectionKey;
   var bk=decodeURIComponent(m[1].replace(/\+/g,' '));
   try{ sessionStorage.removeItem('fp_scroll'); }catch(e){}
   var done=false,t0=Date.now(),lastRun=0,lastInputAt=0,ourWriteAt=0,userScrolled=false,mo=null,ro=null;
-  ['wheel','touchstart','keydown'].forEach(function(ev){window.addEventListener(ev,function(){lastInputAt=Date.now();},{passive:true});});
+  // v138: ANY visitor input (finger drag, wheel, key, click) hands the page back for good.
+  ['wheel','touchstart','touchmove','keydown','mousedown','pointerdown'].forEach(function(ev){window.addEventListener(ev,function(){lastInputAt=Date.now();userScrolled=true;},{passive:true,capture:true});});
   window.addEventListener('scroll',function(){var now=Date.now();if(now-ourWriteAt<120)return;if(now-lastInputAt<800)userScrolled=true;},{passive:true});
   function align(force){
     if(userScrolled||(!force&&(done||Date.now()-t0>45000))){done=true;if(mo)mo.disconnect();if(ro)ro.disconnect();return;}
@@ -2980,7 +2982,8 @@ window.fpScrollToSectionKey=fpScrollToSectionKey;
   cov.textContent='Loading deals…';
   (document.body||document.documentElement).appendChild(cov);
   var stableSince=0,lifted=false,lastH=0;
-  function lift(){ if(lifted)return; lifted=true; cov.style.opacity='0'; setTimeout(function(){ if(cov.parentNode)cov.parentNode.removeChild(cov); },250); }
+  // v138: once the page is shown, stop re-aligning entirely (it was snapping the page back while the visitor scrolled).
+  function lift(){ if(lifted)return; lifted=true; done=true; if(mo)mo.disconnect(); if(ro)ro.disconnect(); cov.style.opacity='0'; setTimeout(function(){ if(cov.parentNode)cov.parentNode.removeChild(cov); },250); }
   ['wheel','touchstart','keydown','mousedown'].forEach(function(ev){window.addEventListener(ev,lift,{passive:true,once:true});});
   setTimeout(lift,5000);
   (function watch(){
