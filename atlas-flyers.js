@@ -1,3 +1,4 @@
+/* v136 (02NOV2026): ?section= deep links (home banners, ads, emails) no longer flicker on the deals page. The page stays under a plain white "Loading deals" cover while sections above the target load, and shows once the page height and the target have both held still for 1.2s (or after 5s, or as soon as the visitor scrolls or taps). */
 /* v135 (30OCT2026): new BONUS GOODS section (Section ID bonusGoods, tab gid 1398708499; container built by fpEnsureSection). Filled every Friday only from the purchasing Deal / Bonus Good Tracker BONUS GOODS tab, online dates in columns P and Q; rows outside their Online Start / Online End are hidden by fpRowLive. */
 /* v134 (29OCT2026): MAKITA STARTER KIT DEALS, STIHL CHAINSAW DEALS and TOOL STORAGE now get the left/right scroll arrows like every other section. Cause: these sections are built by the script (not in the page HTML) and were already wrapped in the scroll box, so the arrow code thought the arrows were there and skipped them. */
 /* v133 (29OCT2026): deals page (/flyers-and-deals/), /monthlyflyer/ and home went blank because Google Sheets refused the ~30 separate tab downloads per visit (429 "too many requests"). Fix: the sheet is now published (Atlas > Publish to site menu, and after every Friday push) as ONE file on our own server, /content/atlas-flyers-feed.json, and the site reads only that file. If the file cannot be read, each tab falls back to the old Google download, and if that also fails, the last good copy saved in the browser is used instead of showing nothing. */
@@ -2945,6 +2946,30 @@ window.fpScrollToSectionKey=fpScrollToSectionKey;
     if(Math.abs(window.pageYOffset-want)>4){ourWriteAt=Date.now();window.scrollTo({top:want,behavior:'auto'});}
   }
   window.__fpDeepAlign=align;
+  // v136: hide the page under a plain cover while it settles, so the visitor sees one clean
+  // landing instead of the 2-3 jumps as sections above the target load. Lifts once the
+  // page height and target have held still for 1.2s, on any user input, or after 5s at most.
+  var cov=document.createElement('div');
+  cov.id='fp-deep-cover';
+  cov.style.cssText='position:fixed;inset:0;background:#fff;z-index:2147483000;opacity:1;transition:opacity .2s ease;display:flex;align-items:center;justify-content:center;font:600 18px/1.2 Arial,sans-serif;color:#555';
+  cov.textContent='Loading deals…';
+  (document.body||document.documentElement).appendChild(cov);
+  var stableSince=0,lifted=false,lastH=0;
+  function lift(){ if(lifted)return; lifted=true; cov.style.opacity='0'; setTimeout(function(){ if(cov.parentNode)cov.parentNode.removeChild(cov); },250); }
+  ['wheel','touchstart','keydown','mousedown'].forEach(function(ev){window.addEventListener(ev,lift,{passive:true,once:true});});
+  setTimeout(lift,5000);
+  (function watch(){
+    if(lifted)return;
+    var el=fpResolveSection(bk), h=document.documentElement.scrollHeight||0;
+    if(el && el.getBoundingClientRect().height>=40 && h===lastH){
+      var maxY=Math.max(0,h-window.innerHeight);
+      var want=Math.min(maxY,Math.max(0,el.getBoundingClientRect().top+window.pageYOffset-fpSectionOffset()-8));
+      if(Math.abs(window.pageYOffset-want)<=4){ if(!stableSince)stableSince=Date.now(); else if(Date.now()-stableSince>=1200){lift();return;} }
+      else stableSince=0;
+    } else stableSince=0;
+    lastH=h;
+    setTimeout(watch,100);
+  })();
   mo=new MutationObserver(function(){align(false);});
   mo.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class','hidden']});
   if('ResizeObserver' in window){ro=new ResizeObserver(function(){align(false);});ro.observe(document.body||document.documentElement);}
