@@ -1,3 +1,4 @@
+/* v137 (02NOV2026): home page banners open on the FIRST tap on phones (was two taps: the carousel's swipe code swallowed the first). A quick tap (under 500ms, under 10px of movement) on the carousel opens the slide that is showing; swipes, dots and arrows work as before. */
 /* v136 (02NOV2026): ?section= deep links (home banners, ads, emails) no longer flicker on the deals page. The page stays under a plain white "Loading deals" cover while sections above the target load, and shows once the page height and the target have both held still for 1.2s (or after 5s, or as soon as the visitor scrolls or taps). */
 /* v135 (30OCT2026): new BONUS GOODS section (Section ID bonusGoods, tab gid 1398708499; container built by fpEnsureSection). Filled every Friday only from the purchasing Deal / Bonus Good Tracker BONUS GOODS tab, online dates in columns P and Q; rows outside their Online Start / Online End are hidden by fpRowLive. */
 /* v134 (29OCT2026): MAKITA STARTER KIT DEALS, STIHL CHAINSAW DEALS and TOOL STORAGE now get the left/right scroll arrows like every other section. Cause: these sections are built by the script (not in the page HTML) and were already wrapped in the scroll box, so the arrow code thought the arrows were there and skipped them. */
@@ -42,6 +43,30 @@
       queue();
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  })();
+  // ==================== v137: HOME BANNER ONE-TAP ====================
+  // On phones the home carousel's swipe code swallows the first tap, so shoppers had to tap
+  // a banner twice. A quick tap (under 500ms, under 10px of movement) on the carousel now
+  // opens the slide that is showing straight away. Swipes, dots and arrows are untouched.
+  (function fpHeroOneTap(){
+    var sx=0, sy=0, st=0, on=false;
+    function hero(el){ return el && el.closest && el.closest('.heroCarousel, .heroCarousel-static-placeholder'); }
+    document.addEventListener('touchstart', function(e){
+      on=false;
+      if(!e.touches || e.touches.length!==1 || !hero(e.target)) return;
+      if(e.target.closest('button, .slick-dots, .slick-arrow')) return;
+      on=true; st=Date.now(); sx=e.touches[0].clientX; sy=e.touches[0].clientY;
+    }, {capture:true, passive:true});
+    document.addEventListener('touchend', function(e){
+      if(!on) return; on=false;
+      var t=e.changedTouches && e.changedTouches[0]; if(!t) return;
+      if(Date.now()-st>500 || Math.abs(t.clientX-sx)>10 || Math.abs(t.clientY-sy)>10) return;
+      var a=document.querySelector('.heroCarousel .slick-current') || (e.target.closest && e.target.closest('a[href]'));
+      var href=a && a.getAttribute('href');
+      if(!href || href==='#') return;
+      e.preventDefault();
+      window.location.href=a.href;
+    }, {capture:true, passive:false});
   })();
 /* v130 (26OCT2026): SearchSpring tag landing pages (/shop/?tag=...) no longer print the campaign name above the banner: the theme h1.page-heading, the SearchSpring h3.ss__title and the breadcrumbs are hidden there, so the page is banner then products (Brijesh). Style is injected immediately so the heading never flashes. Base: v129. */
 /* v129 (26OCT2026): STIHL battery product pages no longer show gas-engine items (MotoMix fuel, 2-cycle engine oil, HP Ultra) in the SearchSpring "Customers Also Bought / Viewed" strips (ticket ECOM-0010: a customer bought MotoMix suggested on an MSA 220 battery saw). Battery page = brand STIHL and a STIHL battery model SKU (MSA/FSA/BGA/HSA/RMA/KMA/AP/AK/AL...) or battery/cordless/lithium in the name. Bar & chain oil still shows. Gas STIHL pages and other brands unchanged. */
