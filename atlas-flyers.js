@@ -1,3 +1,4 @@
+/* v143 (02NOV2026): the red bar on the "Loading Atlas Deals Center" cover now fills left to right like a progress bar, and reaches the end just before the page shows. */
 /* v142 (02NOV2026): Winter Gear hides the 5 Snickers safety boots (Searchspring still lists them until its next re-index) and shows the 3 Southwire cold-weather extension cords at the very end of the page. */
 /* v141 (02NOV2026): Winter Gear (/winter-gear/) opens with the crossed-off items first (biggest % off at the top), using Searchspring order. The shopper can still change the sort. */
 /* v140 (02NOV2026): the hidden Winter Gear page (/winter-gear/) gets the filter bar and sort. It sits in the hidden folder, so the category tree lookup found nothing and the page had no filters at all. The ?section= loading cover is redesigned: black background, Atlas logo, red sweep bar, "Loading Atlas Deals Center". */
@@ -2984,14 +2985,24 @@ window.fpScrollToSectionKey=fpScrollToSectionKey;
   cov.id='fp-deep-cover';
   // v140: branded cover (black, Atlas logo, red sweep bar) instead of the plain grey text
   cov.style.cssText='position:fixed;inset:0;background:radial-gradient(circle at 50% 40%,#2a2a2a 0,#0d0d0d 70%);z-index:2147483000;opacity:1;transition:opacity .25s ease;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;font:700 15px/1.2 Arial,sans-serif;color:#fff;letter-spacing:2px;text-transform:uppercase';
-  cov.innerHTML='<style>@keyframes fpCovSweep{0%{left:-40%}100%{left:100%}}@keyframes fpCovPulse{0%,100%{opacity:.55}50%{opacity:1}}</style>'+
+  // v143: the red bar fills left to right like a progress bar (timer below, eases toward 92%), then fills to 100% when the page shows
+  cov.innerHTML='<style>@keyframes fpCovPulse{0%,100%{opacity:.55}50%{opacity:1}}</style>'+
     '<img src="https://cdn11.bigcommerce.com/s-c7n52h/product_images/atlas_tools_machinery_logo_primary_1752526051__27052.png" alt="Atlas Tools and Machinery" style="width:220px;max-width:60vw;height:auto">'+
-    '<div style="position:relative;width:240px;max-width:62vw;height:4px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden"><div style="position:absolute;top:0;width:40%;height:100%;border-radius:2px;background:#e31b23;animation:fpCovSweep 1.1s ease-in-out infinite"></div></div>'+
+    '<div style="position:relative;width:240px;max-width:62vw;height:4px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden"><div id="fp-cov-fill" style="position:absolute;top:0;left:0;width:0;height:100%;border-radius:2px;background:#e31b23;transition:width .2s linear"></div></div>'+
     '<div style="animation:fpCovPulse 1.6s ease-in-out infinite">Loading Atlas Deals Center</div>';
   (document.body||document.documentElement).appendChild(cov);
+  var covT0=Date.now(),covTick=setInterval(function(){
+    var f=document.getElementById('fp-cov-fill');
+    if(!f||lifted){clearInterval(covTick);return;}
+    f.style.width=(92*(1-Math.exp(-(Date.now()-covT0)/1700))).toFixed(1)+'%';
+  },100);
   var stableSince=0,lifted=false,lastH=0;
   // v138: once the page is shown, stop re-aligning entirely (it was snapping the page back while the visitor scrolled).
-  function lift(){ if(lifted)return; lifted=true; done=true; if(mo)mo.disconnect(); if(ro)ro.disconnect(); cov.style.opacity='0'; setTimeout(function(){ if(cov.parentNode)cov.parentNode.removeChild(cov); },250); }
+  function lift(){ if(lifted)return; lifted=true; done=true; if(mo)mo.disconnect(); if(ro)ro.disconnect();
+    var fill=document.getElementById('fp-cov-fill');
+    if(fill){ fill.style.transition='width .25s ease-out'; fill.style.width='100%'; }
+    setTimeout(function(){ cov.style.opacity='0'; },fill?260:0);
+    setTimeout(function(){ if(cov.parentNode)cov.parentNode.removeChild(cov); },fill?520:250); }
   ['wheel','touchstart','keydown','mousedown'].forEach(function(ev){window.addEventListener(ev,lift,{passive:true,once:true});});
   setTimeout(lift,5000);
   (function watch(){
