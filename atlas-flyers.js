@@ -1,3 +1,5 @@
+/* v142 (02NOV2026): Winter Gear hides the 5 Snickers safety boots (Searchspring still lists them until its next re-index) and shows the 3 Southwire cold-weather extension cords at the very end of the page. */
+/* v141 (02NOV2026): Winter Gear (/winter-gear/) opens with the crossed-off items first (biggest % off at the top), using Searchspring order. The shopper can still change the sort. */
 /* v140 (02NOV2026): the hidden Winter Gear page (/winter-gear/) gets the filter bar and sort. It sits in the hidden folder, so the category tree lookup found nothing and the page had no filters at all. The ?section= loading cover is redesigned: black background, Atlas logo, red sweep bar, "Loading Atlas Deals Center". */
 /* v139 (02NOV2026): the ?section= cover now reads "Loading Atlas Deals Center…" instead of "Loading deals…". */
 /* v138 (02NOV2026): HOTFIX deals page stuck after a ?section= link (e.g. the STIHL home banner): once the page is shown, the script stops snapping back to the section, and any finger drag, wheel, key or click hands the page to the visitor right away. Before, a finger drag on a phone was not seen as "the visitor is scrolling", so the page kept being pulled back to the section for up to 45s. */
@@ -3499,6 +3501,12 @@ async function fpBrandPathForQuery(q){
     return map.full[nq]||(map.full[nq]===undefined?map.short[nq]:null)||null;
   }catch(e){return null;}
 }
+// v141: category pages that open in Searchspring order instead of the BigCommerce grid
+// (Winter Gear: crossed-off items first, biggest % off at the top)
+var FP_SS_DEFAULT_SORT={'/winter-gear/':'discount'};
+// v142: per-page product ids to drop, or to hold back until the very end of the grid
+//   Winter Gear: hide = 5 Snickers safety boots (not winter), last = 3 Southwire cold-weather cords
+var FP_CAT_RULES={'/winter-gear/':{hide:[66308,66315,66319,66320,66321],last:[65065,65067,90757]}};
 function ssCatPath(){
   if(/^\/new-arrivals\//.test(location.pathname))return 'New Arrivals';
   var names=[].slice.call(document.querySelectorAll('.breadcrumbs li')).map(function(li){
@@ -3542,6 +3550,7 @@ function ssSearchUrl(catPath,f,page,perPage){
   try{sort=new URLSearchParams(location.search).get('sort')||'';}catch(e){}
   if(!sort&&/^\/new-arrivals\//.test(location.pathname))sort='newest';
   if(!sort&&catPath==='ss:on-sale')sort='discount';   // SALE view opens with the biggest discounts first
+  if(!sort&&FP_SS_DEFAULT_SORT[location.pathname])sort=FP_SS_DEFAULT_SORT[location.pathname];
   var map={newest:'sort.sortable_date_created=desc',bestselling:'sort.ga_unique_purchases=desc',
     featured:'sort.is_featured=desc',priceasc:'sort.calculated_price=asc',pricedesc:'sort.calculated_price=desc',
     discount:'sort.ss_pct_off=desc'};   // Searchspring % off field
@@ -3783,7 +3792,7 @@ async function initCategoryTiles(rerun){
     // filters active -> SS supplies the ids. Also /new-arrivals/ with an explicit
     // non-newest sort: the GraphQL stream can ONLY do newest-first, so any other
     // order comes from SS (same New Arrivals scope, mapped sort).
-    var ssMode=(fParams.any||(newestModeEarly&&themeSort&&themeSort!=='newest'))&&!!catPath;
+    var ssMode=(fParams.any||(newestModeEarly&&themeSort&&themeSort!=='newest')||!!FP_SS_DEFAULT_SORT[location.pathname])&&!!catPath;
     var items=newestModeEarly?[]:catCollectItems(grid);
     if(!newestModeEarly&&!items.length)return;
 
@@ -3798,9 +3807,12 @@ async function initCategoryTiles(rerun){
       document.head.appendChild(shSt);
     }
     var seen={};
+    var catRule=FP_CAT_RULES[location.pathname]||{},heldLast=[];
     function cardsHtml(list){
       return list.filter(function(x){
         if(!PRODUCT_CACHE[x.id]||seen[x.id])return false;
+        if((catRule.hide||[]).indexOf(x.id)>=0)return false;
+        if((catRule.last||[]).indexOf(x.id)>=0){if(heldLast.indexOf(x)<0&&!heldLast.some(function(h){return h.id===x.id;}))heldLast.push(x);return false;}
         seen[x.id]=1;return true;
       }).map(function(x){
         return richCard(PRODUCT_CACHE[x.id],{showTag:false,_sectionKey:'categoryPage',optionsUrl:x.optionsUrl});
@@ -3959,11 +3971,11 @@ async function initCategoryTiles(rerun){
       }
     }
     async function loadSS(){
-      if(ssPage>=ssTotalPages){exhausted=true;return;}
+      if(ssPage>=ssTotalPages){exhausted=true;appendHeldLast();return;}
       ssPage++;
       var d=await fetch(ssSearchUrl(catPath,fParams,ssPage,40)).then(function(r){return r.ok?r.json():null;});
       var res=(d&&Array.isArray(d.results))?d.results:null;
-      if(!res||!res.length){exhausted=true;return;}
+      if(!res||!res.length){exhausted=true;appendHeldLast();return;}
       ssTotalPages=(d.pagination&&d.pagination.totalPages)||ssTotalPages;
       var its=res.map(ssResultItem).filter(Boolean);
       await fpFetchProductsCached(its.map(function(x){return x.id;}));
@@ -3973,7 +3985,13 @@ async function initCategoryTiles(rerun){
         applyCartStateToButtons();
         console.log('[Atlas Tiles] +ss page '+ssPage+': grid now '+wrap.children.length+' cards');
       }
-      if(ssPage>=ssTotalPages)exhausted=true;
+      if(ssPage>=ssTotalPages){exhausted=true;appendHeldLast();}
+    }
+    function appendHeldLast(){
+      if(!heldLast.length)return;
+      var keep=catRule.last;catRule.last=[];
+      var h2=cardsHtml(heldLast);heldLast=[];catRule.last=keep;
+      if(h2){wrap.insertAdjacentHTML('beforeend',h2);applyCartStateToButtons();}
     }
     async function loadMore(){
       if(myRun!==window.__fpCatRun){exhausted=true;return;}
