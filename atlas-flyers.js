@@ -1,3 +1,5 @@
+/* v140 (02NOV2026): the hidden Winter Gear page (/winter-gear/) gets the filter bar and sort. It sits in the hidden folder, so the category tree lookup found nothing and the page had no filters at all. The ?section= loading cover is redesigned: black background, Atlas logo, red sweep bar, "Loading Atlas Deals Center". */
+/* v139 (02NOV2026): the ?section= cover now reads "Loading Atlas Deals Center…" instead of "Loading deals…". */
 /* v138 (02NOV2026): HOTFIX deals page stuck after a ?section= link (e.g. the STIHL home banner): once the page is shown, the script stops snapping back to the section, and any finger drag, wheel, key or click hands the page to the visitor right away. Before, a finger drag on a phone was not seen as "the visitor is scrolling", so the page kept being pulled back to the section for up to 45s. */
 /* v137 (02NOV2026): home page banners open on the FIRST tap on phones (was two taps: the carousel's swipe code swallowed the first). A quick tap (under 500ms, under 10px of movement) on the carousel opens the slide that is showing; swipes, dots and arrows work as before. */
 /* v136 (02NOV2026): ?section= deep links (home banners, ads, emails) no longer flicker on the deals page. The page stays under a plain white "Loading deals" cover while sections above the target load, and shows once the page height and the target have both held still for 1.2s (or after 5s, or as soon as the visitor scrolls or taps). */
@@ -2978,8 +2980,12 @@ window.fpScrollToSectionKey=fpScrollToSectionKey;
   // page height and target have held still for 1.2s, on any user input, or after 5s at most.
   var cov=document.createElement('div');
   cov.id='fp-deep-cover';
-  cov.style.cssText='position:fixed;inset:0;background:#fff;z-index:2147483000;opacity:1;transition:opacity .2s ease;display:flex;align-items:center;justify-content:center;font:600 18px/1.2 Arial,sans-serif;color:#555';
-  cov.textContent='Loading deals…';
+  // v140: branded cover (black, Atlas logo, red sweep bar) instead of the plain grey text
+  cov.style.cssText='position:fixed;inset:0;background:radial-gradient(circle at 50% 40%,#2a2a2a 0,#0d0d0d 70%);z-index:2147483000;opacity:1;transition:opacity .25s ease;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;font:700 15px/1.2 Arial,sans-serif;color:#fff;letter-spacing:2px;text-transform:uppercase';
+  cov.innerHTML='<style>@keyframes fpCovSweep{0%{left:-40%}100%{left:100%}}@keyframes fpCovPulse{0%,100%{opacity:.55}50%{opacity:1}}</style>'+
+    '<img src="https://cdn11.bigcommerce.com/s-c7n52h/product_images/atlas_tools_machinery_logo_primary_1752526051__27052.png" alt="Atlas Tools and Machinery" style="width:220px;max-width:60vw;height:auto">'+
+    '<div style="position:relative;width:240px;max-width:62vw;height:4px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden"><div style="position:absolute;top:0;width:40%;height:100%;border-radius:2px;background:#e31b23;animation:fpCovSweep 1.1s ease-in-out infinite"></div></div>'+
+    '<div style="animation:fpCovPulse 1.6s ease-in-out infinite">Loading Atlas Deals Center</div>';
   (document.body||document.documentElement).appendChild(cov);
   var stableSince=0,lifted=false,lastH=0;
   // v138: once the page is shown, stop re-aligning entirely (it was snapping the page back while the visitor scrolled).
@@ -3754,6 +3760,9 @@ async function initCategoryTiles(rerun){
     var newestModeEarly=/^\/new-arrivals\//.test(location.pathname);
     var catPath=await fpCatPathFromTree();   // v96: tree/brand lookup first; breadcrumbs (still on brand pages) only as fallback
     if(!catPath)catPath=ssCatPath();
+    // v140: categories kept out of the menu (under the hidden folder) are missing from the
+    // GraphQL tree, so name their Searchspring path here
+    if(!catPath)catPath=({'/winter-gear/':'Winter Gear'})[location.pathname]||null;
     var fParams=ssFParams();
     var themeSort='';
     try{themeSort=new URLSearchParams(location.search).get('sort')||'';}catch(e){}
