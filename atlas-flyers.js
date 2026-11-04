@@ -1,3 +1,4 @@
+/* v147 (04NOV2026): promo sticker row (BLACK FRIDAY SAVINGS, SPEND & SAVE...) now built INTO each fp-rich tile via fpPromoRowHtml(), asking the promo engine (window.promoEngine.eligible/active) which promos match the SKU. Stickers arrive with the tile, no late pop-in or tile height jump. Engine still draws rows on theme cards and as a fallback. */
 /* v146 (04NOV2026): new SAWSTOP DEALS section (sawstopDeals, tab SAWSTOP DEALS gid 1483923011) built on the GIFTS tag engine, now shared: renderTagSection(key) + TAG_SECS. Card tabs (style C): coloured band with the saving on top, white body with saw type + photo. Tags: Contractor Saws / Industrial Cabinet Saws / Professional Cabinet Saws. Optional Eyebrow column (small line above the name). */
 /* v145 (04NOV2026): kit section titles renamed (BLACK FRIDAY DEWALT KITS / MILWAUKEE KITS / BUNDLES (Makita) / FESTOOL BUNDLES). new GIFTS section (giftDeals, tab GIFTS gid 1000708554) from the back page of the Black Friday flyer. Styled like Battery Platforms: one row of gift-tag tiles (Under $10 / $25 / $50 / $100, colour from the sheet, cut-out photo of 'Hero Product ID' or the first product, or Tile Image URL) driving ONE product strip. Tiles keep sheet order. */
 /* v144 (03NOV2026): 3 new manual sections for Black Friday kits: DEWALT KIT DEALS (dewaltKits, tab gid 792687229), MILWAUKEE KIT DEALS (milwaukeeKits, gid 117531773), FESTOOL KIT DEALS (festoolKits, gid 685088361). Containers built by fpEnsureSection; placed by the Section order tab. */
@@ -549,6 +550,23 @@ function fpVisitorShow(p,savePct){
 // Brand pages (brand-page-engine) render tiles through this so they always match the site's tiles.
 window.fpRichCard=function(p,m){return richCard(p,m||{showTag:false,_sectionKey:"brandPage"})};
 window.fpTileDataReady=function(){return fpEnsureTileData()}; // brand pages wait for brand styles / coupons before their first render
+// v147: promo sticker row (e.g. BLACK FRIDAY SAVINGS, SPEND & SAVE) built INTO the tile, same markup as the
+// promo engine (BK - ATLAS PROMO ENGINE v2), so it arrives with the tile instead of popping in later and
+// making the tile taller. The engine stays the source of truth: we only ask it which promos match this SKU.
+// If the engine is not ready yet, nothing is added here and the engine draws the row itself as before.
+function fpPromoRowHtml(sku){
+  var pe=window.promoEngine;if(!sku||!pe||!pe.active||!pe.eligible)return '';
+  var names;try{names=pe.eligible(String(sku));}catch(e){return '';}
+  if(!names||!names.length)return '';
+  var rows=pe.active().filter(function(x){var L=x.loc&&x.loc.tile;return names.indexOf(x.name)>=0&&L&&L.show&&L.type==='row'&&x.where&&x.where.tiles==='sitewide';})
+    .sort(function(a,b){return a.priority-b.priority;});
+  if(!rows.length)return '';
+  return '<div class="apb-row">'+rows.map(function(x){
+    var L=x.loc.tile,st=L.style||'solid',col=esc(L.colour||'');
+    var css=st==='dashed'?'color:'+col:(st==='outline'?'border-color:'+col:'background:'+col);
+    return '<span class="apb-chip '+esc(st)+'" style="'+css+'">'+String(L.text||'').split(' | ').map(function(s,i){return (i?'<span class="sep">|</span>':'')+'<span class="seg">'+esc(s)+'</span>';}).join('')+'</span>';
+  }).join('')+'</div>';
+}
 function richCard(p,m){
   if(!p)return'<div class="fp-rich"><div style="padding:30px 10px;text-align:center;color:#bbb;font-size:11px">Product unavailable</div></div>';
   var pr=p.prices&&p.prices.price?p.prices.price.value:null;
@@ -650,7 +668,8 @@ function richCard(p,m){
       '<button type="button" class="fp-rich-add fp-rich-choose fp-rich-cfp" onclick="fpContactForPricing('+p.entityId+',\''+esc((cn||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\',\''+esc(String(p.sku||'').replace(/\\/g,'').replace(/\'/g,"&#39;"))+'\')">CONTACT FOR PRICING</button>'+
     '</div>';
   }
-  return '<div class="fp-rich" data-bk="'+esc((b&&b.key)||'')+'">'+
+  var promoRowHtml=fpPromoRowHtml(p.sku); // v147
+  return '<div class="fp-rich'+(promoRowHtml?' apb-has-row':'')+'" data-bk="'+esc((b&&b.key)||'')+'">'+
     '<div class="fp-rich-top">'+
       (brandLabel?'<span class="fp-rich-brand" style="background:'+brandBg+';color:'+brandTc+brandBorder+'">'+esc(brandLabel)+'</span>':'<span></span>')+
       tagHtml+
@@ -659,7 +678,7 @@ function richCard(p,m){
     '<a class="fp-rich-name" href="'+esc(p.path||'#')+'" onclick="fpTrackRecent('+p.entityId+')">'+esc(cn)+'</a>'+
     '<div class="fp-rich-meta"><div class="fp-rich-sku">SKU# '+esc(p.sku||p.entityId)+'</div>'+stockHtml+'</div>'+
     '<div class="fp-rich-stats">'+viewingHtml+ribbonHtml+'</div>'+
-    couponRowHtml+
+    couponRowHtml+promoRowHtml+
     '<div class="fp-rich-prices">'+(hasDiscount?'<div class="fp-rich-sale">$'+currentPrice.toFixed(2)+'</div><div class="fp-rich-was">$'+wasPrice.toFixed(2)+'</div>':'<div class="fp-rich-reg">'+(pr?'$'+pr.toFixed(2):'See price')+'</div>')+'</div>'+
     (m.code?'<div class="fp-rich-code"><span class="fp-rich-code-lbl">Code:</span><span class="fp-rich-code-val">'+esc(m.code)+'</span></div>':'')+
     (optionsUrl
