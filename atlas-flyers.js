@@ -1,3 +1,4 @@
+/* v145 (04NOV2026): kit section titles renamed (BLACK FRIDAY DEWALT KITS / MILWAUKEE KITS / BUNDLES (Makita) / FESTOOL BUNDLES). new GIFTS section (giftDeals, tab GIFTS gid 1000708554) from the back page of the Black Friday flyer. Styled like Battery Platforms: one row of gift-tag tiles (Under $10 / $25 / $50 / $100, colour from the sheet, cut-out photo of 'Hero Product ID' or the first product, or Tile Image URL) driving ONE product strip. Tiles keep sheet order. */
 /* v144 (03NOV2026): 3 new manual sections for Black Friday kits: DEWALT KIT DEALS (dewaltKits, tab gid 792687229), MILWAUKEE KIT DEALS (milwaukeeKits, gid 117531773), FESTOOL KIT DEALS (festoolKits, gid 685088361). Containers built by fpEnsureSection; placed by the Section order tab. */
 /* v143 (02NOV2026): the red bar on the "Loading Atlas Deals Center" cover now fills left to right like a progress bar, and reaches the end just before the page shows. */
 /* v142 (02NOV2026): Winter Gear hides the 5 Snickers safety boots (Searchspring still lists them until its next re-index) and shows the 3 Southwire cold-weather extension cords at the very end of the page. */
@@ -150,6 +151,7 @@ var GIDS = {
   bonusGoods: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1398708499',
   toolStorage: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1902185686',
   tradeDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2129344817',
+  giftDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1000708554', // v145
   promoBanners: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2007099777',
   faqs: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=807514654',
   sectionOrder: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1373796339',
@@ -1932,6 +1934,73 @@ async function renderTradeDeals(){
   // fpPlatGlide(bar); // v114: trade tiles glide too  -- v118: auto-scroll switched off (Brijesh)
 }
 
+// ---- GIFTS (v145): gift tiles by price driving one strip, same engine as Battery Platforms.
+// Tab GIFTS: Trade Name, Background Color, Text Color, Product IDs, Tile Image URL (optional).
+var GIFT_ROWS=[], GIFT_GID='fp-gift-strip';
+function fpEnsureGiftSection(){
+  if($('fp-sec-giftDeals'))return;
+  var page=document.querySelector('.flyers-page');if(!page)return;
+  var d=document.createElement('div');d.className='fp-section fp-hidden';d.id='fp-sec-giftDeals';
+  d.innerHTML='<div class="fp-section-head"><span class="fp-section-title">GIFTS</span></div><div id="fp-giftDeals"></div>';
+  page.appendChild(d);
+}
+async function fpGiftShow(i){
+  var g=GIFT_ROWS[i];if(!g)return;
+  var host=$('fp-giftDeals');if(!host)return;
+  fpTabsOn(host.querySelector('.fp-plat-tabs'),i);
+  await fpStripShow(GIFT_GID,g.ids);
+}
+window.fpGiftShow=fpGiftShow;
+// "Under $10" -> small gift icon + "GIFTS UNDER" eyebrow + big "$10"; any other name shows as typed
+var FP_GIFT_ICO='<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="9" width="18" height="12" rx="1.5"/><path d="M2 9h20M12 9v12M12 9C10 5 6.5 4.5 6.5 7S10 9 12 9zM12 9c2-4 5.5-4.5 5.5-2S14 9 12 9z"/></svg>';
+function fpGiftLabel(name){
+  var m=String(name).match(/^\s*under\s+(.+)$/i);
+  return '<small>'+FP_GIFT_ICO+(m?'Gifts under':'Gifts')+'</small><b>'+esc(m?m[1]:name)+'</b>';
+}
+async function renderGifts(){
+  if(!getSetting('show_gift_deals',true)){hide('fp-sec-giftDeals');return;}
+  var rows=SECTION_DATA.giftDeals||[];
+  var host=$('fp-giftDeals');
+  if(!rows.length||!host){hide('fp-sec-giftDeals');return;}
+  GIFT_ROWS=rows.map(function(r){
+    var name=(r['Trade Name']||'').trim();
+    var ids=parseIds(r['Product IDs']||'');
+    if(!name||!ids.length)return null;
+    return {name:name,ids:ids,hero:parseIds(r['Hero Product ID']||'')[0],img:(r['Tile Image URL']||'').trim(),bg:r['Background Color']||'#c8102e',tc:r['Text Color']||'#fff'};
+  }).filter(Boolean);
+  if(!GIFT_ROWS.length){hide('fp-sec-giftDeals');return;}
+  var need=[];
+  GIFT_ROWS.forEach(function(g){need=need.concat(g.ids.slice(0,BRAND_FIRST_PAINT),g.hero?[g.hero]:[]);});
+  await fetchProducts(need);
+  GIFT_ROWS=GIFT_ROWS.filter(function(g){return g.ids.slice(0,BRAND_FIRST_PAINT).some(function(id){return isShowable(PRODUCT_CACHE[id]);});});
+  if(!GIFT_ROWS.length){hide('fp-sec-giftDeals');return;}
+  host.className='fp-plat';
+  host.innerHTML=
+    '<div class="fp-plat-tabs pt-gifts" role="tablist">'+GIFT_ROWS.map(function(g,i){
+      return '<button type="button" role="tab" class="fp-plat-tab pt-tr pt-gift" data-i="'+i+'" style="--pc:'+esc(g.bg)+';--pt:'+esc(g.tc)+';--n:'+i+'" onclick="fpGiftShow('+i+')">'+
+        '<span class="pt-name">'+fpGiftLabel(g.name)+'</span><span class="pt-img"><img alt=""></span></button>';
+    }).join('')+'</div>'+
+    '<div class="pt-vab"><button class="fp-section-btn" onclick="fpToggleSection(\''+GIFT_GID+'\',this)">VIEW ALL</button></div>'+
+    '<div class="fp-rich-grid" id="'+GIFT_GID+'" data-lead="0"><span class="fp-brow-sentinel" data-gid="'+GIFT_GID+'"></span></div>';
+  var bar=host.querySelector('.fp-plat-tabs');
+  // drop-in animation once, when the row first scrolls into view
+  if('IntersectionObserver' in window){
+    var io=new IntersectionObserver(function(en){if(!en[0].isIntersecting)return;io.disconnect();
+      bar.classList.add('pt-enter');setTimeout(function(){bar.classList.remove('pt-enter');},GIFT_ROWS.length*110+700);},{threshold:.4});
+    io.observe(bar);
+  }
+  GIFT_ROWS.forEach(function(g,i){
+    var im=bar.querySelector('.fp-plat-tab[data-i="'+i+'"] img');
+    if(g.img){im.src=g.img;return;}
+    // photo = 'Hero Product ID' if set, else the first in-stock product, cut out of its white background
+    var pid=(g.hero&&isShowable(PRODUCT_CACHE[g.hero]))?g.hero:g.ids.filter(function(id){return isShowable(PRODUCT_CACHE[id]);})[0];
+    var p=PRODUCT_CACHE[pid];var u=p&&p.defaultImage&&p.defaultImage.url;
+    if(u)fpCutout(u).then(function(c){if(c)im.src=c;});
+  });
+  show('fp-sec-giftDeals');
+  await fpGiftShow(0);
+}
+
 // ---- page look (v113): white section cards on light grey, red heading tag on
 // the card's top edge, battery / trade tiles, full-width layout on phones.
 // !important because the theme's widget reset flattens buttons and spacing.
@@ -1979,6 +2048,29 @@ function fpPageCss(){
     F+' .pt-fan{flex:0 0 104px;display:flex;align-items:center;justify-content:flex-end;gap:1px}',
     F+' .pt-fan img{width:34px'+I+';height:48px'+I+';object-fit:contain;filter:drop-shadow(0 5px 6px rgba(0,0,0,.28));transition:transform .35s}',
     T+'.pt-tr:hover .pt-fan img{transform:translateY(-3px)}',
+    // v145 gift tiles: hanging gift tag (pointed left end + string hole) in the sheet colour,
+    // gift icon + "GIFTS UNDER" eyebrow, big price, cut-out photo. Picked tag = full colour, lifted.
+    T+'.pt-gift{background:var(--pc)'+I+';border:0'+I+';border-radius:6px'+I+';box-shadow:none'+I+';color:var(--pt);padding:0 10px 0 40px;opacity:.72;'+
+      'clip-path:polygon(26px 0,100% 0,100% 100%,26px 100%,0 50%)}',
+    T+'.pt-gift:before{content:"";position:absolute;left:15px;top:50%;width:10px;height:10px;margin-top:-5px;border-radius:50%;background:#fff}',
+    // motion: tags drop in one after another, swing on their string hole on hover (the picked
+    // one too), photo pops, and the picked tag gets a light shine sweeping across every few seconds
+    T+'.pt-gift{transform-origin:20px 50%;transition:opacity .2s,transform .25s}',
+    T+'.pt-gift:hover{opacity:1;transform:translateY(-3px);animation:fpTagSwing .9s ease-out}',
+    T+'.pt-gift.fp-plat-on{opacity:1;transform:translateY(-3px)}',
+    T+'.pt-gift:after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(105deg,transparent 38%,rgba(255,255,255,.38) 50%,transparent 62%);transform:translateX(-130%)}',
+    T+'.pt-gift.fp-plat-on:after{animation:fpTagShine 3.2s ease-in-out infinite}',
+    T+'.pt-gift:hover:after{animation:fpTagShine .9s ease-out}',
+    T+'.pt-gift:hover .pt-img img{transform:scale(1.14) rotate(-5deg)}',
+    F+' .pt-gifts.pt-enter .pt-gift{animation:fpTagIn .55s cubic-bezier(.2,1.4,.4,1) both;animation-delay:calc(var(--n,0)*110ms)}',
+    '@keyframes fpTagSwing{0%{transform:translateY(-3px) rotate(0)}22%{transform:translateY(-4px) rotate(-6deg)}48%{transform:translateY(-4px) rotate(4deg)}72%{transform:translateY(-3px) rotate(-2deg)}100%{transform:translateY(-3px) rotate(0)}}',
+    '@keyframes fpTagShine{0%,55%{transform:translateX(-130%)}100%{transform:translateX(130%)}}',
+    '@keyframes fpTagIn{0%{opacity:0;transform:translateY(-22px) rotate(-8deg)}100%{transform:none}}',
+    '@media(prefers-reduced-motion:reduce){'+T+'.pt-gift,'+T+'.pt-gift:after,'+T+'.pt-gift:hover,'+T+'.pt-gift:hover:after,'+F+' .pt-gifts.pt-enter .pt-gift{animation:none'+I+'}}',
+    F+' .pt-gift .pt-name,'+F+' .pt-gift.fp-plat-on .pt-name{color:var(--pt);text-shadow:0 1px 2px rgba(0,0,0,.25)}',
+    F+' .pt-gift .pt-name small,'+F+' .pt-gift.fp-plat-on .pt-name small{display:flex;align-items:center;gap:4px;color:var(--pt);opacity:.9;font-size:9.5px;letter-spacing:1.3px;margin-bottom:2px}',
+    F+' .pt-gift .pt-name b{font-size:28px;font-weight:900;line-height:1;letter-spacing:.5px}',
+    F+' .pt-gift .pt-img{flex:0 0 78px;width:78px;height:60px}',
     // phones: use the full width (the theme pads the page) and smaller tiles so the next one peeks in
     '@media(max-width:600px){'+
       F+'{width:100vw'+I+';max-width:100vw'+I+';margin-left:calc(50% - 50vw)'+I+';margin-right:0'+I+'}'+
@@ -1994,6 +2086,10 @@ function fpPageCss(){
       F+' .pt-tr .pt-name{font-size:13.5px}'+
       F+' .pt-fan{flex-basis:84px}'+
       F+' .pt-fan img{width:27px'+I+';height:40px'+I+'}'+
+      F+' .pt-gift .pt-name b{font-size:23px}'+
+      T+'.pt-gift{padding-left:34px;clip-path:polygon(22px 0,100% 0,100% 100%,22px 100%,0 50%)}'+
+      T+'.pt-gift:before{left:12px;width:8px;height:8px;margin-top:-4px}'+
+      F+' .pt-gift .pt-img{flex-basis:60px;width:60px;height:46px}'+
     '}'
   ].join('\n');
   var st=document.createElement('style');st.id='fp-page-css';st.textContent=css;
@@ -2048,7 +2144,8 @@ var SECTION_ID_TO_DOM = {
   milwaukeeKits:'fp-sec-milwaukeeKits',
   festoolKits:'fp-sec-festoolKits',
   bonusGoods:'fp-sec-bonusGoods',
-  tradeDeals:'fp-sec-tradeDeals'
+  tradeDeals:'fp-sec-tradeDeals',
+  giftDeals:'fp-sec-giftDeals' // v145
 };
 // v113: clean Section IDs for the sheet. The Section Order tab may use either
 // the new name (left) or the old one (right); internally the old key is used,
@@ -2180,7 +2277,7 @@ function applySectionOrder(){
     // Same emptiness guard for custom (non-grid) sections that are driven by their
     // own sheet tab \u2014 trades, coupons, videos. If the tab has no rows, keep the
     // section hidden so we don't show a lonely header with no content.
-    var customDataKey={ 'fp-sec-trades':'shopByTrade', 'fp-sec-tradeDeals':'tradeDeals', 'fp-sec-coupons':'coupons', 'fp-sec-videos':'videoSection' }[domId];
+    var customDataKey={ 'fp-sec-trades':'shopByTrade', 'fp-sec-tradeDeals':'tradeDeals', 'fp-sec-giftDeals':'giftDeals', 'fp-sec-coupons':'coupons', 'fp-sec-videos':'videoSection' }[domId];
     if(customDataKey){
       if(!(SECTION_DATA[customDataKey]&&SECTION_DATA[customDataKey].length)){
         fragment.appendChild(el); // keep position, leave hidden
@@ -2773,7 +2870,7 @@ async function init(){
   setupScrollSave();
 
   // 2) Fetch all other CSVs in parallel (plus the live cart, so tiles can show "in cart")
-  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','lastChance','videoSection','shopByTrade','tradeDeals','toolStorage','makitaKits','stihlSaws','bonusGoods','dewaltKits','milwaukeeKits','festoolKits','promoBanners','faqs','sectionOrder','allCoupons'];
+  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','lastChance','videoSection','shopByTrade','tradeDeals','toolStorage','makitaKits','stihlSaws','bonusGoods','dewaltKits','milwaukeeKits','festoolKits','giftDeals','promoBanners','faqs','sectionOrder','allCoupons'];
   var promises=keys.map(function(k){return fetchCSV(k,GIDS[k]);});
   var results=await Promise.all(promises.concat([loadServerCart()]));
   keys.forEach(function(k,i){SECTION_DATA[k]=results[i]||[];});
@@ -2831,13 +2928,14 @@ async function init(){
   // renderTrades() moved: v102 renders it after renderBrandRows (shared strip engine)
   fpPageCss();
   fpEnsureSection('toolStorage','TOOL STORAGE'); // v113: sections with no container in the page HTML
-  fpEnsureSection('makitaKits','MAKITA STARTER KIT DEALS'); // v116
+  fpEnsureSection('makitaKits','BLACK FRIDAY BUNDLES'); // v116
   fpEnsureSection('stihlSaws','STIHL CHAINSAW DEALS'); // v124
-  fpEnsureSection('dewaltKits','DEWALT KIT DEALS'); // v144
-  fpEnsureSection('milwaukeeKits','MILWAUKEE KIT DEALS'); // v144
-  fpEnsureSection('festoolKits','FESTOOL KIT DEALS'); // v144
+  fpEnsureSection('dewaltKits','BLACK FRIDAY DEWALT KITS'); // v144
+  fpEnsureSection('milwaukeeKits','BLACK FRIDAY MILWAUKEE KITS'); // v144
+  fpEnsureSection('festoolKits','BLACK FRIDAY FESTOOL BUNDLES'); // v144
   fpEnsureSection('bonusGoods','BONUS GOODS'); // v135
   fpEnsureTradeSection();
+  fpEnsureGiftSection(); // v145
   applySectionOrder();
 
   // Sections are now ordered and the empty ones hidden \u2014 reveal the page (it was
@@ -2861,7 +2959,7 @@ async function init(){
   // 7) Async: bundles, staff picks, shop-by-brand rows (don't block)
   renderBundles();
   renderStaff();
-  renderBrandRows().then(function(){return renderTrades();}).then(function(){return renderTradeDeals();}).catch(function(e){console.warn("[Atlas Flyers] trades/platform rows:",e&&e.message);});
+  renderBrandRows().then(function(){return renderTrades();}).then(function(){return renderTradeDeals();}).then(function(){return renderGifts();}).catch(function(e){console.warn("[Atlas Flyers] trades/platform rows:",e&&e.message);});
 
   // Wrap any horizontal product strips with scroll arrows (idempotent; also
   // called by the section/brand renderers as they populate on scroll).
