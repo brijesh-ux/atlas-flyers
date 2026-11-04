@@ -2148,6 +2148,13 @@ function fpPageCss(){
       F+' .pt-gift .pt-name b{font-size:19px}'+
       F+' .pt-gift .pt-name b.pt-long{font-size:11.5px;max-width:none}'+
       F+' .pt-gift .pt-img{flex-basis:36px;width:36px;height:34px}'+
+      // Shop by Trade cards: same narrower width, 1 photo instead of 3 so the trade name has room
+      T+'.pt-tr:not(.pt-gift):not(.pt-card){width:calc((100vw - 48px)/2.4);height:58px;padding:0 4px 0 10px;gap:2px}'+
+      F+' .pt-tr:not(.pt-gift):not(.pt-card) .pt-name{font-size:11.5px;min-width:0;flex:1 1 auto}'+
+      F+' .pt-tr .pt-name small{font-size:7.5px;letter-spacing:.8px;margin-bottom:2px}'+
+      F+' .pt-fan{flex:0 0 32px}'+
+      F+' .pt-fan img{width:30px'+I+';height:40px'+I+'}'+
+      F+' .pt-fan img.f1,'+F+' .pt-fan img.f2{display:none'+I+'}'+
       T+'.pt-card{width:calc((100vw - 48px)/2.4);height:72px}'+
       F+' .pc-band{font-size:10px;letter-spacing:.8px;padding:3px 0;gap:3px}'+
       F+' .pc-body{padding:0 4px 0 8px;gap:3px}'+
