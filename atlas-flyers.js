@@ -1,3 +1,4 @@
+/* v146 (04NOV2026): new SAWSTOP DEALS section (sawstopDeals, tab SAWSTOP DEALS gid 1483923011) built on the GIFTS tag engine, now shared: renderTagSection(key) + TAG_SECS. Card tabs (style C): coloured band with the saving on top, white body with saw type + photo. Tags: Contractor Saws / Industrial Cabinet Saws / Professional Cabinet Saws. Optional Eyebrow column (small line above the name). */
 /* v145 (04NOV2026): kit section titles renamed (BLACK FRIDAY DEWALT KITS / MILWAUKEE KITS / BUNDLES (Makita) / FESTOOL BUNDLES). new GIFTS section (giftDeals, tab GIFTS gid 1000708554) from the back page of the Black Friday flyer. Styled like Battery Platforms: one row of gift-tag tiles (Under $10 / $25 / $50 / $100, colour from the sheet, cut-out photo of 'Hero Product ID' or the first product, or Tile Image URL) driving ONE product strip. Tiles keep sheet order. */
 /* v144 (03NOV2026): 3 new manual sections for Black Friday kits: DEWALT KIT DEALS (dewaltKits, tab gid 792687229), MILWAUKEE KIT DEALS (milwaukeeKits, gid 117531773), FESTOOL KIT DEALS (festoolKits, gid 685088361). Containers built by fpEnsureSection; placed by the Section order tab. */
 /* v143 (02NOV2026): the red bar on the "Loading Atlas Deals Center" cover now fills left to right like a progress bar, and reaches the end just before the page shows. */
@@ -152,6 +153,7 @@ var GIDS = {
   toolStorage: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1902185686',
   tradeDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2129344817',
   giftDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1000708554', // v145
+  sawstopDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1483923011', // v146
   promoBanners: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2007099777',
   faqs: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=807514654',
   sectionOrder: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1373796339',
@@ -1934,62 +1936,79 @@ async function renderTradeDeals(){
   // fpPlatGlide(bar); // v114: trade tiles glide too  -- v118: auto-scroll switched off (Brijesh)
 }
 
-// ---- GIFTS (v145): gift tiles by price driving one strip, same engine as Battery Platforms.
-// Tab GIFTS: Trade Name, Background Color, Text Color, Product IDs, Tile Image URL (optional).
-var GIFT_ROWS=[], GIFT_GID='fp-gift-strip';
-function fpEnsureGiftSection(){
-  if($('fp-sec-giftDeals'))return;
+// ---- TAG SECTIONS (v145 GIFTS, v146 SAWSTOP): a row of hanging-tag tiles driving ONE product
+// strip, same engine as Battery Platforms. One sheet tab per section with columns:
+// Trade Name, Background Color, Text Color, Product IDs, Hero Product ID, Tile Image URL,
+// Eyebrow (optional small line above the name; defaults to the section's own).
+var TAG_SECS={
+  giftDeals:{title:'GIFTS',eyebrow:'Gifts',setting:'show_gift_deals',ico:'gift'},
+  sawstopDeals:{title:'SAWSTOP DEALS',eyebrow:'SawStop',setting:'show_sawstop_deals',ico:'tag',style:'card'}
+};
+var TAG_ROWS={};
+var FP_TAG_ICO={
+  gift:'<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="9" width="18" height="12" rx="1.5"/><path d="M2 9h20M12 9v12M12 9C10 5 6.5 4.5 6.5 7S10 9 12 9zM12 9c2-4 5.5-4.5 5.5-2S14 9 12 9z"/></svg>',
+  tag:'<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>'
+};
+function fpEnsureTagSection(key){
+  if($('fp-sec-'+key))return;
   var page=document.querySelector('.flyers-page');if(!page)return;
-  var d=document.createElement('div');d.className='fp-section fp-hidden';d.id='fp-sec-giftDeals';
-  d.innerHTML='<div class="fp-section-head"><span class="fp-section-title">GIFTS</span></div><div id="fp-giftDeals"></div>';
+  var d=document.createElement('div');d.className='fp-section fp-hidden';d.id='fp-sec-'+key;
+  d.innerHTML='<div class="fp-section-head"><span class="fp-section-title">'+esc(TAG_SECS[key].title)+'</span></div><div id="fp-'+key+'"></div>';
   page.appendChild(d);
 }
-async function fpGiftShow(i){
-  var g=GIFT_ROWS[i];if(!g)return;
-  var host=$('fp-giftDeals');if(!host)return;
+async function fpTagShow(key,i){
+  var g=(TAG_ROWS[key]||[])[i];if(!g)return;
+  var host=$('fp-'+key);if(!host)return;
   fpTabsOn(host.querySelector('.fp-plat-tabs'),i);
-  await fpStripShow(GIFT_GID,g.ids);
+  await fpStripShow('fp-'+key+'-strip',g.ids);
 }
-window.fpGiftShow=fpGiftShow;
-// "Under $10" -> small gift icon + "GIFTS UNDER" eyebrow + big "$10"; any other name shows as typed
-var FP_GIFT_ICO='<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="9" width="18" height="12" rx="1.5"/><path d="M2 9h20M12 9v12M12 9C10 5 6.5 4.5 6.5 7S10 9 12 9zM12 9c2-4 5.5-4.5 5.5-2S14 9 12 9z"/></svg>';
-function fpGiftLabel(name){
-  var m=String(name).match(/^\s*under\s+(.+)$/i);
-  return '<small>'+FP_GIFT_ICO+(m?'Gifts under':'Gifts')+'</small><b>'+esc(m?m[1]:name)+'</b>';
+window.fpTagShow=fpTagShow;
+// "Under $10" -> icon + "GIFTS UNDER" eyebrow + big "$10"; other names -> icon + eyebrow, name below
+// (long names get the smaller two-line size)
+function fpTagLabel(key,g){
+  var sec=TAG_SECS[key], ico=FP_TAG_ICO[sec.ico]||'', eb=g.eyebrow||sec.eyebrow;
+  var m=String(g.name).match(/^\s*under\s+(.+)$/i);
+  if(m)return '<small>'+ico+esc(eb)+' under</small><b>'+esc(m[1])+'</b>';
+  return '<small>'+ico+esc(eb)+'</small><b'+(g.name.length>9?' class="pt-long"':'')+'>'+esc(g.name)+'</b>';
 }
-async function renderGifts(){
-  if(!getSetting('show_gift_deals',true)){hide('fp-sec-giftDeals');return;}
-  var rows=SECTION_DATA.giftDeals||[];
-  var host=$('fp-giftDeals');
-  if(!rows.length||!host){hide('fp-sec-giftDeals');return;}
-  GIFT_ROWS=rows.map(function(r){
+async function renderTagSection(key){
+  var sec=TAG_SECS[key], sid='fp-sec-'+key, gid='fp-'+key+'-strip';
+  if(!getSetting(sec.setting,true)){hide(sid);return;}
+  var rows=SECTION_DATA[key]||[];
+  var host=$('fp-'+key);
+  if(!rows.length||!host){hide(sid);return;}
+  var list=rows.map(function(r){
     var name=(r['Trade Name']||'').trim();
     var ids=parseIds(r['Product IDs']||'');
     if(!name||!ids.length)return null;
-    return {name:name,ids:ids,hero:parseIds(r['Hero Product ID']||'')[0],img:(r['Tile Image URL']||'').trim(),bg:r['Background Color']||'#c8102e',tc:r['Text Color']||'#fff'};
+    return {name:name,ids:ids,hero:parseIds(r['Hero Product ID']||'')[0],img:(r['Tile Image URL']||'').trim(),eyebrow:(r['Eyebrow']||'').trim(),bg:r['Background Color']||'#c8102e',tc:r['Text Color']||'#fff'};
   }).filter(Boolean);
-  if(!GIFT_ROWS.length){hide('fp-sec-giftDeals');return;}
+  if(!list.length){hide(sid);return;}
   var need=[];
-  GIFT_ROWS.forEach(function(g){need=need.concat(g.ids.slice(0,BRAND_FIRST_PAINT),g.hero?[g.hero]:[]);});
+  list.forEach(function(g){need=need.concat(g.ids.slice(0,BRAND_FIRST_PAINT),g.hero?[g.hero]:[]);});
   await fetchProducts(need);
-  GIFT_ROWS=GIFT_ROWS.filter(function(g){return g.ids.slice(0,BRAND_FIRST_PAINT).some(function(id){return isShowable(PRODUCT_CACHE[id]);});});
-  if(!GIFT_ROWS.length){hide('fp-sec-giftDeals');return;}
+  list=list.filter(function(g){return g.ids.slice(0,BRAND_FIRST_PAINT).some(function(id){return isShowable(PRODUCT_CACHE[id]);});});
+  TAG_ROWS[key]=list;
+  if(!list.length){hide(sid);return;}
   host.className='fp-plat';
   host.innerHTML=
-    '<div class="fp-plat-tabs pt-gifts" role="tablist">'+GIFT_ROWS.map(function(g,i){
-      return '<button type="button" role="tab" class="fp-plat-tab pt-tr pt-gift" data-i="'+i+'" style="--pc:'+esc(g.bg)+';--pt:'+esc(g.tc)+';--n:'+i+'" onclick="fpGiftShow('+i+')">'+
-        '<span class="pt-name">'+fpGiftLabel(g.name)+'</span><span class="pt-img"><img alt=""></span></button>';
+    '<div class="fp-plat-tabs pt-gifts" role="tablist">'+list.map(function(g,i){
+      // v146 'card' style (SawStop): coloured band on top with the Eyebrow, white body with name + photo
+      if(sec.style==='card')return '<button type="button" role="tab" class="fp-plat-tab pt-tr pt-card" data-i="'+i+'" style="--pc:'+esc(g.bg)+';--pt:'+esc(g.tc)+';--n:'+i+'" onclick="fpTagShow(\''+key+'\','+i+')">'+
+        '<span class="pc-band">'+(FP_TAG_ICO[sec.ico]||'')+esc(g.eyebrow||sec.eyebrow)+'</span><span class="pc-body"><span class="pt-name"><b>'+esc(g.name)+'</b></span><span class="pt-img"><img alt=""></span></span></button>';
+      return '<button type="button" role="tab" class="fp-plat-tab pt-tr pt-gift'+(g.name.length>9&&!/^\s*under\s/i.test(g.name)?' pt-wide':'')+'" data-i="'+i+'" style="--pc:'+esc(g.bg)+';--pt:'+esc(g.tc)+';--n:'+i+'" onclick="fpTagShow(\''+key+'\','+i+')">'+
+        '<span class="pt-name">'+fpTagLabel(key,g)+'</span><span class="pt-img"><img alt=""></span></button>';
     }).join('')+'</div>'+
-    '<div class="pt-vab"><button class="fp-section-btn" onclick="fpToggleSection(\''+GIFT_GID+'\',this)">VIEW ALL</button></div>'+
-    '<div class="fp-rich-grid" id="'+GIFT_GID+'" data-lead="0"><span class="fp-brow-sentinel" data-gid="'+GIFT_GID+'"></span></div>';
+    '<div class="pt-vab"><button class="fp-section-btn" onclick="fpToggleSection(\''+gid+'\',this)">VIEW ALL</button></div>'+
+    '<div class="fp-rich-grid" id="'+gid+'" data-lead="0"><span class="fp-brow-sentinel" data-gid="'+gid+'"></span></div>';
   var bar=host.querySelector('.fp-plat-tabs');
   // drop-in animation once, when the row first scrolls into view
   if('IntersectionObserver' in window){
     var io=new IntersectionObserver(function(en){if(!en[0].isIntersecting)return;io.disconnect();
-      bar.classList.add('pt-enter');setTimeout(function(){bar.classList.remove('pt-enter');},GIFT_ROWS.length*110+700);},{threshold:.4});
+      bar.classList.add('pt-enter');setTimeout(function(){bar.classList.remove('pt-enter');},list.length*110+700);},{threshold:.4});
     io.observe(bar);
   }
-  GIFT_ROWS.forEach(function(g,i){
+  list.forEach(function(g,i){
     var im=bar.querySelector('.fp-plat-tab[data-i="'+i+'"] img');
     if(g.img){im.src=g.img;return;}
     // photo = 'Hero Product ID' if set, else the first in-stock product, cut out of its white background
@@ -1997,8 +2016,11 @@ async function renderGifts(){
     var p=PRODUCT_CACHE[pid];var u=p&&p.defaultImage&&p.defaultImage.url;
     if(u)fpCutout(u).then(function(c){if(c)im.src=c;});
   });
-  show('fp-sec-giftDeals');
-  await fpGiftShow(0);
+  show(sid);
+  await fpTagShow(key,0);
+}
+function renderTagSections(){
+  return Object.keys(TAG_SECS).reduce(function(pr,k){return pr.then(function(){return renderTagSection(k);});},Promise.resolve());
 }
 
 // ---- page look (v113): white section cards on light grey, red heading tag on
@@ -2063,6 +2085,20 @@ function fpPageCss(){
     T+'.pt-gift:hover:after{animation:fpTagShine .9s ease-out}',
     T+'.pt-gift:hover .pt-img img{transform:scale(1.14) rotate(-5deg)}',
     F+' .pt-gifts.pt-enter .pt-gift{animation:fpTagIn .55s cubic-bezier(.2,1.4,.4,1) both;animation-delay:calc(var(--n,0)*110ms)}',
+    // v146 card tabs (SawStop): coloured band with the saving on top, white body with name + photo
+    T+'.pt-card{flex-direction:column'+I+';align-items:stretch'+I+';justify-content:flex-start'+I+';gap:0'+I+';padding:0'+I+';width:230px;height:86px;background:#fff'+I+';border:1.5px solid #d6d6d6'+I+';border-radius:12px'+I+';overflow:hidden;opacity:.86;transition:transform .25s,box-shadow .25s,opacity .2s,border-color .2s}',
+    T+'.pt-card:hover{opacity:1;transform:translateY(-3px);box-shadow:0 8px 18px rgba(0,0,0,.14)}',
+    T+'.pt-card.fp-plat-on{opacity:1;background:#fff'+I+';border:2px solid var(--pc)'+I+';transform:translateY(-3px);box-shadow:0 8px 20px rgba(0,0,0,.18)}',
+    F+' .pc-band{display:flex;align-items:center;justify-content:center;gap:5px;flex:0 0 auto;background:var(--pc);color:var(--pt);font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;padding:4px 0}',
+    F+' .pc-body{flex:1;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:0 8px 0 12px}',
+    F+' .pt-card .pt-name,'+F+' .pt-card.fp-plat-on .pt-name{color:#1a1a1a'+I+';font-size:14px;font-weight:900'+I+';line-height:1.1;text-shadow:none}',
+    F+' .pt-card .pt-name b{font-size:15px;font-weight:900'+I+';letter-spacing:.2px}',
+    F+' .pt-card .pt-img{flex:0 0 72px;width:72px;height:52px}',
+    T+'.pt-card:hover .pt-img img{transform:scale(1.12)}',
+    T+'.pt-card:after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(105deg,transparent 38%,rgba(255,255,255,.45) 50%,transparent 62%);transform:translateX(-130%)}',
+    T+'.pt-card.fp-plat-on:after{animation:fpTagShine 3.2s ease-in-out infinite}',
+    T+'.pt-card:hover:after{animation:fpTagShine .9s ease-out}',
+    F+' .pt-gifts.pt-enter .pt-card{animation:fpTagIn .55s cubic-bezier(.2,1.4,.4,1) both;animation-delay:calc(var(--n,0)*110ms)}',
     '@keyframes fpTagSwing{0%{transform:translateY(-3px) rotate(0)}22%{transform:translateY(-4px) rotate(-6deg)}48%{transform:translateY(-4px) rotate(4deg)}72%{transform:translateY(-3px) rotate(-2deg)}100%{transform:translateY(-3px) rotate(0)}}',
     '@keyframes fpTagShine{0%,55%{transform:translateX(-130%)}100%{transform:translateX(130%)}}',
     '@keyframes fpTagIn{0%{opacity:0;transform:translateY(-22px) rotate(-8deg)}100%{transform:none}}',
@@ -2071,6 +2107,8 @@ function fpPageCss(){
     F+' .pt-gift .pt-name small,'+F+' .pt-gift.fp-plat-on .pt-name small{display:flex;align-items:center;gap:4px;color:var(--pt);opacity:.9;font-size:9.5px;letter-spacing:1.3px;margin-bottom:2px}',
     F+' .pt-gift .pt-name b{font-size:28px;font-weight:900;line-height:1;letter-spacing:.5px}',
     F+' .pt-gift .pt-img{flex:0 0 78px;width:78px;height:60px}',
+    F+' .pt-gift .pt-name b.pt-long{font-size:17px;line-height:1.05;max-width:150px;white-space:normal}', // v146 long names (SawStop)
+    T+'.pt-gift.pt-wide{width:290px}',
     // phones: use the full width (the theme pads the page) and smaller tiles so the next one peeks in
     '@media(max-width:600px){'+
       F+'{width:100vw'+I+';max-width:100vw'+I+';margin-left:calc(50% - 50vw)'+I+';margin-right:0'+I+'}'+
@@ -2087,9 +2125,34 @@ function fpPageCss(){
       F+' .pt-fan{flex-basis:84px}'+
       F+' .pt-fan img{width:27px'+I+';height:40px'+I+'}'+
       F+' .pt-gift .pt-name b{font-size:23px}'+
+      F+' .pt-gift .pt-name b.pt-long{font-size:14px;max-width:120px}'+
+      T+'.pt-gift.pt-wide{width:236px}'+
+      T+'.pt-card{width:200px;height:78px}'+
+      F+' .pt-card .pt-name b{font-size:13px}'+
+      F+' .pt-card .pt-img{flex-basis:58px;width:58px;height:44px}'+
       T+'.pt-gift{padding-left:34px;clip-path:polygon(22px 0,100% 0,100% 100%,22px 100%,0 50%)}'+
       T+'.pt-gift:before{left:12px;width:8px;height:8px;margin-top:-4px}'+
       F+' .pt-gift .pt-img{flex-basis:60px;width:60px;height:46px}'+
+      // v146: narrower battery / gift / SawStop tabs on phones, so about 2.5 fit across and the
+      // next one peeks in at the edge (shoppers could not tell there were more tabs to swipe to)
+      T+':not(.pt-tr){width:calc((100vw - 60px)/2.45);height:58px;padding:4px 6px 4px 20px;gap:4px;margin-right:10px}'+
+      T+':not(.pt-tr):before{left:8px;top:11px;bottom:11px;width:6px}'+
+      T+':not(.pt-tr):after{right:-9px;width:7px;height:24px;margin-top:-12px}'+
+      T+':not(.pt-tr) .pt-name{font-size:11px;letter-spacing:.1px}'+
+      T+':not(.pt-tr) .pt-img{flex-basis:42px;width:42px;height:38px}'+
+      T+'.pt-gift,'+T+'.pt-gift.pt-wide{width:calc((100vw - 48px)/2.4);height:58px;padding:0 6px 0 28px;gap:2px}'+
+      F+' .pt-gift .pt-name small{font-size:8px;letter-spacing:.3px;gap:3px;white-space:nowrap}'+
+      F+' .pt-gift .pt-name small svg{display:none}'+
+      F+' .pt-gift .pt-name{min-width:0;flex:1 1 auto}'+
+      F+' .pt-gift .pt-img,'+F+' .pt-card .pt-img{flex-shrink:0}'+
+      F+' .pt-gift .pt-name b{font-size:19px}'+
+      F+' .pt-gift .pt-name b.pt-long{font-size:11.5px;max-width:none}'+
+      F+' .pt-gift .pt-img{flex-basis:36px;width:36px;height:34px}'+
+      T+'.pt-card{width:calc((100vw - 48px)/2.4);height:72px}'+
+      F+' .pc-band{font-size:10px;letter-spacing:.8px;padding:3px 0;gap:3px}'+
+      F+' .pc-body{padding:0 4px 0 8px;gap:3px}'+
+      F+' .pt-card .pt-name b{font-size:11px}'+
+      F+' .pt-card .pt-img{flex-basis:40px;width:40px;height:36px}'+
     '}'
   ].join('\n');
   var st=document.createElement('style');st.id='fp-page-css';st.textContent=css;
@@ -2145,7 +2208,8 @@ var SECTION_ID_TO_DOM = {
   festoolKits:'fp-sec-festoolKits',
   bonusGoods:'fp-sec-bonusGoods',
   tradeDeals:'fp-sec-tradeDeals',
-  giftDeals:'fp-sec-giftDeals' // v145
+  giftDeals:'fp-sec-giftDeals', // v145
+  sawstopDeals:'fp-sec-sawstopDeals' // v146
 };
 // v113: clean Section IDs for the sheet. The Section Order tab may use either
 // the new name (left) or the old one (right); internally the old key is used,
@@ -2277,7 +2341,7 @@ function applySectionOrder(){
     // Same emptiness guard for custom (non-grid) sections that are driven by their
     // own sheet tab \u2014 trades, coupons, videos. If the tab has no rows, keep the
     // section hidden so we don't show a lonely header with no content.
-    var customDataKey={ 'fp-sec-trades':'shopByTrade', 'fp-sec-tradeDeals':'tradeDeals', 'fp-sec-giftDeals':'giftDeals', 'fp-sec-coupons':'coupons', 'fp-sec-videos':'videoSection' }[domId];
+    var customDataKey={ 'fp-sec-trades':'shopByTrade', 'fp-sec-tradeDeals':'tradeDeals', 'fp-sec-giftDeals':'giftDeals', 'fp-sec-sawstopDeals':'sawstopDeals', 'fp-sec-coupons':'coupons', 'fp-sec-videos':'videoSection' }[domId];
     if(customDataKey){
       if(!(SECTION_DATA[customDataKey]&&SECTION_DATA[customDataKey].length)){
         fragment.appendChild(el); // keep position, leave hidden
@@ -2870,7 +2934,7 @@ async function init(){
   setupScrollSave();
 
   // 2) Fetch all other CSVs in parallel (plus the live cart, so tiles can show "in cart")
-  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','lastChance','videoSection','shopByTrade','tradeDeals','toolStorage','makitaKits','stihlSaws','bonusGoods','dewaltKits','milwaukeeKits','festoolKits','giftDeals','promoBanners','faqs','sectionOrder','allCoupons'];
+  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','lastChance','videoSection','shopByTrade','tradeDeals','toolStorage','makitaKits','stihlSaws','bonusGoods','dewaltKits','milwaukeeKits','festoolKits','giftDeals','sawstopDeals','promoBanners','faqs','sectionOrder','allCoupons'];
   var promises=keys.map(function(k){return fetchCSV(k,GIDS[k]);});
   var results=await Promise.all(promises.concat([loadServerCart()]));
   keys.forEach(function(k,i){SECTION_DATA[k]=results[i]||[];});
@@ -2935,7 +2999,8 @@ async function init(){
   fpEnsureSection('festoolKits','BLACK FRIDAY FESTOOL BUNDLES'); // v144
   fpEnsureSection('bonusGoods','BONUS GOODS'); // v135
   fpEnsureTradeSection();
-  fpEnsureGiftSection(); // v145
+  fpEnsureTagSection('giftDeals'); // v145
+  fpEnsureTagSection('sawstopDeals'); // v146
   applySectionOrder();
 
   // Sections are now ordered and the empty ones hidden \u2014 reveal the page (it was
@@ -2959,7 +3024,7 @@ async function init(){
   // 7) Async: bundles, staff picks, shop-by-brand rows (don't block)
   renderBundles();
   renderStaff();
-  renderBrandRows().then(function(){return renderTrades();}).then(function(){return renderTradeDeals();}).then(function(){return renderGifts();}).catch(function(e){console.warn("[Atlas Flyers] trades/platform rows:",e&&e.message);});
+  renderBrandRows().then(function(){return renderTrades();}).then(function(){return renderTradeDeals();}).then(function(){return renderTagSections();}).catch(function(e){console.warn("[Atlas Flyers] trades/platform rows:",e&&e.message);});
 
   // Wrap any horizontal product strips with scroll arrows (idempotent; also
   // called by the section/brand renderers as they populate on scroll).
