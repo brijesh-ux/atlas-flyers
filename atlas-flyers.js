@@ -1,3 +1,4 @@
+/* v148 (04NOV2026): promo sticker on the flyers pages (/flyers-and-deals/, /monthlyflyer/) had no padding because the .flyers-page reset zeroes it; restored with a higher-specificity rule so it matches the home page sticker. */
 /* v147 (04NOV2026): promo sticker row (BLACK FRIDAY SAVINGS, SPEND & SAVE...) now built INTO each fp-rich tile via fpPromoRowHtml(), asking the promo engine (window.promoEngine.eligible/active) which promos match the SKU. Stickers arrive with the tile, no late pop-in or tile height jump. Engine still draws rows on theme cards and as a fallback. */
 /* v146 (04NOV2026): new SAWSTOP DEALS section (sawstopDeals, tab SAWSTOP DEALS gid 1483923011) built on the GIFTS tag engine, now shared: renderTagSection(key) + TAG_SECS. Card tabs (style C): coloured band with the saving on top, white body with saw type + photo. Tags: Contractor Saws / Industrial Cabinet Saws / Professional Cabinet Saws. Optional Eyebrow column (small line above the name). */
 /* v145 (04NOV2026): kit section titles renamed (BLACK FRIDAY DEWALT KITS / MILWAUKEE KITS / BUNDLES (Makita) / FESTOOL BUNDLES). new GIFTS section (giftDeals, tab GIFTS gid 1000708554) from the back page of the Black Friday flyer. Styled like Battery Platforms: one row of gift-tag tiles (Under $10 / $25 / $50 / $100, colour from the sheet, cut-out photo of 'Hero Product ID' or the first product, or Tile Image URL) driving ONE product strip. Tiles keep sheet order. */
@@ -567,6 +568,12 @@ function fpPromoRowHtml(sku){
     return '<span class="apb-chip '+esc(st)+'" style="'+css+'">'+String(L.text||'').split(' | ').map(function(s,i){return (i?'<span class="sep">|</span>':'')+'<span class="seg">'+esc(s)+'</span>';}).join('')+'</span>';
   }).join('')+'</div>';
 }
+// v148: the flyers pages reset every element inside .flyers-page to margin:0;padding:0, which squashed the promo sticker
+// (BLACK FRIDAY SAVINGS) on /flyers-and-deals/ and /monthlyflyer/ (no padding, no spacing around the | in SPEND & SAVE).
+// Same values as the promo engine uses on the home page, with higher specificity so the reset cannot win.
+(function(){if(document.getElementById('fp-promo-row-css'))return;var st=document.createElement('style');st.id='fp-promo-row-css';
+  st.textContent='.flyers-page .apb-row{margin:6px 0;gap:5px}.flyers-page .apb-chip{padding:6px 10px;border-radius:6px}.flyers-page .apb-chip .sep{margin:0 6px}';
+  (document.head||document.documentElement).appendChild(st);})();
 function richCard(p,m){
   if(!p)return'<div class="fp-rich"><div style="padding:30px 10px;text-align:center;color:#bbb;font-size:11px">Product unavailable</div></div>';
   var pr=p.prices&&p.prices.price?p.prices.price.value:null;
