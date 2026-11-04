@@ -1,3 +1,4 @@
+/* v149 (04NOV2026): the "Loading Atlas Deals Center" cover on ?section= links shows only on the first section link in a browser session; later section links in the same session go straight to the section (sessionStorage fp_deep_cover_seen). Also new manual section FREE AIR HOSE (hoseKits, tab gid 1888969864): Metabo HPT nailer/stapler kits with a free 50ft hose (flyer page 9), placed last before Recently Viewed by the Section order tab. */
 /* v148 (04NOV2026): promo sticker on the flyers pages (/flyers-and-deals/, /monthlyflyer/) had no padding because the .flyers-page reset zeroes it; restored with a higher-specificity rule so it matches the home page sticker. */
 /* v147 (04NOV2026): promo sticker row (BLACK FRIDAY SAVINGS, SPEND & SAVE...) now built INTO each fp-rich tile via fpPromoRowHtml(), asking the promo engine (window.promoEngine.eligible/active) which promos match the SKU. Stickers arrive with the tile, no late pop-in or tile height jump. Engine still draws rows on theme cards and as a fallback. */
 /* v146 (04NOV2026): new SAWSTOP DEALS section (sawstopDeals, tab SAWSTOP DEALS gid 1483923011) built on the GIFTS tag engine, now shared: renderTagSection(key) + TAG_SECS. Card tabs (style C): coloured band with the saving on top, white body with saw type + photo. Tags: Contractor Saws / Industrial Cabinet Saws / Professional Cabinet Saws. Optional Eyebrow column (small line above the name). */
@@ -151,6 +152,7 @@ var GIDS = {
   dewaltKits: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=792687229',
   milwaukeeKits: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=117531773',
   festoolKits: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=685088361',
+  hoseKits: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1888969864', // v149
   bonusGoods: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1398708499',
   toolStorage: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1902185686',
   tradeDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2129344817',
@@ -2239,6 +2241,7 @@ var SECTION_ID_TO_DOM = {
   dewaltKits:'fp-sec-dewaltKits',
   milwaukeeKits:'fp-sec-milwaukeeKits',
   festoolKits:'fp-sec-festoolKits',
+  hoseKits:'fp-sec-hoseKits', // v149
   bonusGoods:'fp-sec-bonusGoods',
   tradeDeals:'fp-sec-tradeDeals',
   giftDeals:'fp-sec-giftDeals', // v145
@@ -2967,7 +2970,7 @@ async function init(){
   setupScrollSave();
 
   // 2) Fetch all other CSVs in parallel (plus the live cart, so tiles can show "in cart")
-  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','lastChance','videoSection','shopByTrade','tradeDeals','toolStorage','makitaKits','stihlSaws','bonusGoods','dewaltKits','milwaukeeKits','festoolKits','giftDeals','sawstopDeals','promoBanners','faqs','sectionOrder','allCoupons'];
+  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','lastChance','videoSection','shopByTrade','tradeDeals','toolStorage','makitaKits','stihlSaws','bonusGoods','dewaltKits','milwaukeeKits','festoolKits','hoseKits','giftDeals','sawstopDeals','promoBanners','faqs','sectionOrder','allCoupons'];
   var promises=keys.map(function(k){return fetchCSV(k,GIDS[k]);});
   var results=await Promise.all(promises.concat([loadServerCart()]));
   keys.forEach(function(k,i){SECTION_DATA[k]=results[i]||[];});
@@ -3030,6 +3033,7 @@ async function init(){
   fpEnsureSection('dewaltKits','BLACK FRIDAY DEWALT KITS'); // v144
   fpEnsureSection('milwaukeeKits','BLACK FRIDAY MILWAUKEE KITS'); // v144
   fpEnsureSection('festoolKits','BLACK FRIDAY FESTOOL BUNDLES'); // v144
+  fpEnsureSection('hoseKits','FREE AIR HOSE'); // v149
   fpEnsureSection('bonusGoods','BONUS GOODS'); // v135
   fpEnsureTradeSection();
   fpEnsureTagSection('giftDeals'); // v145
@@ -3187,6 +3191,10 @@ window.fpScrollToSectionKey=fpScrollToSectionKey;
   // v136: hide the page under a plain cover while it settles, so the visitor sees one clean
   // landing instead of the 2-3 jumps as sections above the target load. Lifts once the
   // page height and target have held still for 1.2s, on any user input, or after 5s at most.
+  // v149: the branded cover shows only on the visitor's FIRST section link in a browser session.
+  // Later section links in the same session skip it (the page data is already saved in the browser,
+  // so it builds fast); the page still lands on the section.
+  var covSeen=false;try{covSeen=sessionStorage.getItem('fp_deep_cover_seen')==='1';sessionStorage.setItem('fp_deep_cover_seen','1');}catch(e){}
   var cov=document.createElement('div');
   cov.id='fp-deep-cover';
   // v140: branded cover (black, Atlas logo, red sweep bar) instead of the plain grey text
@@ -3196,6 +3204,7 @@ window.fpScrollToSectionKey=fpScrollToSectionKey;
     '<img src="https://cdn11.bigcommerce.com/s-c7n52h/product_images/atlas_tools_machinery_logo_primary_1752526051__27052.png" alt="Atlas Tools and Machinery" style="width:220px;max-width:60vw;height:auto">'+
     '<div style="position:relative;width:240px;max-width:62vw;height:4px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden"><div id="fp-cov-fill" style="position:absolute;top:0;left:0;width:0;height:100%;border-radius:2px;background:#e31b23;transition:width .2s linear"></div></div>'+
     '<div style="animation:fpCovPulse 1.6s ease-in-out infinite">Loading Atlas Deals Center</div>';
+  if(covSeen)cov.style.display='none'; // v149: repeat section link in this session: no cover
   (document.body||document.documentElement).appendChild(cov);
   var covT0=Date.now(),covTick=setInterval(function(){
     var f=document.getElementById('fp-cov-fill');
