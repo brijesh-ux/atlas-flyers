@@ -1,3 +1,4 @@
+/* v144 (03NOV2026): 3 new manual sections for Black Friday kits: DEWALT KIT DEALS (dewaltKits, tab gid 792687229), MILWAUKEE KIT DEALS (milwaukeeKits, gid 117531773), FESTOOL KIT DEALS (festoolKits, gid 685088361). Containers built by fpEnsureSection; placed by the Section order tab. */
 /* v143 (02NOV2026): the red bar on the "Loading Atlas Deals Center" cover now fills left to right like a progress bar, and reaches the end just before the page shows. */
 /* v142 (02NOV2026): Winter Gear hides the 5 Snickers safety boots (Searchspring still lists them until its next re-index) and shows the 3 Southwire cold-weather extension cords at the very end of the page. */
 /* v141 (02NOV2026): Winter Gear (/winter-gear/) opens with the crossed-off items first (biggest % off at the top), using Searchspring order. The shopper can still change the sort. */
@@ -143,6 +144,9 @@ var GIDS = {
   shopByTrade: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1407344995',
   makitaKits: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1971726171',
   stihlSaws: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=557208454',
+  dewaltKits: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=792687229',
+  milwaukeeKits: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=117531773',
+  festoolKits: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=685088361',
   bonusGoods: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1398708499',
   toolStorage: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1902185686',
   tradeDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2129344817',
@@ -2040,6 +2044,9 @@ var SECTION_ID_TO_DOM = {
   toolStorage:'fp-sec-toolStorage',
   makitaKits:'fp-sec-makitaKits',
   stihlSaws:'fp-sec-stihlSaws',
+  dewaltKits:'fp-sec-dewaltKits',
+  milwaukeeKits:'fp-sec-milwaukeeKits',
+  festoolKits:'fp-sec-festoolKits',
   bonusGoods:'fp-sec-bonusGoods',
   tradeDeals:'fp-sec-tradeDeals'
 };
@@ -2766,7 +2773,7 @@ async function init(){
   setupScrollSave();
 
   // 2) Fetch all other CSVs in parallel (plus the live cart, so tiles can show "in cart")
-  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','lastChance','videoSection','shopByTrade','tradeDeals','toolStorage','makitaKits','stihlSaws','bonusGoods','promoBanners','faqs','sectionOrder','allCoupons'];
+  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','lastChance','videoSection','shopByTrade','tradeDeals','toolStorage','makitaKits','stihlSaws','bonusGoods','dewaltKits','milwaukeeKits','festoolKits','promoBanners','faqs','sectionOrder','allCoupons'];
   var promises=keys.map(function(k){return fetchCSV(k,GIDS[k]);});
   var results=await Promise.all(promises.concat([loadServerCart()]));
   keys.forEach(function(k,i){SECTION_DATA[k]=results[i]||[];});
@@ -2826,6 +2833,9 @@ async function init(){
   fpEnsureSection('toolStorage','TOOL STORAGE'); // v113: sections with no container in the page HTML
   fpEnsureSection('makitaKits','MAKITA STARTER KIT DEALS'); // v116
   fpEnsureSection('stihlSaws','STIHL CHAINSAW DEALS'); // v124
+  fpEnsureSection('dewaltKits','DEWALT KIT DEALS'); // v144
+  fpEnsureSection('milwaukeeKits','MILWAUKEE KIT DEALS'); // v144
+  fpEnsureSection('festoolKits','FESTOOL KIT DEALS'); // v144
   fpEnsureSection('bonusGoods','BONUS GOODS'); // v135
   fpEnsureTradeSection();
   applySectionOrder();
