@@ -1,3 +1,4 @@
+/* v150 (06NOV2026): banner tiles and brand logos ask the BigCommerce CDN for the size they are shown at (srcset 300/450/900w from the same upload; sharp screens still get the 900 wide file) instead of the full original; flyer tabs after the first 4 load lazily. Deals page images were 7.5 MB / 200 MB decoded on phones. */
 /* v149 (04NOV2026): the "Loading Atlas Deals Center" cover on ?section= links shows only on the first section link in a browser session; later section links in the same session go straight to the section (sessionStorage fp_deep_cover_seen). Also new manual section FREE AIR HOSE (hoseKits, tab gid 1888969864): Metabo HPT nailer/stapler kits with a free 50ft hose (flyer page 9), placed last before Recently Viewed by the Section order tab. */
 /* v148 (04NOV2026): promo sticker on the flyers pages (/flyers-and-deals/, /monthlyflyer/) had no padding because the .flyers-page reset zeroes it; restored with a higher-specificity rule so it matches the home page sticker. */
 /* v147 (04NOV2026): promo sticker row (BLACK FRIDAY SAVINGS, SPEND & SAVE...) now built INTO each fp-rich tile via fpPromoRowHtml(), asking the promo engine (window.promoEngine.eligible/active) which promos match the SKU. Stickers arrive with the tile, no late pop-in or tile height jump. Engine still draws rows on theme cards and as a fallback. */
@@ -220,6 +221,9 @@ function $(id){return document.getElementById(id);}
 function show(id){var e=$(id);if(e)e.classList.remove('fp-hidden');}
 function hide(id){var e=$(id);if(e)e.classList.add('fp-hidden');}
 function esc(s){if(s==null)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+// v150: BigCommerce CDN resizes on request. Swap the /images/stencil/<size>/ segment for '<w>w'; non BigCommerce URLs get no srcset.
+function fpBcImg(u,w){u=u||'';return /cdn11\.bigcommerce\.com\/[^?]*\/images\/stencil\/[^/]+\//.test(u)?u.replace(/\/images\/stencil\/[^/]+\//,'/images/stencil/'+w+'w/'):'';}
+function fpImgAttrs(u,sizes,ws){var ss=(ws||[300,450,900]).map(function(w){var r=fpBcImg(u,w);return r?r+' '+w+'w':'';}).filter(Boolean);return ss.length?' srcset="'+esc(ss.join(', '))+'" sizes="'+esc(sizes)+'"':'';}
 function getSetting(k,def){var v=SETTINGS[k];if(v===undefined||v==='')return def;if(v==='yes')return true;if(v==='no')return false;var n=parseFloat(v);return isNaN(n)?v:n;}
 function trueish(v){return v===true||v==='yes'||String(v).toLowerCase()==='true';}
 function getBrand(key){if(!key)return null;var k=String(key).toLowerCase().trim();return BRAND_STYLES[k]||null;}
@@ -826,7 +830,7 @@ function renderFlyerTabs(){
   var rows=SECTION_DATA.flyerTabs||[];
   if(!rows.length){var w=$('fp-flyer-tabs-wrap');if(w)w.style.display='none';return;}
   rows=fpFreshRows('flyerTabs',rows); // freshness (Sequencing=Off)
-  el.innerHTML=rows.map(function(r){
+  el.innerHTML=rows.map(function(r,ti){
     var t=r['Flyer Name']||r['title']||'';
     var im=r['Flyer Image URL']||r['imageUrl']||'';
     var lk=r['Link When Clicked']||r['linkUrl']||'#';
@@ -838,7 +842,7 @@ function renderFlyerTabs(){
     // normal Link When Clicked URL. Nothing is brand-specific in the code.
     var sc=(r['Scroll to Section']||r['Scroll To Section']||r['scrollTo']||'').trim();
     var dataAttr=sc?' data-scroll-bk="'+esc(sc)+'"':'';
-    return '<a class="fp-flyer-tab" href="'+esc(lk)+'"'+dataAttr+'>'+(im?'<img src="'+esc(im)+'" alt="'+esc(t)+'" loading="eager">':'')+'<div class="fp-flyer-tab-title">'+esc(t)+'</div></a>';
+    return '<a class="fp-flyer-tab" href="'+esc(lk)+'"'+dataAttr+'>'+(im?'<img src="'+esc(im)+'"'+fpImgAttrs(im,'(max-width:599px) 44vw, (max-width:899px) 32vw, 23vw')+' alt="'+esc(t)+'" loading="'+(ti<4?'eager':'lazy')+'">':'')+'<div class="fp-flyer-tab-title">'+esc(t)+'</div></a>';
   }).join('');
   // Delegated click: if a tab targets a brand and that brand's strip exists on
   // the page, smooth-scroll to it; otherwise let the normal link proceed.
@@ -1145,10 +1149,10 @@ async function renderBrandRows(){
     var metaHtml=(countHtml||expHtml)?('<div class="fp-btile-meta">'+countHtml+expHtml+'</div>'):'';
 
     var logo=b.style&&b.style.logoUrl
-      ? '<img class="fp-brow-logo" src="'+esc(b.style.logoUrl)+'" alt="'+esc(b.name)+'">'
+      ? '<img class="fp-brow-logo" src="'+esc(b.style.logoUrl)+'"'+fpImgAttrs(b.style.logoUrl,'340px',[400,800])+' alt="'+esc(b.name)+'">'
       : '<span class="fp-brow-logotext" style="color:'+tc+'">'+esc(b.name)+'</span>';
     var img=b.style&&b.style.brandIconUrl
-      ? '<div class="fp-btile-imgwrap"><img class="fp-btile-img" src="'+esc(b.style.brandIconUrl)+'" alt=""></div>'
+      ? '<div class="fp-btile-imgwrap"><img class="fp-btile-img" src="'+esc(b.style.brandIconUrl)+'"'+fpImgAttrs(b.style.brandIconUrl,'360px',[400,800])+' alt="" loading="lazy"></div>'
       : '';
 
     // The brand tile (same footprint as a product card) \u2014 first cell of deal 1.
@@ -1466,7 +1470,7 @@ function renderHero(){
   var b=urgent.brand,d=urgent.deal;
   var bg=b.style?b.style.accentBg:'#1a1a1a';
   var tc=b.style?b.style.accentText:'#fff';
-  var logo=b.style&&b.style.logoUrl?'<img src="'+esc(b.style.logoUrl)+'" alt="'+esc(b.name)+'" style="height:36px;max-width:140px;object-fit:contain;margin-right:16px">':'';
+  var logo=b.style&&b.style.logoUrl?'<img src="'+esc(b.style.logoUrl)+'"'+fpImgAttrs(b.style.logoUrl,'140px',[300,600])+' alt="'+esc(b.name)+'" style="height:36px;max-width:140px;object-fit:contain;margin-right:16px">':'';
   wrap.innerHTML='<a class="fp-featured" style="background:'+bg+';border-color:'+bg+'" onclick="fpOpenBrandPanel(\''+b.key+'\');return false;" href="#">'+
     '<div style="display:flex;align-items:center;flex:1;min-width:0">'+logo+
       '<div style="min-width:0">'+
