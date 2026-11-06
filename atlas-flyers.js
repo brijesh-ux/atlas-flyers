@@ -1,3 +1,4 @@
+/* v151 (06NOV2026): out-of-stock product tiles (search, /shop/, deals and brand pages) show no price, matching the out-of-stock product page, which already hides it (ticket ECOM-0057: SIL-343-17 showed $63.99 in search but no price on its page). Notify Me stays. Contact for Pricing and in-stock tiles unchanged. */
 /* v150 (06NOV2026): banner tiles and brand logos ask the BigCommerce CDN for the size they are shown at (srcset 300/450/900w from the same upload; sharp screens still get the 900 wide file) instead of the full original; flyer tabs after the first 4 load lazily. Deals page images were 7.5 MB / 200 MB decoded on phones. */
 /* v149 (04NOV2026): the "Loading Atlas Deals Center" cover on ?section= links shows only on the first section link in a browser session; later section links in the same session go straight to the section (sessionStorage fp_deep_cover_seen). Also new manual section FREE AIR HOSE (hoseKits, tab gid 1888969864): Metabo HPT nailer/stapler kits with a free 50ft hose (flyer page 9), placed last before Recently Viewed by the Section order tab. */
 /* v148 (04NOV2026): promo sticker on the flyers pages (/flyers-and-deals/, /monthlyflyer/) had no padding because the .flyers-page reset zeroes it; restored with a higher-specificity rule so it matches the home page sticker. */
@@ -692,7 +693,8 @@ function richCard(p,m){
     '<div class="fp-rich-meta"><div class="fp-rich-sku">SKU# '+esc(p.sku||p.entityId)+'</div>'+stockHtml+'</div>'+
     '<div class="fp-rich-stats">'+viewingHtml+ribbonHtml+'</div>'+
     couponRowHtml+promoRowHtml+
-    '<div class="fp-rich-prices">'+(hasDiscount?'<div class="fp-rich-sale">$'+currentPrice.toFixed(2)+'</div><div class="fp-rich-was">$'+wasPrice.toFixed(2)+'</div>':'<div class="fp-rich-reg">'+(pr?'$'+pr.toFixed(2):'See price')+'</div>')+'</div>'+
+    // v151: out-of-stock tiles show no price, same as the out-of-stock product page (ECOM-0057)
+    '<div class="fp-rich-prices">'+(!canBuy?'':hasDiscount?'<div class="fp-rich-sale">$'+currentPrice.toFixed(2)+'</div><div class="fp-rich-was">$'+wasPrice.toFixed(2)+'</div>':'<div class="fp-rich-reg">'+(pr?'$'+pr.toFixed(2):'See price')+'</div>')+'</div>'+
     (m.code?'<div class="fp-rich-code"><span class="fp-rich-code-lbl">Code:</span><span class="fp-rich-code-val">'+esc(m.code)+'</span></div>':'')+
     (optionsUrl
       ? (!canBuy
