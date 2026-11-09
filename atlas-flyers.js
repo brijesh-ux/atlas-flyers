@@ -1,3 +1,4 @@
+/* v153 (09NOV2026): Winter Gear (/winter-gear/) default view mixes 5 groups in turn (Snow Blowers and Shovels, Clothing and Apparel, Gloves and Traction, Heaters Cords and Power, Lighting), biggest % off first inside each group (FP_CAT_MIX). Any chosen sort or filter goes back to plain Searchspring order. The Sort box there now reads "Biggest % Off" instead of "Featured". */
 /* v152 (09NOV2026): BLACK FRIDAY DEAL diagonal ribbon (top right corner) is built INTO each fp-rich tile via fpPromoRibbonHtml(), asking the promo engine (window.promoEngine.tileRibbon(sku, % off)) the same way the sticker row works since v147. Ribbon arrives with the tile, no late pop-in. Ribbon CSS lives here too so it is styled before the engine loads. When the engine promo ends (after Dec 1 2026) the engine answers nothing and no ribbon is drawn. */
 /* v151 (06NOV2026): out-of-stock product tiles (search, /shop/, deals and brand pages) show no price, matching the out-of-stock product page, which already hides it (ticket ECOM-0057: SIL-343-17 showed $63.99 in search but no price on its page). Notify Me stays. Contact for Pricing and in-stock tiles unchanged. */
 /* v150 (06NOV2026): banner tiles and brand logos ask the BigCommerce CDN for the size they are shown at (srcset 300/450/900w from the same upload; sharp screens still get the 900 wide file) instead of the full original; flyer tabs after the first 4 load lazily. Deals page images were 7.5 MB / 200 MB decoded on phones. */
@@ -3752,6 +3753,27 @@ var FP_SS_DEFAULT_SORT={'/winter-gear/':'discount'};
 // v142: per-page product ids to drop, or to hold back until the very end of the grid
 //   Winter Gear: hide = 5 Snickers safety boots (not winter), last = 3 Southwire cold-weather cords
 var FP_CAT_RULES={'/winter-gear/':{hide:[66308,66315,66319,66320,66321],last:[65065,65067,90757]}};
+// v153: default view (no ?sort, no filters) mixes groups: one product from each group in turn,
+//   biggest % off first inside each group. Groups tested IN ORDER against "categories | name";
+//   anything unmatched goes to the last group.
+var FP_CAT_MIX={'/winter-gear/':[
+  {name:'Snow Blowers and Shovels',re:/snow|shovel|scraper/i},
+  {name:'Clothing and Apparel',re:/Clothing & Apparel/i},
+  {name:'Gloves and Traction',re:/glove|footwear|icetred|traction/i},
+  {name:'Heaters, Cords and Power',re:/\|[^|]*(heater|BTU|extension cord|SJEOOW|power source|power bank)[^|]*$/i},   // name part only
+  {name:'Lighting',re:/./}
+]};
+function fpMixGroups(results,groups){
+  var buckets=groups.map(function(){return [];});
+  results.forEach(function(x){
+    var txt=(x.categories_hierarchy||[]).join(' | ').replace(/&gt;/g,'>').replace(/&amp;/g,'&')+' | '+String(x.name||'').replace(/&amp;/g,'&');
+    for(var i=0;i<groups.length;i++){if(groups[i].re.test(txt)){buckets[i].push(x);return;}}
+    buckets[buckets.length-1].push(x);
+  });
+  var out=[],more=true;
+  for(var r=0;more;r++){more=false;buckets.forEach(function(b){if(r<b.length){out.push(b[r]);more=true;}});}
+  return out;
+}
 function ssCatPath(){
   if(/^\/new-arrivals\//.test(location.pathname))return 'New Arrivals';
   var names=[].slice.call(document.querySelectorAll('.breadcrumbs li')).map(function(li){
@@ -4065,7 +4087,9 @@ async function initCategoryTiles(rerun){
     }
     var wrap=document.createElement('div');
     wrap.className='fp-rich-grid fp-cat-grid';
-    var ssPage=0,ssTotalPages=1;
+    var ssPage=0,ssTotalPages=1,mixQueue=null;
+    var themeSortNow='';try{themeSortNow=new URLSearchParams(location.search).get('sort')||'';}catch(e){}
+    var mixGroups=(!fParams.any&&!themeSortNow)?FP_CAT_MIX[location.pathname]:null;
     function ssResultItem(x){
       var id=parseInt(x&&x.uid,10);
       if(!(id>0))return null;
@@ -4078,7 +4102,24 @@ async function initCategoryTiles(rerun){
       // category; tiles still render as richCards from GraphQL product data.
       // Fetched BEFORE takeover so an SS outage just leaves the unfiltered grid.
       var d1=null;
-      try{d1=await fetch(ssSearchUrl(catPath,fParams,1,40)).then(function(r){return r.ok?r.json():null;});}catch(e){}
+      if(mixGroups){
+        // v153: pull the whole page (100 per call), mix the groups, then serve it 40 at a time
+        try{
+          var all=[],mp=1,mTot=1;
+          do{
+            var dm=await fetch(ssSearchUrl(catPath,fParams,mp,100)).then(function(r){return r.ok?r.json():null;});
+            if(!dm||!Array.isArray(dm.results)){all=null;break;}
+            all=all.concat(dm.results);
+            mTot=(dm.pagination&&dm.pagination.totalPages)||1;
+            mp++;
+          }while(mp<=mTot&&mp<=10);
+          if(all&&all.length){
+            mixQueue=fpMixGroups(all,mixGroups);
+            d1={results:mixQueue.splice(0,40),pagination:{totalPages:1}};
+          }
+        }catch(e){mixQueue=null;d1=null;}
+      }
+      if(!d1)try{d1=await fetch(ssSearchUrl(catPath,fParams,1,40)).then(function(r){return r.ok?r.json():null;});}catch(e){}
       if(d1&&Array.isArray(d1.results)){
         ssPage=1;
         ssTotalPages=(d1.pagination&&d1.pagination.totalPages)||1;
@@ -4147,8 +4188,10 @@ async function initCategoryTiles(rerun){
         }
         if(facets){
           ssBuildFilterBar(facets,null,{
-            names:{featured:'Featured',newest:'Newest',bestselling:'Best Selling',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'},
-            def:newestModeEarly?'newest':'featured'
+            names:FP_SS_DEFAULT_SORT[location.pathname]==='discount'
+              ?{discount:'Biggest % Off',featured:'Featured',newest:'Newest',bestselling:'Best Selling',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'}
+              :{featured:'Featured',newest:'Newest',bestselling:'Best Selling',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'},
+            def:newestModeEarly?'newest':(FP_SS_DEFAULT_SORT[location.pathname]||'featured')
           });
           fpFilterFloat();
         }
@@ -4216,6 +4259,15 @@ async function initCategoryTiles(rerun){
       }
     }
     async function loadSS(){
+      if(mixQueue){
+        if(!mixQueue.length){exhausted=true;appendHeldLast();return;}
+        var mi=mixQueue.splice(0,40).map(ssResultItem).filter(Boolean);
+        await fpFetchProductsCached(mi.map(function(x){return x.id;}));
+        var mh=cardsHtml(mi);
+        if(mh){wrap.insertAdjacentHTML('beforeend',mh);fpSinkOos(wrap);applyCartStateToButtons();}
+        if(!mixQueue.length){exhausted=true;appendHeldLast();}
+        return;
+      }
       if(ssPage>=ssTotalPages){exhausted=true;appendHeldLast();return;}
       ssPage++;
       var d=await fetch(ssSearchUrl(catPath,fParams,ssPage,40)).then(function(r){return r.ok?r.json():null;});
