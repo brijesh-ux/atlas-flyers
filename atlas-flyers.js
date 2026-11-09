@@ -1,3 +1,4 @@
+/* v154 (09NOV2026): Winter Gear default view goes back to biggest % off first, but no more than 2 Lighting products in any 6 tiles in a row (fpMixGroups); a light over that limit waits for the next free spot. Replaces the v153 one-from-each-group turns. */
 /* v153 (09NOV2026): Winter Gear (/winter-gear/) default view mixes 5 groups in turn (Snow Blowers and Shovels, Clothing and Apparel, Gloves and Traction, Heaters Cords and Power, Lighting), biggest % off first inside each group (FP_CAT_MIX). Any chosen sort or filter goes back to plain Searchspring order. The Sort box there now reads "Biggest % Off" instead of "Featured". */
 /* v152 (09NOV2026): BLACK FRIDAY DEAL diagonal ribbon (top right corner) is built INTO each fp-rich tile via fpPromoRibbonHtml(), asking the promo engine (window.promoEngine.tileRibbon(sku, % off)) the same way the sticker row works since v147. Ribbon arrives with the tile, no late pop-in. Ribbon CSS lives here too so it is styled before the engine loads. When the engine promo ends (after Dec 1 2026) the engine answers nothing and no ribbon is drawn. */
 /* v151 (06NOV2026): out-of-stock product tiles (search, /shop/, deals and brand pages) show no price, matching the out-of-stock product page, which already hides it (ticket ECOM-0057: SIL-343-17 showed $63.99 in search but no price on its page). Notify Me stays. Contact for Pricing and in-stock tiles unchanged. */
@@ -3770,8 +3771,21 @@ function fpMixGroups(results,groups){
     for(var i=0;i<groups.length;i++){if(groups[i].re.test(txt)){buckets[i].push(x);return;}}
     buckets[buckets.length-1].push(x);
   });
-  var out=[],more=true;
-  for(var r=0;more;r++){more=false;buckets.forEach(function(b){if(r<b.length){out.push(b[r]);more=true;}});}
+  // v154: keep the biggest % off order, but no more than CAP items of the LAST group
+  //   (Lighting) in any PER tiles in a row; a light over the cap waits for the next free spot.
+  var CAP=2,PER=6,isLast={},rest=[];
+  buckets[buckets.length-1].forEach(function(x){isLast[x.uid]=1;});
+  results.forEach(function(x){rest.push(x);});   // results arrive sorted by % off
+  var out=[];
+  while(rest.length){
+    var win=out.slice(-(PER-1)),n=0;
+    win.forEach(function(x){if(isLast[x.uid])n++;});
+    var pick=0;
+    if(n>=CAP&&isLast[rest[0].uid]){
+      for(var k=0;k<rest.length;k++){if(!isLast[rest[k].uid]){pick=k;break;}}
+    }
+    out.push(rest.splice(pick,1)[0]);
+  }
   return out;
 }
 function ssCatPath(){
