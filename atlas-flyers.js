@@ -1,3 +1,4 @@
+/* v152 (09NOV2026): BLACK FRIDAY DEAL diagonal ribbon (top right corner) is built INTO each fp-rich tile via fpPromoRibbonHtml(), asking the promo engine (window.promoEngine.tileRibbon(sku, % off)) the same way the sticker row works since v147. Ribbon arrives with the tile, no late pop-in. Ribbon CSS lives here too so it is styled before the engine loads. When the engine promo ends (after Dec 1 2026) the engine answers nothing and no ribbon is drawn. */
 /* v151 (06NOV2026): out-of-stock product tiles (search, /shop/, deals and brand pages) show no price, matching the out-of-stock product page, which already hides it (ticket ECOM-0057: SIL-343-17 showed $63.99 in search but no price on its page). Notify Me stays. Contact for Pricing and in-stock tiles unchanged. */
 /* v150 (06NOV2026): banner tiles and brand logos ask the BigCommerce CDN for the size they are shown at (srcset 300/450/900w from the same upload; sharp screens still get the 900 wide file) instead of the full original; flyer tabs after the first 4 load lazily. Deals page images were 7.5 MB / 200 MB decoded on phones. */
 /* v149 (04NOV2026): the "Loading Atlas Deals Center" cover on ?section= links shows only on the first section link in a browser session; later section links in the same session go straight to the section (sessionStorage fp_deep_cover_seen). Also new manual section FREE AIR HOSE (hoseKits, tab gid 1888969864): Metabo HPT nailer/stapler kits with a free 50ft hose (flyer page 9), placed last before Recently Viewed by the Section order tab. */
@@ -575,6 +576,16 @@ function fpPromoRowHtml(sku){
     return '<span class="apb-chip '+esc(st)+'" style="'+css+'">'+String(L.text||'').split(' | ').map(function(s,i){return (i?'<span class="sep">|</span>':'')+'<span class="seg">'+esc(s)+'</span>';}).join('')+'</span>';
   }).join('')+'</div>';
 }
+// v152: diagonal promo ribbon (e.g. BLACK FRIDAY DEAL), built into the tile. The promo engine decides (SKU lists, brands, % off rule).
+function fpPromoRibbonHtml(sku,pct){
+  var pe=window.promoEngine;if(!sku||!pe||!pe.tileRibbon)return '';
+  var t;try{t=pe.tileRibbon(String(sku),Number(pct)||0);}catch(e){return '';}
+  return t?'<div class="apb-rib-wrap"><div class="apb-rib">'+esc(t)+'</div></div>':'';
+}
+(function(){if(document.getElementById('fp-promo-rib-css'))return;var st=document.createElement('style');st.id='fp-promo-rib-css';
+  st.textContent='.apb-rib-wrap{position:absolute;top:0;right:0;width:130px;height:110px;overflow:hidden;pointer-events:none;z-index:6;border-top-right-radius:inherit}'+
+    '.apb-rib{position:absolute;top:24px;right:-44px;width:180px;transform:rotate(35deg);background:#111;color:#fff;text-align:center;font:800 10px/1 "Roboto Condensed",Roboto,Arial,sans-serif!important;letter-spacing:.4px;padding:5px 0;white-space:nowrap;box-shadow:0 2px 5px rgba(0,0,0,.35);border-top:2px solid #ffd07b;border-bottom:2px solid #ffd07b}';
+  (document.head||document.documentElement).appendChild(st);})();
 // v148: the flyers pages reset every element inside .flyers-page to margin:0;padding:0, which squashed the promo sticker
 // (BLACK FRIDAY SAVINGS) on /flyers-and-deals/ and /monthlyflyer/ (no padding, no spacing around the | in SPEND & SAVE).
 // Same values as the promo engine uses on the home page, with higher specificity so the reset cannot win.
@@ -683,7 +694,9 @@ function richCard(p,m){
     '</div>';
   }
   var promoRowHtml=fpPromoRowHtml(p.sku); // v147
-  return '<div class="fp-rich'+(promoRowHtml?' apb-has-row':'')+'" data-bk="'+esc((b&&b.key)||'')+'">'+
+  // v152: exact % off (not rounded) from the same prices the tile shows; out-of-stock tiles show no price, so 0
+  var promoRibHtml=fpPromoRibbonHtml(p.sku,(canBuy&&hasDiscount&&wasPrice>0)?(wasPrice-currentPrice)/wasPrice*100:0);
+  return '<div class="fp-rich'+(promoRowHtml?' apb-has-row':'')+'" data-bk="'+esc((b&&b.key)||'')+'"'+(promoRibHtml?' data-apb-rib="1"':'')+'>'+promoRibHtml+
     '<div class="fp-rich-top">'+
       (brandLabel?'<span class="fp-rich-brand" style="background:'+brandBg+';color:'+brandTc+brandBorder+'">'+esc(brandLabel)+'</span>':'<span></span>')+
       tagHtml+
