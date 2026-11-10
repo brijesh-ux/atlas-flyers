@@ -1,3 +1,4 @@
+/* v155 (10NOV2026): "Monthly Flyer Deals" tab gets a "Deals Page" column. The deals page BLACK FRIDAY section shows only rows marked yes (the coupon items); the /monthlyflyer/ landing page shows every row (the full flyer). Fixes the landing page showing only the coupon items since 04NOV2026. */
 /* v154 (09NOV2026): Winter Gear default view goes back to biggest % off first, but no more than 2 Lighting products in any 6 tiles in a row (fpMixGroups); a light over that limit waits for the next free spot. Replaces the v153 one-from-each-group turns. */
 /* v153 (09NOV2026): Winter Gear (/winter-gear/) default view mixes 5 groups in turn (Snow Blowers and Shovels, Clothing and Apparel, Gloves and Traction, Heaters Cords and Power, Lighting), biggest % off first inside each group (FP_CAT_MIX). Any chosen sort or filter goes back to plain Searchspring order. The Sort box there now reads "Biggest % Off" instead of "Featured". */
 /* v152 (09NOV2026): BLACK FRIDAY DEAL diagonal ribbon (top right corner) is built INTO each fp-rich tile via fpPromoRibbonHtml(), asking the promo engine (window.promoEngine.tileRibbon(sku, % off)) the same way the sticker row works since v147. Ribbon arrives with the tile, no late pop-in. Ribbon CSS lives here too so it is styled before the engine loads. When the engine promo ends (after Dec 1 2026) the engine answers nothing and no ribbon is drawn. */
@@ -3017,7 +3018,14 @@ async function init(){
   COUPON_PRODUCT_IDS=couponIdOrder;
   // Synthetic rows so the Monthly Flyer section renders through the generic
   // section renderer (paging, scroll, View All) exactly like other sections.
-  SECTION_DATA.monthlyFlyer=couponIdOrder.map(function(id){return {'Product ID':id};});
+  // v155: the deals page BLACK FRIDAY section shows only rows marked "yes" in the tab's "Deals Page" column
+  // (the coupon items); /monthlyflyer/ still shows every row. No "Deals Page" column or no "yes" anywhere = all rows, as before.
+  var mfDealIds=[],mfDealSeen={},mfHasFlag=false;
+  (SECTION_DATA.allCoupons||[]).forEach(function(r){
+    if(!/^y(es)?$/i.test(String(r['Deals Page']||'').trim()))return;mfHasFlag=true;
+    String(r['Big Commerce Product ID']||r['BigCommerce Product ID']||r['Product ID']||'').split(',').forEach(function(pid){pid=pid.trim();if(pid&&!mfDealSeen[pid]){mfDealSeen[pid]=1;mfDealIds.push(pid);}});
+  });
+  SECTION_DATA.monthlyFlyer=(mfHasFlag?mfDealIds:couponIdOrder).map(function(id){return {'Product ID':id};});
 
   // (Brand injection runs later, after BRANDS_DEALS is parsed \u2014 see below.)
 
