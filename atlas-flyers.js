@@ -1,3 +1,4 @@
+/* v160 (11NOV2026): product tiles everywhere: the regular black price now sits on the right of the tile, the same spot as the red sale price (was on the left). */
 /* v159 (11NOV2026): /sale/ page rows keep loading more products as the shopper scrolls sideways (same as the deals page strips) instead of stopping at 12. */
 /* v158 (11NOV2026): /sale/ page: removed the thin grey line above each section heading (site default divider that showed through in v157). Fixed "Product unavailable" tiles: when two sections asked BigCommerce for the same product at once, an empty answer could wipe the good data; now good data is never wiped, an empty answer is retried once, and a tile is only drawn when its data is good. */
 /* v157 (11NOV2026): /sale/ page fixes: section heading no longer overlaps the top of the tiles (12px gap), and the brand tags on tiles keep their normal shape (page styles scoped with a class instead of an id, so they no longer beat the tile styles). */
@@ -596,7 +597,8 @@ function fpPromoRibbonHtml(sku,pct){
 }
 (function(){if(document.getElementById('fp-promo-rib-css'))return;var st=document.createElement('style');st.id='fp-promo-rib-css';
   st.textContent='.apb-rib-wrap{position:absolute;top:0;right:0;width:130px;height:110px;overflow:hidden;pointer-events:none;z-index:6;border-top-right-radius:inherit}'+
-    '.apb-rib{position:absolute;top:24px;right:-44px;width:180px;transform:rotate(35deg);background:#111;color:#fff;text-align:center;font:800 10px/1 "Roboto Condensed",Roboto,Arial,sans-serif!important;letter-spacing:.4px;padding:5px 0;white-space:nowrap;box-shadow:0 2px 5px rgba(0,0,0,.35);border-top:2px solid #ffd07b;border-bottom:2px solid #ffd07b}';
+    '.apb-rib{position:absolute;top:24px;right:-44px;width:180px;transform:rotate(35deg);background:#111;color:#fff;text-align:center;font:800 10px/1 "Roboto Condensed",Roboto,Arial,sans-serif!important;letter-spacing:.4px;padding:5px 0;white-space:nowrap;box-shadow:0 2px 5px rgba(0,0,0,.35);border-top:2px solid #ffd07b;border-bottom:2px solid #ffd07b}'+
+    '.fp-rich-prices .fp-rich-reg{margin-left:auto!important;text-align:right!important}'; // v160: regular (black) price sits on the right like the red sale price
   (document.head||document.documentElement).appendChild(st);})();
 // v148: the flyers pages reset every element inside .flyers-page to margin:0;padding:0, which squashed the promo sticker
 // (BLACK FRIDAY SAVINGS) on /flyers-and-deals/ and /monthlyflyer/ (no padding, no spacing around the | in SPEND & SAVE).
