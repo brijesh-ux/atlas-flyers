@@ -1,3 +1,4 @@
+/* v159 (11NOV2026): /sale/ page rows keep loading more products as the shopper scrolls sideways (same as the deals page strips) instead of stopping at 12. */
 /* v158 (11NOV2026): /sale/ page: removed the thin grey line above each section heading (site default divider that showed through in v157). Fixed "Product unavailable" tiles: when two sections asked BigCommerce for the same product at once, an empty answer could wipe the good data; now good data is never wiped, an empty answer is retried once, and a tile is only drawn when its data is good. */
 /* v157 (11NOV2026): /sale/ page fixes: section heading no longer overlaps the top of the tiles (12px gap), and the brand tags on tiles keep their normal shape (page styles scoped with a class instead of an id, so they no longer beat the tile styles). */
 /* v156 (11NOV2026): new /sale/ page renderer (fpSalePage block at the end of the file). Runs only on a page with <div id="atlas-sale-page"></div>: 5 sections from the SALE tabs of the flyers sheet (Doorbusters, Everyday Savings, Half Price & More, What Everyone’s Buying, Small Price Big Savings), each product re-checked live in BigCommerce (in stock, available, no options, real cross-off), site tiles via fpRichCard, daily shuffle in groups of 24, page hidden until the first rows are ready. Deals page init and quick view skip that page. GIDS gets the 5 sale tabs. */
@@ -5961,11 +5962,14 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     L.onclick=function(){g.scrollBy({left:-Math.round(g.clientWidth*.8),behavior:'smooth'});};R.onclick=function(){g.scrollBy({left:Math.round(g.clientWidth*.8),behavior:'smooth'});};
     g.addEventListener('scroll',ref,{passive:true});window.addEventListener('resize',ref);
     g.querySelectorAll('img').forEach(function(img){if(!img.complete)img.addEventListener('load',ref,{once:true});});
+    // v159: like the deals page strips, keep loading more products while the shopper scrolls the row sideways
+    function loadNext(n){if(busy||s.pos>=s.list.length)return Promise.resolve();busy=true;return take(s.list,s.pos,n).then(function(r){s.pos=r.pos;g.insertAdjacentHTML('beforeend',r.ids.map(card).join(''));busy=false;ref();});}
+    g.addEventListener('scroll',function(){if(g.getAttribute('data-ex')!=='1'&&g.scrollLeft+g.clientWidth>=g.scrollWidth-g.clientWidth*1.5)loadNext(12);},{passive:true});
     function upd(){var ex=g.getAttribute('data-ex')==='1';if(!ex){if(lm)lm.style.display='none';return;}
       if(!lm){lm=document.createElement('button');lm.type='button';lm.className='fp-loadmore';w.parentNode.insertBefore(lm,w.nextSibling);}
       lm.style.display='';
       if(s.pos<s.list.length){lm.textContent='Load More';lm.classList.remove('fp-loadmore-less');
-        lm.onclick=function(){if(busy)return;busy=true;lm.textContent='Loading…';take(s.list,s.pos,CONFIG.loadMore).then(function(r){s.pos=r.pos;g.insertAdjacentHTML('beforeend',r.ids.map(card).join(''));busy=false;upd();});};}
+        lm.onclick=function(){if(busy)return;lm.textContent='Loading…';loadNext(CONFIG.loadMore).then(upd);};}
       else{lm.textContent='Show Less';lm.classList.add('fp-loadmore-less');lm.onclick=function(){hb.click();sec.scrollIntoView({behavior:'smooth'});};}}
     hb.onclick=function(){var ex=g.getAttribute('data-ex')==='1';g.setAttribute('data-ex',ex?'0':'1');hb.textContent=ex?'VIEW ALL':'COLLAPSE';hb.classList.toggle('expanded',!ex);ref();upd();};
     setTimeout(ref,300);setTimeout(ref,1500);
