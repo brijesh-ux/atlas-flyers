@@ -1,3 +1,4 @@
+/* v157 (11NOV2026): /sale/ page fixes: section heading no longer overlaps the top of the tiles (12px gap), and the brand tags on tiles keep their normal shape (page styles scoped with a class instead of an id, so they no longer beat the tile styles). */
 /* v156 (11NOV2026): new /sale/ page renderer (fpSalePage block at the end of the file). Runs only on a page with <div id="atlas-sale-page"></div>: 5 sections from the SALE tabs of the flyers sheet (Doorbusters, Everyday Savings, Half Price & More, What Everyone’s Buying, Small Price Big Savings), each product re-checked live in BigCommerce (in stock, available, no options, real cross-off), site tiles via fpRichCard, daily shuffle in groups of 24, page hidden until the first rows are ready. Deals page init and quick view skip that page. GIDS gets the 5 sale tabs. */
 /* v155 (10NOV2026): "Monthly Flyer Deals" tab gets a "Deals Page" column. The deals page BLACK FRIDAY section shows only rows marked yes (the coupon items); the /monthlyflyer/ landing page shows every row (the full flyer). Fixes the landing page showing only the coupon items since 04NOV2026. */
 /* v154 (09NOV2026): Winter Gear default view goes back to biggest % off first, but no more than 2 Lighting products in any 6 tiles in a row (fpMixGroups); a light over that limit waits for the next free spot. Replaces the v153 one-from-each-group turns. */
@@ -5842,7 +5843,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   }
   function css(){
     if(document.getElementById('fp-sale-css'))return;
-    var base=(window.__fpCatTileCss||'').split('.flyers-page').join('#atlas-sale-page');
+    var base=(window.__fpCatTileCss||'').split('.flyers-page').join('.atlas-sale-root'); // v157: class, not id, so the tile's own styles keep winning (same weight as .flyers-page)
     var own=[
       '#atlas-sale-page{opacity:0!important;transition:opacity .2s!important;background:#fff!important;overflow:visible!important;width:100%!important}',
       '#atlas-sale-page.sp-ready{opacity:1!important}',
@@ -5860,6 +5861,8 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       '#atlas-sale-page .fp-section-title{display:inline-block!important;background:#e31b23!important;color:#fff!important;padding:6px 16px!important;border-radius:0 0 6px 6px!important;box-shadow:3px 3px 0 #111!important;font-family:Roboto,sans-serif!important;font-size:20px!important;font-weight:700!important;letter-spacing:1.2px!important}',
       '#atlas-sale-page .sp-dark .fp-section-title{box-shadow:3px 3px 0 #fff!important}',
       '#atlas-sale-page .fp-section-btn{background:#fff!important;color:#185fa5!important;border:1px solid #185fa5!important;border-radius:14px!important;padding:4px 14px!important;font-size:11px!important;font-weight:700!important;letter-spacing:1px!important;text-transform:uppercase!important;box-shadow:0 2px 6px rgba(0,0,0,.12)!important;cursor:pointer!important}',
+      '#atlas-sale-page .fp-section-head{margin-bottom:12px!important}', // v157: heading no longer touches the tiles
+      '#atlas-sale-page .fp-rich-grid{padding-top:8px!important}',
       '#atlas-sale-page .fp-loadmore{display:block!important;margin:14px auto 6px!important;border-radius:999px!important}'
     ].join('\n');
     var st=document.createElement('style');st.id='fp-sale-css';st.textContent=base+'\n'+own;document.head.appendChild(st);
@@ -5922,7 +5925,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     }
   }
   async function run(root){
-    css();widen(root);
+    root.classList.add('atlas-sale-root');css();widen(root);
     var feed=await window.fpLoadFeed();if(!feed)throw new Error('no feed');
     if(window.fpTileDataReady)await window.fpTileDataReady();
     var secs=CONFIG.sections.map(function(s,i){
