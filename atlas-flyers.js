@@ -1,3 +1,4 @@
+/* v158 (11NOV2026): /sale/ page: removed the thin grey line above each section heading (site default divider that showed through in v157). Fixed "Product unavailable" tiles: when two sections asked BigCommerce for the same product at once, an empty answer could wipe the good data; now good data is never wiped, an empty answer is retried once, and a tile is only drawn when its data is good. */
 /* v157 (11NOV2026): /sale/ page fixes: section heading no longer overlaps the top of the tiles (12px gap), and the brand tags on tiles keep their normal shape (page styles scoped with a class instead of an id, so they no longer beat the tile styles). */
 /* v156 (11NOV2026): new /sale/ page renderer (fpSalePage block at the end of the file). Runs only on a page with <div id="atlas-sale-page"></div>: 5 sections from the SALE tabs of the flyers sheet (Doorbusters, Everyday Savings, Half Price & More, What Everyone’s Buying, Small Price Big Savings), each product re-checked live in BigCommerce (in stock, available, no options, real cross-off), site tiles via fpRichCard, daily shuffle in groups of 24, page hidden until the first rows are ready. Deals page init and quick view skip that page. GIDS gets the 5 sale tabs. */
 /* v155 (10NOV2026): "Monthly Flyer Deals" tab gets a "Deals Page" column. The deals page BLACK FRIDAY section shows only rows marked yes (the coupon items); the /monthlyflyer/ landing page shows every row (the full flyer). Fixes the landing page showing only the coupon items since 04NOV2026. */
@@ -5861,7 +5862,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
       '#atlas-sale-page .fp-section-title{display:inline-block!important;background:#e31b23!important;color:#fff!important;padding:6px 16px!important;border-radius:0 0 6px 6px!important;box-shadow:3px 3px 0 #111!important;font-family:Roboto,sans-serif!important;font-size:20px!important;font-weight:700!important;letter-spacing:1.2px!important}',
       '#atlas-sale-page .sp-dark .fp-section-title{box-shadow:3px 3px 0 #fff!important}',
       '#atlas-sale-page .fp-section-btn{background:#fff!important;color:#185fa5!important;border:1px solid #185fa5!important;border-radius:14px!important;padding:4px 14px!important;font-size:11px!important;font-weight:700!important;letter-spacing:1px!important;text-transform:uppercase!important;box-shadow:0 2px 6px rgba(0,0,0,.12)!important;cursor:pointer!important}',
-      '#atlas-sale-page .fp-section-head{margin-bottom:12px!important}', // v157: heading no longer touches the tiles
+      '#atlas-sale-page .fp-section-head{border-top:0!important;margin:0 0 12px!important;padding:0 var(--p,16px) 6px!important}', // v158: no grey divider line (same as deals page heads); v157: heading off the tiles
       '#atlas-sale-page .fp-rich-grid{padding-top:8px!important}',
       '#atlas-sale-page .fp-loadmore{display:block!important;margin:14px auto 6px!important;border-radius:999px!important}'
     ].join('\n');
@@ -5877,12 +5878,14 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   function fetchProducts(ids){
     var need=ids.filter(function(id){return !(id in CACHE);});var chunks=[];for(var i=0;i<need.length;i+=CONFIG.batch)chunks.push(need.slice(i,i+CONFIG.batch));
     var F='name entityId sku brand{name path} prices{price{value}salePrice{value}retailPrice{value}}defaultImage{url(width:400)} images{edges{node{urlOriginal url(width:800) isDefault altText}}} path description inventory{isInStock} availabilityV2{status} productOptions(first:1){edges{node{entityId}}}';
-    return Promise.all(chunks.map(function(c){
+    function one(c,tries){
       var q='{site{'+c.map(function(id,i){return 'p'+i+':product(entityId:'+id+'){'+F+'}';}).join(' ')+'}}';
       return fetch('/graphql',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token()},body:JSON.stringify({query:q})})
-        .then(function(r){return r.json();}).then(function(d){var s=d&&d.data&&d.data.site;c.forEach(function(id,i){CACHE[id]=s?s['p'+i]||null:null;});})
-        .catch(function(){c.forEach(function(id){CACHE[id]=null;});});
-    }));
+        .then(function(r){return r.json();}).then(function(d){var s=d&&d.data&&d.data.site;if(!s&&tries>0)return one(c,tries-1); // v158: retry an empty answer once
+          c.forEach(function(id,i){var p=s&&s['p'+i];if(p)CACHE[id]=p;else if(!CACHE[id])CACHE[id]=null;});}) // v158: never wipe good data with an empty answer
+        .catch(function(){if(tries>0)return one(c,tries-1);c.forEach(function(id){if(!CACHE[id])CACHE[id]=null;});});
+    }
+    return Promise.all(chunks.map(function(c){return one(c,1);}));
   }
   function v(o){return o?o.value:null;}
   function ok(n){
@@ -5911,7 +5914,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     }
     return step();
   }
-  function card(id){return window.fpRichCard(CACHE[id]);}
+  function card(id){return ok(CACHE[id])?window.fpRichCard(CACHE[id]):'';} // v158: never draw a tile without good data
   function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;');}
   function stickyTop(root){
     function upd(){var h=document.querySelector('.sticky-header.active');var b=h?Math.max(0,h.getBoundingClientRect().bottom):0;root.style.setProperty('--sp-top',b+'px');}
