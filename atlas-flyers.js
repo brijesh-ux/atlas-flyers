@@ -1,3 +1,4 @@
+/* v162 (14NOV2026): brand tags on tiles (top left) and in the product pop up are now plain black text, no background colour, no border. Brand Styles sheet colours are kept but no longer used for these tags. */
 /* v161 (14NOV2026): new deals page section DEWALT BLACK FRIDAY ONLINE ONLY DEALS (Section ID dewaltBF, tab gid 1204222185, the same tab the promo engine reads; container built by fpEnsureSection, placed by the Section order tab). Rows can now carry a time in Online Start / Online End ('2026-11-14 18:00' or Sheets' '11/14/2026 18:00:00', store time UTC-5): such a row shows only inside that exact window (date-only cells work as before). Feed lookup accepts non-numeric gids. */
 /* v160 (11NOV2026): product tiles everywhere: the regular black price now sits on the right of the tile, the same spot as the red sale price (was on the left). */
 /* v159 (11NOV2026): /sale/ page rows keep loading more products as the shopper scrolls sideways (same as the deals page strips) instead of stopping at 12. */
@@ -668,9 +669,9 @@ function richCard(p,m){
   // For unknown-brand fallback (white bg), add a subtle border so the badge is visible
   var isUnknownBrand=b&&!b.key;
   var brandLabel=m.bl||(b&&b.name)||'';
-  var brandBg=m.bbg||(b&&b.accentBg)||'#1a1a1a';
-  var brandTc=m.btc||(b&&b.accentText)||'#ffffff';
-  var brandBorder=isUnknownBrand?';border:1px solid #ddd':'';
+  var brandBg='transparent'; // v162: plain black text brand tags (sheet colours ignored)
+  var brandTc='#0f0f0f';
+  var brandBorder=';border:0;padding-left:0';
   var tag=m.tag||'DEAL';
   var tcls=m.tcls||'fp-t-hot';
   var heartSvg='<svg viewBox="0 0 24 24" width="22" height="22" style="display:block;fill:currentColor"><path d="M12 21s-7.5-4.7-9.5-9.5C1.1 7.8 3.6 4 7.5 4c2.1 0 3.5 1.2 4.5 2.5C13 5.2 14.4 4 16.5 4 20.4 4 22.9 7.8 21.5 11.5 19.5 16.3 12 21 12 21z"/></svg>';
@@ -2534,9 +2535,9 @@ window.fpQuickView=async function(pid){
   // Brand resolution for modal \u2014 same priority as cards
   var modalBrand=getBrandFromProduct(p)||null;
   var modalBrandLabel=modalBrand?modalBrand.name:'';
-  var modalBrandBg=modalBrand?modalBrand.accentBg:'#1a1a1a';
-  var modalBrandTc=modalBrand?modalBrand.accentText:'#ffffff';
-  var modalBrandBorder=modalBrand&&!modalBrand.key?';border:1px solid #ddd':'';
+  var modalBrandBg='transparent'; // v162: plain black text
+  var modalBrandTc='#0f0f0f';
+  var modalBrandBorder=';border:0;padding-left:0';
   c.innerHTML=galleryHtml+
     '<div class="fp-modal-brand-row">'+
       (modalBrandLabel?'<span class="fp-modal-brand-badge" style="background:'+modalBrandBg+';color:'+modalBrandTc+modalBrandBorder+'">'+esc(modalBrandLabel)+'</span>':'')+
