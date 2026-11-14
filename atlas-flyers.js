@@ -1,3 +1,4 @@
+/* v161 (14NOV2026): new deals page section DEWALT BLACK FRIDAY ONLINE ONLY DEALS (Section ID dewaltBF, tab gid 1204222185, the same tab the promo engine reads; container built by fpEnsureSection, placed by the Section order tab). Rows can now carry a time in Online Start / Online End ('2026-11-14 18:00' or Sheets' '11/14/2026 18:00:00', store time UTC-5): such a row shows only inside that exact window (date-only cells work as before). Feed lookup accepts non-numeric gids. */
 /* v160 (11NOV2026): product tiles everywhere: the regular black price now sits on the right of the tile, the same spot as the red sale price (was on the left). */
 /* v159 (11NOV2026): /sale/ page rows keep loading more products as the shopper scrolls sideways (same as the deals page strips) instead of stopping at 12. */
 /* v158 (11NOV2026): /sale/ page: removed the thin grey line above each section heading (site default divider that showed through in v157). Fixed "Product unavailable" tiles: when two sections asked BigCommerce for the same product at once, an empty answer could wipe the good data; now good data is never wiped, an empty answer is retried once, and a tile is only drawn when its data is good. */
@@ -169,6 +170,7 @@ var GIDS = {
   tradeDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2129344817',
   giftDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1000708554', // v145
   sawstopDeals: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1483923011', // v146
+  dewaltBF: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1204222185', // v161
   promoBanners: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=2007099777',
   faqs: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=807514654',
   sectionOrder: 'https://docs.google.com/spreadsheets/d/1T4QrN-C-eQOq6vfTjRIQFx3Duces5zB-a_jTgMSPIpY/export?format=csv&gid=1373796339',
@@ -392,7 +394,7 @@ async function fetchCSV(key,url){
       }
     }catch(e){}
   }
-  var gm=/gid=(\d+)/.exec(url),feed=gm?await loadFeed():null;
+  var gm=/gid=(\w+)/.exec(url),feed=gm?await loadFeed():null;
   if(feed&&typeof feed[gm[1]]==='string'){
     var ft=feed[gm[1]];
     if(cacheH>0){try{localStorage.setItem('fp_csv_'+key,JSON.stringify({t:Date.now(),d:ft}));}catch(e){}}
@@ -524,8 +526,16 @@ function fpParseSheetDate(v){
   if(m)return new Date(+m[1],+m[2]-1,+m[3]);
   var d=new Date(v);return isNaN(d)?null:new Date(d.getFullYear(),d.getMonth(),d.getDate());
 }
+// v161: a cell with a time ('2026-11-14 18:00' or '11/14/2026 18:00:00') = exact moment in store time (UTC-5).
+function fpSheetTs(v){
+  v=String(v||'').trim();var m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})/),y,mo,d;
+  if(m){y=+m[1];mo=+m[2];d=+m[3];}else{m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);if(!m)return null;y=+m[3];mo=+m[1];d=+m[2];}
+  return new Date(Date.UTC(y,mo-1,d,+m[4]+5,+m[5]));
+}
 function fpRowLive(r){
-  var s=fpParseSheetDate(r['Online Start']||r['onlineStart']),e=fpParseSheetDate(r['Online End']||r['onlineEnd']);
+  var rs=r['Online Start']||r['onlineStart'],re=r['Online End']||r['onlineEnd'],ts=fpSheetTs(rs),te=fpSheetTs(re),nw=new Date();
+  if(ts&&nw<ts)return false;if(te&&nw>=te)return false;if(ts)rs='';if(te)re='';
+  var s=fpParseSheetDate(rs),e=fpParseSheetDate(re);
   if(!s&&!e)return true;
   var t=new Date();t=new Date(t.getFullYear(),t.getMonth(),t.getDate());
   if(s&&t<s)return false;
@@ -2277,6 +2287,7 @@ var SECTION_ID_TO_DOM = {
   hoseKits:'fp-sec-hoseKits', // v149
   bonusGoods:'fp-sec-bonusGoods',
   tradeDeals:'fp-sec-tradeDeals',
+  dewaltBF:'fp-sec-dewaltBF', // v161
   giftDeals:'fp-sec-giftDeals', // v145
   sawstopDeals:'fp-sec-sawstopDeals' // v146
 };
@@ -3004,7 +3015,7 @@ async function init(){
   setupScrollSave();
 
   // 2) Fetch all other CSVs in parallel (plus the live cart, so tiles can show "in cart")
-  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','lastChance','videoSection','shopByTrade','tradeDeals','toolStorage','makitaKits','stihlSaws','bonusGoods','dewaltKits','milwaukeeKits','festoolKits','hoseKits','giftDeals','sawstopDeals','promoBanners','faqs','sectionOrder','allCoupons'];
+  var keys=['flyerTabs','shopByBrand','bundles','coupons','trendingProducts','trendingDeals','newFeatured','topSearched','flashSales','priceDrop','bogo','hotDeals','under99','freeKit','freeBattery','atlasExclusive','countdown','dealOfDay','staffPicks','lastChance','videoSection','shopByTrade','tradeDeals','toolStorage','makitaKits','stihlSaws','bonusGoods','dewaltKits','milwaukeeKits','festoolKits','hoseKits','giftDeals','sawstopDeals','dewaltBF','promoBanners','faqs','sectionOrder','allCoupons'];
   var promises=keys.map(function(k){return fetchCSV(k,GIDS[k]);});
   var results=await Promise.all(promises.concat([loadServerCart()]));
   keys.forEach(function(k,i){SECTION_DATA[k]=results[i]||[];});
@@ -3071,6 +3082,7 @@ async function init(){
   fpEnsureSection('toolStorage','TOOL STORAGE'); // v113: sections with no container in the page HTML
   fpEnsureSection('makitaKits','BLACK FRIDAY BUNDLES'); // v116
   fpEnsureSection('stihlSaws','STIHL CHAINSAW DEALS'); // v124
+  fpEnsureSection('dewaltBF','DEWALT BLACK FRIDAY ONLINE ONLY DEALS'); // v161
   fpEnsureSection('dewaltKits','BLACK FRIDAY DEWALT KITS'); // v144
   fpEnsureSection('milwaukeeKits','BLACK FRIDAY MILWAUKEE KITS'); // v144
   fpEnsureSection('festoolKits','BLACK FRIDAY FESTOOL BUNDLES'); // v144
