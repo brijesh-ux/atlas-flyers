@@ -1,3 +1,4 @@
+/* v166 (18NOV2026): fix v165 side effect - the availability-text fallback now only uses the "Coming Soon" stock line, so in-stock pages show the note under the store boxes again (ECOM-0069). */
 /* v165 (18NOV2026): PDP availability text ("In-store pickup only" etc.) now also shows on pre-order / coming-soon products (no store boxes) under the stock line (ECOM-0069). */
 /* v164 (18NOV2026): home BLACK FRIDAY FEATURES strip (HOME Featured tab) shows up to 100 products (was 40); the tab is now rebuilt daily by home-featured-daily.js. Shop Deals and You May Also Like stay at 40. */
 /* v163 (14NOV2026): brand tags keep their rounded box again: white background, thin light grey border, black text (v162 had removed the box). Tiles and product pop up. */
@@ -3624,7 +3625,7 @@ setTimeout(function(){
   function inject(){
     // v165: pre-order / coming-soon products have no store boxes; fall back to the visible stock line (ECOM-0069)
     var ul=document.querySelector('ul.stock-status-list');
-    if(!ul){ var sl=document.querySelector('.pv-stock-line'); if(sl&&sl.offsetParent!==null) ul=sl; }
+    if(!ul){ var sl=document.querySelector('.pv-stock-line.pv-stock-coming'); if(sl&&sl.offsetParent!==null) ul=sl; }   // v166: only coming-soon lines, so in-stock pages keep the note under the store boxes
     if(!ul) return;                                        // store-box list / stock line not rendered yet
     if(document.getElementById('fp-avail-note')) return;   // already placed (idempotent)
     var txt=availText();
