@@ -1,3 +1,5 @@
+/* v165 (18NOV2026): PDP availability text ("In-store pickup only" etc.) now also shows on pre-order / coming-soon products (no store boxes) under the stock line (ECOM-0069). */
+/* v164 (18NOV2026): home BLACK FRIDAY FEATURES strip (HOME Featured tab) shows up to 100 products (was 40); the tab is now rebuilt daily by home-featured-daily.js. Shop Deals and You May Also Like stay at 40. */
 /* v163 (14NOV2026): brand tags keep their rounded box again: white background, thin light grey border, black text (v162 had removed the box). Tiles and product pop up. */
 /* v162 (14NOV2026): brand tags on tiles (top left) and in the product pop up are now plain black text, no background colour, no border. Brand Styles sheet colours are kept but no longer used for these tags. */
 /* v161 (14NOV2026): new deals page section DEWALT BLACK FRIDAY ONLINE ONLY DEALS (Section ID dewaltBF, tab gid 1204222185, the same tab the promo engine reads; container built by fpEnsureSection, placed by the Section order tab). Rows can now carry a time in Online Start / Online End ('2026-11-14 18:00' or Sheets' '11/14/2026 18:00:00', store time UTC-5): such a row shows only inside that exact window (date-only cells work as before). Feed lookup accepts non-numeric gids. */
@@ -3620,8 +3622,10 @@ setTimeout(function(){
     return '';
   }
   function inject(){
+    // v165: pre-order / coming-soon products have no store boxes; fall back to the visible stock line (ECOM-0069)
     var ul=document.querySelector('ul.stock-status-list');
-    if(!ul) return;                                        // store-box list not rendered yet
+    if(!ul){ var sl=document.querySelector('.pv-stock-line'); if(sl&&sl.offsetParent!==null) ul=sl; }
+    if(!ul) return;                                        // store-box list / stock line not rendered yet
     if(document.getElementById('fp-avail-note')) return;   // already placed (idempotent)
     var txt=availText();
     if(!txt) return;                                       // no availability text on this product
@@ -4844,13 +4848,13 @@ if('MutationObserver' in window){
 (function(){
   if(!(location.pathname==='/'||location.pathname==='/index.php'))return;
   var PER=40;
-  function tabIds(rows){
+  function tabIds(rows,limit){
     var ids=[],seen={};
     (rows||[]).forEach(function(r){
       var cell=(r['Product ID']||r['Big Commerce Product ID']||'').toString();
       parseIds(cell).forEach(function(id){if(!seen[id]){seen[id]=1;ids.push(id);}});
     });
-    return ids.slice(0,PER);
+    return ids.slice(0,limit||PER);
   }
   async function cards(ids,key){
     if(!ids.length)return '';
@@ -4883,7 +4887,7 @@ if('MutationObserver' in window){
       fetchCSV('homeShopDeals',GIDS.homeShopDeals),
       fetchCSV('homeYmal',GIDS.homeYmal)
     ]);
-    var featIds=tabIds(tabs[0]),dealIds=tabIds(tabs[1]),ymalIds=tabIds(tabs[2]);
+    var featIds=tabIds(tabs[0],100),dealIds=tabIds(tabs[1]),ymalIds=tabIds(tabs[2]);
     var painted=[];
     // 1) Featured strip: repaint from sheet (fallback = theme's BC-flag cards)
     var featGrid=document.querySelector('.fp-rich-grid[data-product-type="featured"]');
