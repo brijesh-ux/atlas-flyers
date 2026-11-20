@@ -1,3 +1,4 @@
+/* v167 (20NOV2026): Winter Gear (/winter-gear/) default view puts snow blowers and generators first (FP_CAT_TOP + fpTopFirst, name match, covers/attachments/shovels excluded), biggest % off first among them; the rest keeps the v154 order. */
 /* v166 (18NOV2026): fix v165 side effect - the availability-text fallback now only uses the "Coming Soon" stock line, so in-stock pages show the note under the store boxes again (ECOM-0069). */
 /* v165 (18NOV2026): PDP availability text ("In-store pickup only" etc.) now also shows on pre-order / coming-soon products (no store boxes) under the stock line (ECOM-0069). */
 /* v164 (18NOV2026): home BLACK FRIDAY FEATURES strip (HOME Featured tab) shows up to 100 products (was 40); the tab is now rebuilt daily by home-featured-daily.js. Shop Deals and You May Also Like stay at 40. */
@@ -3829,6 +3830,14 @@ function fpMixGroups(results,groups){
   }
   return out;
 }
+// v167: products to pin at the very top of the default view (name match), keeping their % off order
+var FP_CAT_TOP={'/winter-gear/':{re:/snow ?blower|snow thrower|generator/i,not:/cover|attachment|shovel/i}};
+function fpTopFirst(list,rule){
+  if(!rule||!list)return list;
+  var top=[],rest=[];
+  list.forEach(function(x){var n=String(x.name||'');(rule.re.test(n)&&!rule.not.test(n)?top:rest).push(x);});
+  return top.concat(rest);
+}
 function ssCatPath(){
   if(/^\/new-arrivals\//.test(location.pathname))return 'New Arrivals';
   var names=[].slice.call(document.querySelectorAll('.breadcrumbs li')).map(function(li){
@@ -4169,7 +4178,7 @@ async function initCategoryTiles(rerun){
             mp++;
           }while(mp<=mTot&&mp<=10);
           if(all&&all.length){
-            mixQueue=fpMixGroups(all,mixGroups);
+            mixQueue=fpTopFirst(fpMixGroups(all,mixGroups),FP_CAT_TOP[location.pathname]);
             d1={results:mixQueue.splice(0,40),pagination:{totalPages:1}};
           }
         }catch(e){mixQueue=null;d1=null;}
