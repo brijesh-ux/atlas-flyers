@@ -1,3 +1,4 @@
+/* v168 (23NOV2026): HURRY UP countdown timer shows again on every tile. Tiles that carry a promo row (class "fp-rich apb-has-row", e.g. STIHL free watch label) did not match the old pattern, so no timer was added. */
 /* v167 (20NOV2026): Winter Gear (/winter-gear/) default view puts snow blowers and generators first (FP_CAT_TOP + fpTopFirst, name match, covers/attachments/shovels excluded), biggest % off first among them; the rest keeps the v154 order. */
 /* v166 (18NOV2026): fix v165 side effect - the availability-text fallback now only uses the "Coming Soon" stock line, so in-stock pages show the note under the store boxes again (ECOM-0069). */
 /* v165 (18NOV2026): PDP availability text ("In-store pickup only" etc.) now also shows on pre-order / coming-soon products (no store boxes) under the stock line (ECOM-0069). */
@@ -1004,7 +1005,7 @@ async function renderCountdown(){
         '<div class="fp-cd-unit"><div class="fp-cd-num" data-u="m">0</div><div class="fp-cd-lbl">Min</div></div>'+
         '<div class="fp-cd-unit"><div class="fp-cd-num" data-u="s">0</div><div class="fp-cd-lbl">Sec</div></div>'+
       '</div>';
-    return richCard(p,{brand:it.brand,st:'in',_sectionKey:'countdown',showTag:false}).replace(/^(<div class="fp-rich"[^>]*>)/,'$1'+timer);
+    return richCard(p,{brand:it.brand,st:'in',_sectionKey:'countdown',showTag:false}).replace(/^(<div class="fp-rich[^"]*"[^>]*>)/,'$1'+timer); // v168: also match "fp-rich apb-has-row" (promo engine row), else no timer
   }).filter(Boolean).join('');
   grid.classList.remove('fp-countdown-grid');grid.classList.add('fp-rich-grid');
   show('fp-sec-countdown');
