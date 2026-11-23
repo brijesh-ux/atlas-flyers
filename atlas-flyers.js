@@ -1,3 +1,4 @@
+/* v169 (23NOV2026): New Arrivals page (/new-arrivals/) now shows only products in the BigCommerce New Arrivals category (id 2826), in the order saved on that category (latest go-lives on top), and leaves out-of-stock products out. Before, it showed the newest products from the whole store, in stock or not. Home page New Arrivals strip is unchanged. */
 /* v168 (23NOV2026): HURRY UP countdown timer shows again on every tile. Tiles that carry a promo row (class "fp-rich apb-has-row", e.g. STIHL free watch label) did not match the old pattern, so no timer was added. */
 /* v167 (20NOV2026): Winter Gear (/winter-gear/) default view puts snow blowers and generators first (FP_CAT_TOP + fpTopFirst, name match, covers/attachments/shovels excluded), biggest % off first among them; the rest keeps the v154 order. */
 /* v166 (18NOV2026): fix v165 side effect - the availability-text fallback now only uses the "Coming Soon" stock line, so in-stock pages show the note under the store boxes again (ECOM-0069). */
@@ -4298,17 +4299,22 @@ async function initCategoryTiles(rerun){
       }
       if(!(doc&&catNextUrl(doc)))exhausted=true;
     }
+    var FP_NA_CATEGORY_ID=2826;   // v169: BigCommerce "New Arrivals" category that feeds /new-arrivals/
     async function loadNewest(){
       var FIELDS='pageInfo{hasNextPage endCursor}edges{node{name entityId sku brand{name path} prices{price{value}salePrice{value}retailPrice{value}} defaultImage{url(width:400)} images{edges{node{urlOriginal url(width:800) isDefault altText}}} path description inventory{isInStock} availabilityV2{status} productOptions(first:1){edges{node{entityId}}}}}';
-      var body={query:'query($after:String){site{newestProducts(first:40,after:$after){'+FIELDS+'}}}',variables:{after:newestCursor}};
+      // v169: only the New Arrivals category (FP_NA_CATEGORY_ID), in the order saved
+      // on that category in BigCommerce (latest go-lives on top; FEATURED = that saved
+      // order), out-of-stock products left out (BigCommerce filter + a second check here).
+      var body={query:'query($after:String){site{category(entityId:'+FP_NA_CATEGORY_ID+'){products(first:40,after:$after,sortBy:FEATURED,hideOutOfStock:true){'+FIELDS+'}}}}',variables:{after:newestCursor}};
       var d=await fetch(STORE+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+STORE_TOKEN},body:JSON.stringify(body)}).then(function(r){return r.ok?r.json():null;});
-      var np=d&&d.data&&d.data.site&&d.data.site.newestProducts;
-      if(!np||!np.edges.length){exhausted=true;return;}
+      var np=d&&d.data&&d.data.site&&d.data.site.category&&d.data.site.category.products;
+      if(!np||!np.edges.length){exhausted=true;[].slice.call(wrap.querySelectorAll('.fp-skel')).forEach(function(el){el.parentNode.removeChild(el);});return;}
       var items=[];
       np.edges.forEach(function(ed){
         var pr=ed.node;
         var id=parseInt(pr.entityId,10);
         if(!(id>0))return;
+        if(pr.inventory&&pr.inventory.isInStock===false)return;
         PRODUCT_CACHE[id]=pr;
         var hasOpts=pr.productOptions&&pr.productOptions.edges&&pr.productOptions.edges.length>0;
         items.push({id:id,optionsUrl:hasOpts?pr.path:null});
