@@ -1,8 +1,9 @@
+/* v171 (24NOV2026): Cyber Sale landing page banner (v170) now stays hidden until the sale starts, Nov 28 2026 5:00 PM ET. Before that /cyber-monday/ shows nothing new (add ?bkcyber=1 to preview the banner and animation). From 5 PM Nov 28 it works as in v170. */
 /* v170 (24NOV2026): Cyber Sale landing page (/cyber-monday/): hides the page name, breadcrumb and top white space, and shows the Cyber Sale banner full width at the top (desktop and phone versions). From Nov 28 2026 5:00 PM to Dec 1 2026 9:00 AM ET the banner's circuit lines also blink (the animation switches itself off after that; add ?bkcyber=1 to test it early). */
 (function(){try{
   if(!/^\/cyber-monday\/?$/.test(location.pathname)) return;
   var B='https://cdn11.bigcommerce.com/s-c7n52h/images/stencil/original/image-manager/';
-  var now=Date.now(), ON=(now>=Date.parse('2026-11-28T22:00:00Z') && now<Date.parse('2026-12-01T14:00:00Z')) || /[?&]bkcyber=1/.test(location.search);
+  var now=Date.now(), ON=(now>=Date.parse('2026-11-28T22:00:00Z') && now<Date.parse('2026-12-01T14:00:00Z')) || /[?&]bkcyber=1/.test(location.search); if(now<Date.parse('2026-11-28T22:00:00Z') && !/[?&]bkcyber=1/.test(location.search)) return;
   var css='.page-heading,.breadcrumbs,nav[aria-label="Breadcrumb"]{display:none!important}'
    +'body .page{margin-top:0!important;padding-top:0!important}body .container:has(> .page){padding-top:0!important;margin-top:0!important}'
    +'#bkcm-hero{position:relative;width:100vw;left:50%;margin-left:-50vw;line-height:0;margin-top:0}'
