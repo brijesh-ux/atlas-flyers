@@ -1,3 +1,4 @@
+/* v174 (26NOV2026): (1) New Arrivals gets a Category filter group with the main store categories (Power Tools, Hand Tools, Accessories, Machinery), counted inside the page; it had none because New Arrivals has no sub categories. (2) Voltage and Battery Ah are no longer offered on New Arrivals (only a few of its products carry them). Built from v173 (commit 79532531). */
 /* v173 (26NOV2026): (1) New Arrivals result count now matches the list: it counts in-stock products only (the page leaves out-of-stock products out; the count read 368 while 365 were listed). (2) Filter groups (Category, Brand, System, Voltage, Battery Ah, Price) all start closed when a page opens; a group that already holds a pick opens by itself, System opens as soon as a brand is picked, and a group the shopper opens or closes stays that way while they filter. Built from v172 (commit cf529ea3). */
 /* v172 (26NOV2026): filter bar. (1) Category shows one tag: picking a deeper category replaces its parent instead of stacking (was Brands, DEWALT, 20V Max Cordless System, Batteries); the x steps back one level. (2) "Brands" is no longer offered inside Category on search, sale and category pages. (3) New System filter (20V Max, M18, 40V MAX XGT ...) appears once exactly one brand is picked, read from that brand's branch of the Brands category tree; URL param fsys. (4) /search.php?search_query= (old search address: showed a second BigCommerce list and a wrong count) now lands on /shop/, the same page the search box uses. (5) Result count at the end of the filter bar wherever Searchspring supplies the list. (6) Filter and sort picks re-render the list in place, no page reload (fpFilterSoftNav; Back and Forward work; falls back to a normal load on any error). (7) GA4 event filter_used on every pick (filter_action, filter_type, filter_value, page_path). (8) Brand lists over 15 get a Find a brand box. (9) The Filters and Sort sheet stays open across picks and has a Show N results button. (10) New Arrivals is no longer offered inside Category. (11) Site-wide style fixes: desktop mega menu names wrap inside their column instead of running into the next one; header search hint no longer slides under the search button; SKU line on product tiles is darker (#767676, was #bbb). (12) Empty result message gets a Clear all filters button. (13) Desktop: the filter bar stays pinned under the fixed header (measured height), so the floating Filters and Sort button no longer needs to show there. (14) Price: a two-handle slider with typed min and max under the price bands (bounds = lowest and highest price in the current list, fetched when the Price menu is opened). (15) An open filter dropdown is kept on screen (on phones it ran off the right edge). (16) Sidebar filter layout (switch FP_FB_LAYOUT: sidebar, or bar to bring the dropdown bar back): desktop has the filters in a left column that stays on screen, with tags, count and Sort above the tiles (no hide or show toggle on desktop); phone opens the same panel as a full-screen Filter and Sort sheet with picked filters on top, Clear all and Show N results at the bottom. In stock only and On sale only are switches; Brand has checkboxes; Category stays one at a time; closed groups say what is picked; ticked rows go first; Show more after 9 rows. By Trade provision: FP_FB_TRADE_FIELD + ftrade param. (17) Brand-wise categories: once exactly one brand is picked (or on a brand page) the Category group shows the by Category tree of that brand, with the names of its brand page, nested as deep as the pick; URL param fbcat; map FP_BRAND_TREES (37 brands). System reads the same tree where the tree holds systems (Milwaukee, Makita, Bosch, ToughBuilt). Switches FP_FB_TAG_LABELS (tags read Brand: DEWALT) and FP_FB_ONSALE (On Sale filter, param fonsale). (18) Voltage and Battery Ah filter groups after Brand (BigCommerce custom fields Voltage and Battery Ah, Searchspring fields custom_voltage and custom_battery_ah; params fvolt, fah); each shows only when Searchspring sends that field. On Sale switch is off for now; In stock only sits at the bottom of the filters. (19) Header dropdowns keep the theme layout, desktop only: a Trending row of 8 deeper categories in Power Tools, Hand Tools, Accessories and Machinery; View all buttons are centred pills with a white hover; names in normal capitals with tighter rows; 4 columns under 1500 wide; Brands shows 45 brands in online sales order, written the way each brand writes its name (the 20 added ones are hidden in the phone menu). Built from v169; v170/v171 are not used. */
 /* v169 (23NOV2026): New Arrivals page (/new-arrivals/) now shows only products in the BigCommerce New Arrivals category (id 2826), in the order saved on that category (latest go-lives on top), and leaves out-of-stock products out. Before, it showed the newest products from the whole store, in stock or not. Home page New Arrivals strip is unchanged. */
@@ -4126,6 +4127,39 @@ var FP_SYS_RE=/\b\d{2,3}\s?V\b|\bsystem\b|\bM12\b|\bM18\b|MX FUEL|\bXGT\b|\bLXT\
 var FP_SYS_NOT=/system support/i;
 // v172: top level names that are not real categories (merchandising lists)
 var FP_CAT_HIDE={'Brands':1,'New Arrivals':1,'Best Selling Products':1};
+// v174: pages that have no sub categories of their own (New Arrivals) offer the store's main categories.
+var FP_TOPCAT_PATHS=["/new-arrivals/"];
+// v174: pages where Voltage and Battery Ah are not offered.
+var FP_SPEC_OFF_PATHS=["/new-arrivals/"];
+async function fpTopCatRows(catPath,f){
+  try{
+    var ck='fp_topcats_'+catPath+'|'+location.search;
+    var hit=fpCacheGet(ck,900000);
+    if(hit)return hit;
+    var tops=fpCacheGet('fp_topcat_names',86400000);
+    if(!tops){
+      STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
+      if(!STORE_TOKEN)return [];
+      var d=await fetch(STORE+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+STORE_TOKEN},body:JSON.stringify({query:'{site{categoryTree{name}}}'})}).then(function(r){return r.ok?r.json():null;});
+      var tr=d&&d.data&&d.data.site&&d.data.site.categoryTree;
+      if(!tr)return [];
+      tops=tr.map(function(x){return String(x.name||'').replace(/\s+$/,'');}).filter(Boolean);
+      fpCacheSet('fp_topcat_names',tops);
+    }
+    var f2=Object.assign({},f,{cats:[],bcat:null,sys:null});
+    var base=ssSearchUrl(catPath,f2,1,1);
+    var out=await Promise.all(tops.filter(function(nm){
+      return !FP_CAT_HIDE[nm]&&nm!==catPath&&!/^(Sale|Hidden From Navigation)$/i.test(nm);
+    }).map(function(nm){
+      return fetch(base+'&filter.categories_hierarchy='+encodeURIComponent(nm)).then(function(r){return r.json();}).then(function(j){
+        return {value:nm,label:nm,count:(j&&j.pagination&&j.pagination.totalResults)||0};
+      }).catch(function(){return null;});
+    }));
+    out=out.filter(function(v){return v&&v.count>0;}).sort(function(a,b){return b.count-a.count;});
+    fpCacheSet(ck,out);
+    return out;
+  }catch(e){return [];}
+}
 async function ssSystemsFor(catPath,f,brand){
   try{
     var ck='fp_sys_'+catPath+'|'+brand+'|'+location.search;
@@ -5139,6 +5173,18 @@ function ssBuildFilterSide(facets,host,hostEl,sortSpec,catPath,total,f){
   }else{
     var cg=storeCat();
     if(cg)panel.appendChild(cg);
+    else if(catPath&&String(catPath).indexOf('ss:')!==0&&FP_TOPCAT_PATHS.indexOf(location.pathname)>-1){
+      // v174: no sub categories here: offer the store's main categories, filled in when the counts arrive
+      var topSlot=mk('div');topSlot.style.display='none';
+      panel.appendChild(topSlot);
+      fpTopCatRows(catPath,f).then(function(list){
+        if(!topSlot.parentNode||!list||!list.length)return;
+        var g=group('Category',list.map(function(v){
+          return {t:v.label,ct:v.count,fpf:'add|Category|'+v.label,h:ssUrlWith(function(sp){sp.delete('fcat');sp.append('fcat',v.value);})};
+        }),{keepOrder:true});
+        if(g)topSlot.parentNode.replaceChild(g,topSlot);
+      }).catch(function(){});
+    }
   }
   // Brand: tick as many as needed
   var brandF=facet('brand'),brandRows=[],seenB={};
@@ -5159,6 +5205,7 @@ function ssBuildFilterSide(facets,host,hostEl,sortSpec,catPath,total,f){
     var sf=null;
     for(var i=0;i<s.fields.length&&!sf;i++){var c=facet(s.fields[i]);if(c&&c.values&&c.values.length){sf=c;FP_SPEC_FIELD[s.param]=s.fields[i];}}
     var picked=(f.specs&&f.specs[s.param])||[];
+    if(!picked.length&&FP_SPEC_OFF_PATHS.indexOf(location.pathname)>-1)return;   // v174
     if(!sf&&!picked.length)return;
     var vals=((sf&&sf.values)||[]).slice().sort(function(a,b){return fpSpecSort(a.value||a.label,b.value||b.label);});
     var rows=vals.map(function(v){
