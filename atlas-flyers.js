@@ -1,3 +1,4 @@
+/* v175 (26NOV2026): (1) The four Lifestyle pages (/lifestyle/drinkware-coolers/, coffee-machines/, coffee-care-accessories/, pets-outdoor/) get the filter column; their parent is hidden, so the category tree lookup found nothing (same fix as Winter Gear in v140). (2) Lifestyle in the menu: once the Lifestyle category is made visible in BigCommerce, its top menu bar item is hidden (desktop and phone) and Lifestyle is added inside the Accessories dropdown in alphabetical order. While Lifestyle stays hidden, the menu does not change. Built from v174 (commit 12021980). */
 /* v174 (26NOV2026): (1) New Arrivals gets a Category filter group with the main store categories (Power Tools, Hand Tools, Accessories, Machinery), counted inside the page; it had none because New Arrivals has no sub categories. (2) Voltage and Battery Ah are no longer offered on New Arrivals (only a few of its products carry them). Built from v173 (commit 79532531). */
 /* v173 (26NOV2026): (1) New Arrivals result count now matches the list: it counts in-stock products only (the page leaves out-of-stock products out; the count read 368 while 365 were listed). (2) Filter groups (Category, Brand, System, Voltage, Battery Ah, Price) all start closed when a page opens; a group that already holds a pick opens by itself, System opens as soon as a brand is picked, and a group the shopper opens or closes stays that way while they filter. Built from v172 (commit cf529ea3). */
 /* v172 (26NOV2026): filter bar. (1) Category shows one tag: picking a deeper category replaces its parent instead of stacking (was Brands, DEWALT, 20V Max Cordless System, Batteries); the x steps back one level. (2) "Brands" is no longer offered inside Category on search, sale and category pages. (3) New System filter (20V Max, M18, 40V MAX XGT ...) appears once exactly one brand is picked, read from that brand's branch of the Brands category tree; URL param fsys. (4) /search.php?search_query= (old search address: showed a second BigCommerce list and a wrong count) now lands on /shop/, the same page the search box uses. (5) Result count at the end of the filter bar wherever Searchspring supplies the list. (6) Filter and sort picks re-render the list in place, no page reload (fpFilterSoftNav; Back and Forward work; falls back to a normal load on any error). (7) GA4 event filter_used on every pick (filter_action, filter_type, filter_value, page_path). (8) Brand lists over 15 get a Find a brand box. (9) The Filters and Sort sheet stays open across picks and has a Show N results button. (10) New Arrivals is no longer offered inside Category. (11) Site-wide style fixes: desktop mega menu names wrap inside their column instead of running into the next one; header search hint no longer slides under the search button; SKU line on product tiles is darker (#767676, was #bbb). (12) Empty result message gets a Clear all filters button. (13) Desktop: the filter bar stays pinned under the fixed header (measured height), so the floating Filters and Sort button no longer needs to show there. (14) Price: a two-handle slider with typed min and max under the price bands (bounds = lowest and highest price in the current list, fetched when the Price menu is opened). (15) An open filter dropdown is kept on screen (on phones it ran off the right edge). (16) Sidebar filter layout (switch FP_FB_LAYOUT: sidebar, or bar to bring the dropdown bar back): desktop has the filters in a left column that stays on screen, with tags, count and Sort above the tiles (no hide or show toggle on desktop); phone opens the same panel as a full-screen Filter and Sort sheet with picked filters on top, Clear all and Show N results at the bottom. In stock only and On sale only are switches; Brand has checkboxes; Category stays one at a time; closed groups say what is picked; ticked rows go first; Show more after 9 rows. By Trade provision: FP_FB_TRADE_FIELD + ftrade param. (17) Brand-wise categories: once exactly one brand is picked (or on a brand page) the Category group shows the by Category tree of that brand, with the names of its brand page, nested as deep as the pick; URL param fbcat; map FP_BRAND_TREES (37 brands). System reads the same tree where the tree holds systems (Milwaukee, Makita, Bosch, ToughBuilt). Switches FP_FB_TAG_LABELS (tags read Brand: DEWALT) and FP_FB_ONSALE (On Sale filter, param fonsale). (18) Voltage and Battery Ah filter groups after Brand (BigCommerce custom fields Voltage and Battery Ah, Searchspring fields custom_voltage and custom_battery_ah; params fvolt, fah); each shows only when Searchspring sends that field. On Sale switch is off for now; In stock only sits at the bottom of the filters. (19) Header dropdowns keep the theme layout, desktop only: a Trending row of 8 deeper categories in Power Tools, Hand Tools, Accessories and Machinery; View all buttons are centred pills with a white hover; names in normal capitals with tighter rows; 4 columns under 1500 wide; Brands shows 45 brands in online sales order, written the way each brand writes its name (the 20 added ones are hidden in the phone menu). Built from v169; v170/v171 are not used. */
@@ -4311,7 +4312,7 @@ function fpMmCss(){
   // the theme forces plain Roboto on every span and link inside a dropdown, and a 60px size on every picture:
   // these rules need the longer selector to win
   var PX='.nav-pages-container .navPage-subMenu .fp-mm ';
-  st.textContent='.fp-mm{display:none}'
+  st.textContent='.fp-mm{display:none}li.navPages-item.fp-ls-top{display:none!important}'
     +'.fp-scroll-wrap:not(:has(> .fp-rich-grid:not(.fp-cat-grid))) > .fp-scroll-arrow{display:none!important}'
     +'@media(min-width:'+FP_MM_MIN+'px){'
     +'.navPage-subMenu.fp-mm-on>.navPage-subMenu-list,.navPage-subMenu.fp-mm-on>.mega-view-all{display:none!important}'
@@ -4473,8 +4474,41 @@ function fpMmBrands(list){
     list.classList.add('fp-mm-bsort');
   }catch(e){}
 }
+// v175: Lifestyle sits inside the Accessories dropdown instead of the top menu bar.
+var FP_LS_MENU={href:"/lifestyle/",label:"Lifestyle",into:"navPages-2308"};
+function fpLifestyleMenu(){
+  try{
+    var top=null,topA=null;
+    [].slice.call(document.querySelectorAll('li.navPages-item')).forEach(function(li){
+      var a=li.querySelector(':scope > a.navPages-action');
+      var h=a?(a.getAttribute('href')||'').replace(/^https?:\/\/[^\/]+/i,'').toLowerCase():'';
+      if(h===FP_LS_MENU.href||h+'/'===FP_LS_MENU.href){top=li;topA=a;}
+    });
+    if(!top)return false;   // Lifestyle still hidden in BigCommerce: nothing to do
+    top.classList.add('fp-ls-top');
+    top.style.setProperty('display','none','important');
+    var list=document.querySelector('#'+FP_LS_MENU.into+' > .navPage-subMenu-list');
+    if(!list||list.querySelector(':scope > .fp-ls-item'))return true;
+    var li=document.createElement('li');li.className='navPage-subMenu-item fp-ls-item';
+    var a=document.createElement('a');a.className='navPage-subMenu-action navPages-action';
+    a.setAttribute('href',topA.getAttribute('href'));a.setAttribute('aria-label',FP_LS_MENU.label);
+    var p=document.createElement('p');p.className='sub-categories-title';p.textContent=FP_LS_MENU.label;
+    a.appendChild(p);li.appendChild(a);
+    var before=null;
+    [].slice.call(list.querySelectorAll(':scope > .navPage-subMenu-item')).some(function(x){
+      if(x.classList.contains('view-all-brands'))return false;
+      var xa=x.querySelector(':scope > a');
+      var nm=xa?(xa.getAttribute('aria-label')||xa.textContent||'').replace(/\s+/g,' ').trim():'';
+      if(nm&&nm.localeCompare(FP_LS_MENU.label,'en',{sensitivity:'base'})>0){before=x;return true;}
+      return false;
+    });
+    list.insertBefore(li,before);
+    return true;
+  }catch(e){return false;}
+}
 function fpMmBuild(){
   try{
+    fpLifestyleMenu();   // v175
     fpMmCss();
     Object.keys(FP_MM).forEach(function(id){
       var menu=document.getElementById(id),cfg=FP_MM[id];
@@ -5669,7 +5703,7 @@ async function initCategoryTiles(rerun){
     if(!catPath)catPath=ssCatPath();
     // v140: categories kept out of the menu (under the hidden folder) are missing from the
     // GraphQL tree, so name their Searchspring path here
-    if(!catPath)catPath=({'/winter-gear/':'Winter Gear'})[location.pathname]||null;
+    if(!catPath)catPath=({"/winter-gear/":"Winter Gear","/lifestyle/drinkware-coolers/":"Drinkware & Coolers","/lifestyle/coffee-machines/":"Coffee Machines","/lifestyle/coffee-care-accessories/":"Coffee Care & Accessories","/lifestyle/pets-outdoor/":"Pets & Outdoor"})[location.pathname]||null;   // v175: + Lifestyle pages
     var fParams=ssFParams();
     var themeSort='';
     try{themeSort=new URLSearchParams(location.search).get('sort')||'';}catch(e){}
