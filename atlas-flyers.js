@@ -1,3 +1,4 @@
+/* v178 (26NOV2026): Cyber Sale landing page (/cyber-monday/). The page's raw HTML carries its own product list (#fp-cyber-data, already ranked, exclusions out); this script adds the filter column (Category, Brand, System, Price, Sort) and the tiles, loaded in batches while scrolling. Filters and counts are worked out from the page's list (fpPlAnswer); Searchspring is not called on that page. Tiles are read from BigCommerce as everywhere. No change on any other page. */
 /* v177 (26NOV2026): (1) Top menu: on desktop with a mouse, clicking Power Tools, Brands, Hand Tools, Accessories or Machinery opens that page (it only toggled the dropdown before); hover still opens the dropdown; touch screens and the phone menu are unchanged. (2) Category filter: the hammer builder part groups (Heads, Handles, Grips, Aluminum, Titanium) are left out; their BigCommerce categories stay visible because the builder reads them. Built from v176 (commit f79a8a70). */
 /* v176 (26NOV2026): Bare /shop/ (no search term, no campaign tag) becomes "Shop All Products": the whole catalogue with the filter column (Category, Brand, Price, In stock only), Best Selling first. It showed a "Search results" page with a count of 0 and no filters, and gets a lot of outside visits. Searches (/shop/?search_query=) and campaign pages (/shop/?tag=) are unchanged. No BigCommerce redirect on /shop/ (a redirect there also catches every search and campaign link). Built from v175 (commit 6db65927). */
 /* v175 (26NOV2026): (1) The four Lifestyle pages (/lifestyle/drinkware-coolers/, coffee-machines/, coffee-care-accessories/, pets-outdoor/) get the filter column; their parent is hidden, so the category tree lookup found nothing (same fix as Winter Gear in v140). (2) Lifestyle in the menu: once the Lifestyle category is made visible in BigCommerce, its top menu bar item is hidden (desktop and phone) and Lifestyle is added inside the Accessories dropdown in alphabetical order. While Lifestyle stays hidden, the menu does not change. Built from v174 (commit 12021980). */
@@ -4207,12 +4208,118 @@ async function ssSystemsFor(catPath,f,brand){
     return out;
   }catch(e){return [];}
 }
+// ==================== v178: PAGE LIST (Cyber Sale landing) ====================
+// A page in FP_PL_PATHS carries its own product list in its raw HTML (element #fp-cyber-data, JSON):
+//   {b:[brand names], c:[category paths "A>B>C"], p:[[productId,brandIndex,price,flags,catIndex,...],...], u:{productId:path}}
+//   p is already in display order. flags: 2 = product has options (tile links to the page instead of Add to Cart).
+// The filter column asks for its data through ssSearchUrl + fetch like everywhere else; on these pages the
+// address points at FP_PL_HOST and fpPlAnswer() works the answer out from the list. Searchspring is not called.
+var FP_PL_PATHS=["/cyber-monday/"];
+var FP_PL_HOST="https://fp-page-list.invalid/api/search/search.json";
+var FP_PL_BANDS=[['*','49.99','Less than $50'],['50','99.99','$50 to $99'],['100','199.99','$100 to $199'],['200','499.99','$200 to $499'],['500','749.99','$500 to $749'],['750','999.99','$750 to $999'],['1000','1499.99','$1000 to $1499'],['1500','1999.99','$1500 to $1999'],['2000','2499.99','$2000 to $2499'],['2500','*','More than $2500']];
+// shown only inside the sale window (Nov 28 5:30pm to Dec 1 9am ET) or with the test link ?bkcyber=1
+var FP_PL_FROM=Date.UTC(2026,10,28,22,30,0),FP_PL_TO=Date.UTC(2026,11,1,14,0,0);
+function fpIsPageList(){
+  if(FP_PL_PATHS.indexOf(location.pathname.replace(/\/+$/,'/'))<0)return false;
+  var now=Date.now();
+  return /[?&]bkcyber=1/.test(location.search)||(now>=FP_PL_FROM&&now<FP_PL_TO);
+}
+var FP_PL=null;
+function fpPlData(){
+  if(FP_PL)return FP_PL;
+  var el=document.getElementById("fp-cyber-data");
+  if(!el)return null;
+  var raw;
+  try{raw=JSON.parse(el.textContent||el.value||'');}catch(e){return null;}
+  if(!raw||!Array.isArray(raw.p))return null;
+  // every category path with its parents: "A>B>C" -> A, A>B, A>B>C
+  var anc=(raw.c||[]).map(function(path){
+    var parts=String(path).split('>'),out=[];
+    for(var i=1;i<=parts.length;i++)out.push(parts.slice(0,i).join('>'));
+    return out;
+  });
+  var list=raw.p.map(function(r,i){
+    var has={},paths=[];
+    for(var k=4;k<r.length;k++)(anc[r[k]]||[]).forEach(function(x){if(!has[x]){has[x]=1;paths.push(x);}});
+    return {id:r[0],brand:(raw.b||[])[r[1]]||'',price:Number(r[2])||0,opt:(r[3]&2)?1:0,has:has,paths:paths,rank:i,url:(raw.u&&raw.u[r[0]])||''};
+  });
+  FP_PL={list:list};
+  return FP_PL;
+}
+function fpPlAnswer(url){
+  var d=fpPlData();
+  if(!d)return null;
+  var sp=new URL(url).searchParams;
+  var brands=sp.getAll('filter.brand').concat(sp.getAll('bgfilter.brand'));
+  var cats=sp.getAll('bgfilter.categories_hierarchy').concat(sp.getAll('filter.categories_hierarchy'));
+  var lo=sp.get('filter.calculated_price.low'),hi=sp.get('filter.calculated_price.high');
+  lo=lo===null||lo==='*'?null:Number(lo);hi=hi===null||hi==='*'?null:Number(hi);
+  var okCat=function(p){for(var i=0;i<cats.length;i++)if(!p.has[cats[i]])return false;return true;};
+  var okBrand=function(p){return !brands.length||brands.indexOf(p.brand)>-1;};
+  var okPrice=function(p){return (lo===null||p.price>=lo)&&(hi===null||p.price<=hi);};
+  var m=[],brandCt={},bandCt=FP_PL_BANDS.map(function(){return 0;});
+  d.list.forEach(function(p){
+    if(!okCat(p))return;
+    var b=okBrand(p),pr=okPrice(p);
+    if(pr&&p.brand)brandCt[p.brand]=(brandCt[p.brand]||0)+1;          // brand rows: counted without the brand pick
+    if(b)for(var i=0;i<FP_PL_BANDS.length;i++){                        // price rows: counted without the price pick
+      var bl=FP_PL_BANDS[i][0]==='*'?null:Number(FP_PL_BANDS[i][0]),bh=FP_PL_BANDS[i][1]==='*'?null:Number(FP_PL_BANDS[i][1]);
+      if((bl===null||p.price>=bl)&&(bh===null||p.price<=bh)){bandCt[i]++;break;}
+    }
+    if(b&&pr)m.push(p);
+  });
+  // Category rows: the next level under the first category asked for (top level when none)
+  var first=cats.length?cats[0]:'',depth=first?first.split('>').length:0,kidCt={};
+  m.forEach(function(p){
+    p.paths.forEach(function(x){
+      var parts=x.split('>');
+      if(parts.length!==depth+1)return;
+      if(first&&x.indexOf(first+'>')!==0)return;
+      kidCt[x]=(kidCt[x]||0)+1;
+    });
+  });
+  var catVals=Object.keys(kidCt).map(function(x){return {active:false,type:'value',value:x,label:x.split('>').pop(),count:kidCt[x]};})
+    .sort(function(a,b){return b.count-a.count||(a.label<b.label?-1:1);});
+  var brandVals=Object.keys(brandCt).sort(function(a,b){return a.toLowerCase()<b.toLowerCase()?-1:1;})
+    .map(function(x){return {active:brands.indexOf(x)>-1,type:'value',value:x,label:x,count:brandCt[x]};});
+  var bandVals=[];
+  FP_PL_BANDS.forEach(function(b,i){if(bandCt[i])bandVals.push({active:false,type:'range',low:b[0],high:b[1],label:b[2],count:bandCt[i]});});
+  var sort=sp.get('sort.calculated_price');
+  if(sort==='asc')m.sort(function(a,b){return a.price-b.price||a.rank-b.rank;});
+  else if(sort==='desc')m.sort(function(a,b){return b.price-a.price||a.rank-b.rank;});
+  var per=Math.max(1,parseInt(sp.get('resultsPerPage'),10)||40),page=Math.max(1,parseInt(sp.get('page'),10)||1);
+  var pages=Math.max(1,Math.ceil(m.length/per));
+  var res=m.slice((page-1)*per,page*per).map(function(p){
+    return {uid:String(p.id),id:String(p.id),price:String(p.price),brand:p.brand,url:p.url,ss_has_options:p.opt?'1':'0',categories_hierarchy:p.paths};
+  });
+  return {results:res,facets:[
+      {field:'categories_hierarchy',type:'hierarchy',values:catVals},
+      {field:'brand',values:brandVals},
+      {field:'calculated_price',type:'list',values:bandVals}],
+    pagination:{totalResults:m.length,currentPage:page,totalPages:pages,perPage:per},
+    query:{matchType:'primary'},merchandising:{redirect:'',content:{}}};
+}
+(function(){
+  // on a page list page only: requests for FP_PL_HOST are answered here, everything else goes out as usual
+  if(!fpIsPageList()||!window.fetch||window.__fpPlFetch)return;
+  window.__fpPlFetch=1;
+  var real=window.fetch;
+  window.fetch=function(u){
+    if(typeof u==='string'&&u.indexOf(FP_PL_HOST)===0){
+      var a=null;
+      try{a=fpPlAnswer(u);}catch(e){a=null;}
+      return Promise.resolve({ok:!!a,status:a?200:500,json:function(){return Promise.resolve(a);}});
+    }
+    return real.apply(this,arguments);
+  };
+})();
 function ssSearchUrl(catPath,f,page,perPage){
-  var u='https://'+SS_SITE_ID+'.a.searchspring.io/api/search/search.json?siteId='+SS_SITE_ID
+  var u=(catPath==='ss:pagelist'?FP_PL_HOST:'https://'+SS_SITE_ID+'.a.searchspring.io/api/search/search.json')+'?siteId='+SS_SITE_ID
     +'&resultsFormat=native&page='+page+'&resultsPerPage='+perPage;
   // scope: 'ss:on-sale' = storewide SALE view; 'ss:q:<term>' = search results;
   // anything else = a category path
   if(catPath==='ss:all')u+='&q=*';   // v176: Shop All, whole catalogue (q=* so Searchspring sends the filter data; no q sends none)
+  else if(catPath==='ss:pagelist'){}   // v178: the page's own list, nothing to scope
   else if(catPath==='ss:on-sale')u+='&bgfilter.ss_on_sale=1';
   else if(catPath&&catPath.indexOf('ss:q:')===0)u+='&q='+encodeURIComponent(catPath.slice(5));
   else if(catPath&&catPath.indexOf('ss:tag:')===0)u+='&tag='+encodeURIComponent(catPath.slice(7));
@@ -6258,8 +6365,9 @@ if('MutationObserver' in window){
   }else if(onShop&&location.pathname.replace(/\/+$/,'/')==='/shop/'&&!(sp&&(sp.has('search_query')||sp.get('section')||sp.get('mode')))&&!tag){
     mode='all';   // v176: bare /shop/ = Shop All Products
   }
+  if(!mode&&fpIsPageList())mode='pagelist';   // v178
   if(!mode)return;
-  var catPath=mode==='all'?'ss:all':(mode==='sale'?'ss:on-sale':(mode==='search'?'ss:q:'+q:'ss:tag:'+tag));
+  var catPath=mode==='pagelist'?'ss:pagelist':mode==='all'?'ss:all':(mode==='sale'?'ss:on-sale':(mode==='search'?'ss:q:'+q:'ss:tag:'+tag));
   if(mode==='all'){
     // v176: page name instead of "Search results"
     var fpAllTitle=function(){
@@ -6271,7 +6379,9 @@ if('MutationObserver' in window){
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',fpAllTitle);
     setTimeout(fpAllTitle,1500);setTimeout(fpAllTitle,4000);
   }
-  var sortSpec=mode==='all'
+  var sortSpec=mode==='pagelist'
+    ?{names:{featured:'Featured',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'},def:'featured'}   // v178: Featured = the page's own order
+    :mode==='all'
     ?{names:{bestselling:'Best Selling',newest:'Newest',featured:'Featured',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'},def:'bestselling'}
     :mode==='search'
     ?{names:{relevance:'Relevance',bestselling:'Best Selling',newest:'Newest',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'},def:'relevance'}
@@ -6298,7 +6408,8 @@ if('MutationObserver' in window){
     var myGen=window.__fpSaleGen||0;   // v172: each in-place re-render starts a new generation
     var wrap=null;
     try{
-      var anchor=document.getElementById('searchspring-content')||document.querySelector('#product-listing-container')||document.querySelector('.page');
+      var anchor=(mode==='pagelist'&&document.getElementById("fp-cyber-list"))||document.getElementById('searchspring-content')||document.querySelector('#product-listing-container')||document.querySelector('.page');
+      if(mode==='pagelist'&&!fpPlData()){saleFail(null);return;}   // v178: no list on the page, leave the page as it is
       if(!anchor){saleFail(null);return;}
       // the flyer core evaluates before footer.html's global_bct on /shop/, so
       // STORE_TOKEN is empty at load \u2014 re-resolve BEFORE any GraphQL hydration
