@@ -1,3 +1,4 @@
+/* v177 (26NOV2026): (1) Top menu: on desktop with a mouse, clicking Power Tools, Brands, Hand Tools, Accessories or Machinery opens that page (it only toggled the dropdown before); hover still opens the dropdown; touch screens and the phone menu are unchanged. (2) Category filter: the hammer builder part groups (Heads, Handles, Grips, Aluminum, Titanium) are left out; their BigCommerce categories stay visible because the builder reads them. Built from v176 (commit f79a8a70). */
 /* v176 (26NOV2026): Bare /shop/ (no search term, no campaign tag) becomes "Shop All Products": the whole catalogue with the filter column (Category, Brand, Price, In stock only), Best Selling first. It showed a "Search results" page with a count of 0 and no filters, and gets a lot of outside visits. Searches (/shop/?search_query=) and campaign pages (/shop/?tag=) are unchanged. No BigCommerce redirect on /shop/ (a redirect there also catches every search and campaign link). Built from v175 (commit 6db65927). */
 /* v175 (26NOV2026): (1) The four Lifestyle pages (/lifestyle/drinkware-coolers/, coffee-machines/, coffee-care-accessories/, pets-outdoor/) get the filter column; their parent is hidden, so the category tree lookup found nothing (same fix as Winter Gear in v140). (2) Lifestyle in the menu: once the Lifestyle category is made visible in BigCommerce, its top menu bar item is hidden (desktop and phone) and Lifestyle is added inside the Accessories dropdown in alphabetical order. While Lifestyle stays hidden, the menu does not change. Built from v174 (commit 12021980). */
 /* v174 (26NOV2026): (1) New Arrivals gets a Category filter group with the main store categories (Power Tools, Hand Tools, Accessories, Machinery), counted inside the page; it had none because New Arrivals has no sub categories. (2) Voltage and Battery Ah are no longer offered on New Arrivals (only a few of its products carry them). Built from v173 (commit 79532531). */
@@ -4129,6 +4130,7 @@ var FP_SYS_RE=/\b\d{2,3}\s?V\b|\bsystem\b|\bM12\b|\bM18\b|MX FUEL|\bXGT\b|\bLXT\
 var FP_SYS_NOT=/system support/i;
 // v172: top level names that are not real categories (merchandising lists)
 var FP_CAT_HIDE={'Brands':1,'New Arrivals':1,'Best Selling Products':1};
+["Heads","Handles","Grips","Aluminum","Titanium"].forEach(function(nm){FP_CAT_HIDE[nm]=1;});   // v177: hammer builder part groups
 // v174: pages that have no sub categories of their own (New Arrivals) offer the store's main categories.
 var FP_TOPCAT_PATHS=["/new-arrivals/"];
 // v174: pages where Voltage and Battery Ah are not offered.
@@ -4508,8 +4510,28 @@ function fpLifestyleMenu(){
     return true;
   }catch(e){return false;}
 }
+// v177: desktop mouse click on a top menu item that has a dropdown opens its page.
+function fpMmTopClick(){
+  if(window.__fpTopClick)return;
+  window.__fpTopClick=true;
+  document.addEventListener('click',function(e){
+    try{
+      if(e.button!==0)return;
+      var a=e.target&&e.target.closest?e.target.closest('li.navPages-item > a.navPages-action.has-subMenu'):null;
+      if(!a)return;
+      if(!window.matchMedia||!window.matchMedia('(min-width:'+FP_MM_MIN+'px) and (hover:hover) and (pointer:fine)').matches)return;
+      var h=a.getAttribute('href');
+      if(!h||h.charAt(0)==='#')return;
+      e.stopImmediatePropagation();   // keep the theme from cancelling the click
+      if(e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;   // new tab / new window: the browser handles it
+      e.preventDefault();
+      location.href=h;
+    }catch(err){}
+  },true);
+}
 function fpMmBuild(){
   try{
+    fpMmTopClick();   // v177
     fpLifestyleMenu();   // v175
     fpMmCss();
     Object.keys(FP_MM).forEach(function(id){
