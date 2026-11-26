@@ -1,3 +1,4 @@
+/* v179 (26NOV2026): product tiles: the green savings ribbon (% Off / $ off) is hidden when the tile shows Out of Stock. In stock and Available to Order tiles unchanged. */
 /* v178 (26NOV2026): Cyber Sale landing page (/cyber-monday/). The page's raw HTML carries its own product list (#fp-cyber-data, already ranked, exclusions out); this script adds the filter column (Category, Brand, System, Price, Sort) and the tiles, loaded in batches while scrolling. Filters and counts are worked out from the page's list (fpPlAnswer); Searchspring is not called on that page. Tiles are read from BigCommerce as everywhere. No change on any other page. */
 /* v177 (26NOV2026): (1) Top menu: on desktop with a mouse, clicking Power Tools, Brands, Hand Tools, Accessories or Machinery opens that page (it only toggled the dropdown before); hover still opens the dropdown; touch screens and the phone menu are unchanged. (2) Category filter: the hammer builder part groups (Heads, Handles, Grips, Aluminum, Titanium) are left out; their BigCommerce categories stay visible because the builder reads them. Built from v176 (commit f79a8a70). */
 /* v176 (26NOV2026): Bare /shop/ (no search term, no campaign tag) becomes "Shop All Products": the whole catalogue with the filter column (Category, Brand, Price, In stock only), Best Selling first. It showed a "Search results" page with a count of 0 and no filters, and gets a lot of outside visits. Searches (/shop/?search_query=) and campaign pages (/shop/?tag=) are unchanged. No BigCommerce redirect on /shop/ (a redirect there also catches every search and campaign link). Built from v175 (commit 6db65927). */
@@ -702,6 +703,7 @@ function richCard(p,m){
   // Stock badge driven by BigCommerce availability (CSV "Stock Status" ignored).
   var bcStatus=p.availabilityV2&&p.availabilityV2.status;
   var canBuy=isPurchasable(p);
+  if(!canBuy)ribbonHtml='';  // v179: no savings ribbon on Out of Stock tiles
   var stockHtml=!canBuy
     ? '<div class="fp-rich-stock fp-rich-stock-oos">Out of Stock</div>'
     : ((bcStatus==='Preorder')?'<div class="fp-rich-stock fp-rich-stock-ord">\u2713 Available to Order</div>':'<div class="fp-rich-stock">\u2713 In Stock</div>');
