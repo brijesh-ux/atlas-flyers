@@ -1,3 +1,4 @@
+/* v176 (26NOV2026): Bare /shop/ (no search term, no campaign tag) becomes "Shop All Products": the whole catalogue with the filter column (Category, Brand, Price, In stock only), Best Selling first. It showed a "Search results" page with a count of 0 and no filters, and gets a lot of outside visits. Searches (/shop/?search_query=) and campaign pages (/shop/?tag=) are unchanged. No BigCommerce redirect on /shop/ (a redirect there also catches every search and campaign link). Built from v175 (commit 6db65927). */
 /* v175 (26NOV2026): (1) The four Lifestyle pages (/lifestyle/drinkware-coolers/, coffee-machines/, coffee-care-accessories/, pets-outdoor/) get the filter column; their parent is hidden, so the category tree lookup found nothing (same fix as Winter Gear in v140). (2) Lifestyle in the menu: once the Lifestyle category is made visible in BigCommerce, its top menu bar item is hidden (desktop and phone) and Lifestyle is added inside the Accessories dropdown in alphabetical order. While Lifestyle stays hidden, the menu does not change. Built from v174 (commit 12021980). */
 /* v174 (26NOV2026): (1) New Arrivals gets a Category filter group with the main store categories (Power Tools, Hand Tools, Accessories, Machinery), counted inside the page; it had none because New Arrivals has no sub categories. (2) Voltage and Battery Ah are no longer offered on New Arrivals (only a few of its products carry them). Built from v173 (commit 79532531). */
 /* v173 (26NOV2026): (1) New Arrivals result count now matches the list: it counts in-stock products only (the page leaves out-of-stock products out; the count read 368 while 365 were listed). (2) Filter groups (Category, Brand, System, Voltage, Battery Ah, Price) all start closed when a page opens; a group that already holds a pick opens by itself, System opens as soon as a brand is picked, and a group the shopper opens or closes stays that way while they filter. Built from v172 (commit cf529ea3). */
@@ -4209,7 +4210,8 @@ function ssSearchUrl(catPath,f,page,perPage){
     +'&resultsFormat=native&page='+page+'&resultsPerPage='+perPage;
   // scope: 'ss:on-sale' = storewide SALE view; 'ss:q:<term>' = search results;
   // anything else = a category path
-  if(catPath==='ss:on-sale')u+='&bgfilter.ss_on_sale=1';
+  if(catPath==='ss:all')u+='&q=*';   // v176: Shop All, whole catalogue (q=* so Searchspring sends the filter data; no q sends none)
+  else if(catPath==='ss:on-sale')u+='&bgfilter.ss_on_sale=1';
   else if(catPath&&catPath.indexOf('ss:q:')===0)u+='&q='+encodeURIComponent(catPath.slice(5));
   else if(catPath&&catPath.indexOf('ss:tag:')===0)u+='&tag='+encodeURIComponent(catPath.slice(7));
   else if(catPath&&catPath.indexOf('ss:brand:')===0)u+='&bgfilter.brand='+encodeURIComponent(catPath.slice(9));
@@ -5239,7 +5241,7 @@ function ssBuildFilterSide(facets,host,hostEl,sortSpec,catPath,total,f){
     var sf=null;
     for(var i=0;i<s.fields.length&&!sf;i++){var c=facet(s.fields[i]);if(c&&c.values&&c.values.length){sf=c;FP_SPEC_FIELD[s.param]=s.fields[i];}}
     var picked=(f.specs&&f.specs[s.param])||[];
-    if(!picked.length&&FP_SPEC_OFF_PATHS.indexOf(location.pathname)>-1)return;   // v174
+    if(!picked.length&&(FP_SPEC_OFF_PATHS.indexOf(location.pathname)>-1||catPath==='ss:all'))return;   // v174, v176
     if(!sf&&!picked.length)return;
     var vals=((sf&&sf.values)||[]).slice().sort(function(a,b){return fpSpecSort(a.value||a.label,b.value||b.label);});
     var rows=vals.map(function(v){
@@ -6231,10 +6233,25 @@ if('MutationObserver' in window){
     // directly, so the campaign's product set renders as our grid.
     // v99: monthly-flyer is redirected to /monthlyflyer/ (see MONTHLY FLYER LANDING)
     mode='tag';
+  }else if(onShop&&location.pathname.replace(/\/+$/,'/')==='/shop/'&&!(sp&&(sp.has('search_query')||sp.get('section')||sp.get('mode')))&&!tag){
+    mode='all';   // v176: bare /shop/ = Shop All Products
   }
   if(!mode)return;
-  var catPath=mode==='sale'?'ss:on-sale':(mode==='search'?'ss:q:'+q:'ss:tag:'+tag);
-  var sortSpec=mode==='search'
+  var catPath=mode==='all'?'ss:all':(mode==='sale'?'ss:on-sale':(mode==='search'?'ss:q:'+q:'ss:tag:'+tag));
+  if(mode==='all'){
+    // v176: page name instead of "Search results"
+    var fpAllTitle=function(){
+      var h=document.querySelector('h1.page-heading');
+      if(h&&h.textContent!=="Shop All Products")h.textContent="Shop All Products";
+      try{if(document.title.indexOf("Shop All Products")!==0)document.title="Shop All Products"+' | Atlas Tools & Machinery';}catch(e){}
+    };
+    fpAllTitle();
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',fpAllTitle);
+    setTimeout(fpAllTitle,1500);setTimeout(fpAllTitle,4000);
+  }
+  var sortSpec=mode==='all'
+    ?{names:{bestselling:'Best Selling',newest:'Newest',featured:'Featured',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'},def:'bestselling'}
+    :mode==='search'
     ?{names:{relevance:'Relevance',bestselling:'Best Selling',newest:'Newest',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'},def:'relevance'}
     :(mode==='tag'
       ?{names:{merch:'Featured',bestselling:'Best Selling',newest:'Newest',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'},def:'merch'}
