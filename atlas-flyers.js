@@ -1,3 +1,4 @@
+/* v173 (26NOV2026): (1) New Arrivals result count now matches the list: it counts in-stock products only (the page leaves out-of-stock products out; the count read 368 while 365 were listed). (2) Filter groups (Category, Brand, System, Voltage, Battery Ah, Price) all start closed when a page opens; a group that already holds a pick opens by itself, System opens as soon as a brand is picked, and a group the shopper opens or closes stays that way while they filter. Built from v172 (commit cf529ea3). */
 /* v172 (26NOV2026): filter bar. (1) Category shows one tag: picking a deeper category replaces its parent instead of stacking (was Brands, DEWALT, 20V Max Cordless System, Batteries); the x steps back one level. (2) "Brands" is no longer offered inside Category on search, sale and category pages. (3) New System filter (20V Max, M18, 40V MAX XGT ...) appears once exactly one brand is picked, read from that brand's branch of the Brands category tree; URL param fsys. (4) /search.php?search_query= (old search address: showed a second BigCommerce list and a wrong count) now lands on /shop/, the same page the search box uses. (5) Result count at the end of the filter bar wherever Searchspring supplies the list. (6) Filter and sort picks re-render the list in place, no page reload (fpFilterSoftNav; Back and Forward work; falls back to a normal load on any error). (7) GA4 event filter_used on every pick (filter_action, filter_type, filter_value, page_path). (8) Brand lists over 15 get a Find a brand box. (9) The Filters and Sort sheet stays open across picks and has a Show N results button. (10) New Arrivals is no longer offered inside Category. (11) Site-wide style fixes: desktop mega menu names wrap inside their column instead of running into the next one; header search hint no longer slides under the search button; SKU line on product tiles is darker (#767676, was #bbb). (12) Empty result message gets a Clear all filters button. (13) Desktop: the filter bar stays pinned under the fixed header (measured height), so the floating Filters and Sort button no longer needs to show there. (14) Price: a two-handle slider with typed min and max under the price bands (bounds = lowest and highest price in the current list, fetched when the Price menu is opened). (15) An open filter dropdown is kept on screen (on phones it ran off the right edge). (16) Sidebar filter layout (switch FP_FB_LAYOUT: sidebar, or bar to bring the dropdown bar back): desktop has the filters in a left column that stays on screen, with tags, count and Sort above the tiles (no hide or show toggle on desktop); phone opens the same panel as a full-screen Filter and Sort sheet with picked filters on top, Clear all and Show N results at the bottom. In stock only and On sale only are switches; Brand has checkboxes; Category stays one at a time; closed groups say what is picked; ticked rows go first; Show more after 9 rows. By Trade provision: FP_FB_TRADE_FIELD + ftrade param. (17) Brand-wise categories: once exactly one brand is picked (or on a brand page) the Category group shows the by Category tree of that brand, with the names of its brand page, nested as deep as the pick; URL param fbcat; map FP_BRAND_TREES (37 brands). System reads the same tree where the tree holds systems (Milwaukee, Makita, Bosch, ToughBuilt). Switches FP_FB_TAG_LABELS (tags read Brand: DEWALT) and FP_FB_ONSALE (On Sale filter, param fonsale). (18) Voltage and Battery Ah filter groups after Brand (BigCommerce custom fields Voltage and Battery Ah, Searchspring fields custom_voltage and custom_battery_ah; params fvolt, fah); each shows only when Searchspring sends that field. On Sale switch is off for now; In stock only sits at the bottom of the filters. (19) Header dropdowns keep the theme layout, desktop only: a Trending row of 8 deeper categories in Power Tools, Hand Tools, Accessories and Machinery; View all buttons are centred pills with a white hover; names in normal capitals with tighter rows; 4 columns under 1500 wide; Brands shows 45 brands in online sales order, written the way each brand writes its name (the 20 added ones are hidden in the phone menu). Built from v169; v170/v171 are not used. */
 /* v169 (23NOV2026): New Arrivals page (/new-arrivals/) now shows only products in the BigCommerce New Arrivals category (id 2826), in the order saved on that category (latest go-lives on top), and leaves out-of-stock products out. Before, it showed the newest products from the whole store, in stock or not. Home page New Arrivals strip is unchanged. */
 /* v168 (23NOV2026): HURRY UP countdown timer shows again on every tile. Tiles that carry a promo row (class "fp-rich apb-has-row", e.g. STIHL free watch label) did not match the old pattern, so no timer was added. */
@@ -4988,14 +4989,14 @@ function ssBuildFilterSide(facets,host,hostEl,sortSpec,catPath,total,f){
   }
 
   // ---- panel
-  var openState=window.__fpSideOpen||(window.__fpSideOpen={Category:true,Brand:true,System:true});
+  var openState=window.__fpSideOpen||(window.__fpSideOpen={});
   var moreState=window.__fpSideMore||(window.__fpSideMore={});
   function group(name,rows,opt){
     opt=opt||{};
     if(!rows.length&&!opt.keep)return null;
     var g=mk('div','fp-fb-group fp-fg'+(opt.cls?' '+opt.cls:''));
     g.setAttribute('data-g',name);
-    if(openState[name])g.classList.add('open');
+    if(openState[name]===true||(openState[name]===undefined&&(name==='System'||(opt.cls!=='fp-fg-sort'&&rows.some(function(r){return r.on;})))))g.classList.add('open');   // v173
     var btn=mk('button','fp-fb-btn');btn.type='button';
     btn.appendChild(mk('span','fp-fg-name',name));
     var sel=rows.filter(function(r){return r.on;}).map(function(r){return r.t;});
@@ -5778,7 +5779,14 @@ async function initCategoryTiles(rerun){
               ?{discount:'Biggest % Off',featured:'Featured',newest:'Newest',bestselling:'Best Selling',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'}
               :{featured:'Featured',newest:'Newest',bestselling:'Best Selling',priceasc:'Price: Low to High',pricedesc:'Price: High to Low'},
             def:newestModeEarly?'newest':(FP_SS_DEFAULT_SORT[location.pathname]||'featured')
-          },catPath,ssMode?ssTotal:fpCacheGet(ck+'|total',900000));
+          },catPath,ssMode?ssTotal:(function(){
+            var tot=fpCacheGet(ck+'|total',900000);
+            if(!newestModeEarly)return tot;
+            // v173: this page leaves out-of-stock products out, so count only the in-stock ones
+            var sf=null;for(var i=0;i<facets.length;i++){if(facets[i]&&facets[i].field==='ss_in_stock'){sf=facets[i];break;}}
+            var c=sf&&sf.values&&sf.values[0]?Number(sf.values[0].count):NaN;
+            return (c>0&&(tot===null||tot===undefined||c<=tot))?c:tot;
+          })());
           fpFilterFloat();
         }
       }catch(e){}
