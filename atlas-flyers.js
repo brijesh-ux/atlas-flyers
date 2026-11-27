@@ -1,3 +1,4 @@
+/* v182 (27NOV2026): filter column. (1) It keeps its place after a pick: with one brand picked the Category and System lists load a moment later and the column ended back at the top; the position is put back when they arrive. (2) Category rows that have sub categories show a small arrow after the name (read from the store category tree, kept for a day). (3) Signed-in store admins no longer get the tall gap under the menu that the BigCommerce admin bar added (shoppers never had it). Built from v181 (commit 3d290d5a). */
 /* v181 (27NOV2026): filter column. (1) Category rows are listed A to Z on every page (were listed by number of products); a picked category stays on top with its sub categories under it. (2) The System group now sits above the Brand list, so it is in view right after a brand is ticked (the open Brand list pushed it below). Built from v180 (commit 6fdb2829). */
 /* v180 (27NOV2026): System filter with several brands picked. It showed only when exactly one brand was picked; with 2 to 4 brands picked the System group now lists each picked brand's systems in one list, named with the brand (Milwaukee M18, DEWALT 20V MAX ...). Picking one narrows the page to that system. Taking a brand off also takes off a System of that brand. One brand and brand pages are unchanged. Built from v179 (commit 0fdc3a36). */
 /* v179 (26NOV2026): product tiles: the green savings ribbon (% Off / $ off) is hidden when the tile shows Out of Stock. In stock and Available to Order tiles unchanged. */
@@ -4133,6 +4134,82 @@ function ssCatStepBack(c,scope,sys){
 // v172: which children of Brands > <brand> count as a System
 var FP_SYS_RE=/\b\d{2,3}\s?V\b|\bsystem\b|\bM12\b|\bM18\b|MX FUEL|\bXGT\b|\bLXT\b|\bCXT\b|powershift/i;
 var FP_SYS_NOT=/system support/i;
+// v182: which categories have sub categories (for the small arrow in the Category filter)
+var FP_KIDS_TTL=86400000,FP_KIDS_VER="v1",FP_KIDS_BASE=null,FP_KIDS_ROOTS={};
+function fpPathKey(p){return String(p||'').split('>').map(function(s){return s.replace(/\s+/g,' ').trim().toLowerCase();}).join('>');}
+function fpKidsQuery(q){
+  STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
+  if(!STORE_TOKEN)return Promise.resolve(null);
+  return fetch(STORE+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+STORE_TOKEN},body:JSON.stringify({query:q})})
+    .then(function(r){return r.ok?r.json():null;})
+    .then(function(d){return (d&&d.data&&d.data.site&&d.data.site.categoryTree)||null;})
+    .catch(function(){return null;});
+}
+// levels 1 to 3 of the store tree: k = paths that have sub categories, i = id of each level 3 path that has them
+function fpKidsBase(){
+  if(FP_KIDS_BASE)return FP_KIDS_BASE;
+  FP_KIDS_BASE=(async function(){
+    var ck='fp_catkids_'+FP_KIDS_VER;
+    var hit=fpCacheGet(ck,FP_KIDS_TTL);
+    if(hit&&hit.k)return hit;
+    var tree=await fpKidsQuery('{site{categoryTree{name children{name children{entityId name children{name}}}}}}');
+    if(!tree)return {k:{},i:{}};
+    var out={k:{},i:{}};
+    (function walk(nodes,trail){
+      (nodes||[]).forEach(function(nd){
+        var t2=trail.concat(fpPathKey(nd.name));
+        if(nd.children&&nd.children.length){
+          out.k[t2.join('>')]=1;
+          if(t2.length===3&&nd.entityId)out.i[t2.join('>')]=nd.entityId;
+          walk(nd.children,t2);
+        }
+      });
+    })(tree,[]);
+    fpCacheSet(ck,out);
+    return out;
+  })();
+  return FP_KIDS_BASE;
+}
+// deeper levels under one level 3 category (a brand's "by Category" tree): paths that have sub categories
+function fpKidsRoot(id,rootKey){
+  if(FP_KIDS_ROOTS[id])return FP_KIDS_ROOTS[id];
+  FP_KIDS_ROOTS[id]=(async function(){
+    var ck='fp_catkids_'+FP_KIDS_VER+'_'+id;
+    var hit=fpCacheGet(ck,FP_KIDS_TTL);
+    if(hit)return hit;
+    var tree=await fpKidsQuery('{site{categoryTree(rootEntityId:'+parseInt(id,10)+'){name children{name children{name children{name}}}}}}');
+    var out={};
+    if(!tree||!tree[0])return out;
+    (function walk(nodes,trail){
+      (nodes||[]).forEach(function(nd){
+        var t2=trail.concat(fpPathKey(nd.name));
+        if(nd.children&&nd.children.length){out[t2.join('>')]=1;walk(nd.children,t2);}
+      });
+    })(tree[0].children,rootKey.split('>'));
+    fpCacheSet(ck,out);
+    return out;
+  })();
+  return FP_KIDS_ROOTS[id];
+}
+async function fpKidsHas(path){
+  try{
+    var key=fpPathKey(path),parts=key.split('>');
+    var base=await fpKidsBase();
+    if(parts.length<=3)return !!base.k[key];
+    var rootKey=parts.slice(0,3).join('>'),id=base.i[rootKey];
+    if(!id)return false;
+    var sub=await fpKidsRoot(id,rootKey);
+    return !!sub[key];
+  }catch(e){return false;}
+}
+// marks the rows of one filter group that have sub categories
+function fpKidsMark(g){
+  try{
+    [].slice.call(g.querySelectorAll('a.fp-fo[data-p]')).forEach(function(a){
+      fpKidsHas(a.getAttribute('data-p')).then(function(yes){if(yes)a.classList.add('fp-fo-kids');}).catch(function(){});
+    });
+  }catch(e){}
+}
 // v181: Category rows are listed A to Z (were listed by number of products)
 function fpAZ(a,b){return String((a&&(a.label||a.t))||'').localeCompare(String((b&&(b.label||b.t))||''),'en',{sensitivity:'base',numeric:true});}
 var FP_SYS_MULTI_MAX=4;   // v180: System list offered for 2 up to this many picked brands
@@ -4430,7 +4507,7 @@ function fpMmCss(){
   // the theme forces plain Roboto on every span and link inside a dropdown, and a 60px size on every picture:
   // these rules need the longer selector to win
   var PX='.nav-pages-container .navPage-subMenu .fp-mm ';
-  st.textContent='.fp-mm{display:none}li.navPages-item.fp-ls-top{display:none!important}'
+  st.textContent='.fp-mm{display:none}li.navPages-item.fp-ls-top{display:none!important}body.hasAdminBar>:not(.adminBar):not(.atlas-promo-bar):not(header){margin-top:0!important}'   /* v182: admin bar gap */
     +'.fp-scroll-wrap:not(:has(> .fp-rich-grid:not(.fp-cat-grid))) > .fp-scroll-arrow{display:none!important}'
     +'@media(min-width:'+FP_MM_MIN+'px){'
     +'.navPage-subMenu.fp-mm-on>.navPage-subMenu-list,.navPage-subMenu.fp-mm-on>.mega-view-all{display:none!important}'
@@ -4886,7 +4963,7 @@ async function ssBrandCatRows(catPath,f,tree,brand){
     (list||[]).slice().sort(fpAZ).forEach(function(n){   // v181: A to Z
       if(level===0&&sysNames.indexOf(fpBrandNorm(n.label))>-1)return;
       var isSel=sel===n.value,isUp=!!sel&&sel.indexOf(n.value+'>')===0;
-      rows.push({t:n.label,ct:n.count,on:isSel||isUp,ind:level,fpf:(isSel?'remove':'add')+'|Category|'+n.label,h:ssUrlWith(function(sp){
+      rows.push({t:n.label,ct:n.count,p:n.value,on:isSel||isUp,ind:level,fpf:(isSel?'remove':'add')+'|Category|'+n.label,h:ssUrlWith(function(sp){
         if(!isSel){sp.set('fbcat',n.value);return;}
         var up=n.value.slice(0,n.value.lastIndexOf('>'));
         if(up===root)sp.delete('fbcat');else sp.set('fbcat',up);
@@ -5039,6 +5116,7 @@ function fpSideCss(){
     +'#fp-filter-side .fp-fsw .fp-fb-ct{font-family:Roboto,Arial,sans-serif;text-transform:none;letter-spacing:normal;font-weight:400;font-size:12px;color:#8a8a8a;margin-left:8px}'
     +'#fp-filter-side .fp-fo{font-family:Roboto,Arial,sans-serif;font-size:14px;font-weight:400;color:#1f1f1f!important;padding:8px 2px;min-height:36px;gap:11px}'
     +'#fp-filter-side .fp-fo-t{flex:1 1 auto}'
+    +'#fp-filter-side .fp-fo.fp-fo-kids .fp-fo-t:after{content:"\\00a0\\00a0\\203A";color:#767676;font-size:16px;line-height:1;font-weight:400}'   /* v182: has sub categories */
     +'#fp-filter-side .fp-fo.is-on .fp-fo-t{font-weight:600;color:#0f0f0f}'
     +'#fp-filter-side .fp-fo .fp-fb-ct{flex:0 0 auto;margin-left:auto;padding-left:8px;font-size:12px;color:#8a8a8a;font-variant-numeric:tabular-nums;text-align:right}'
     +'.fp-fo-box{width:18px;height:18px;border-width:1px;border-color:#b9b9b5;border-radius:3px}'
@@ -5243,6 +5321,7 @@ function ssBuildFilterSide(facets,host,hostEl,sortSpec,catPath,total,f){
     list.forEach(function(r,i){
       var a=link('fp-fo'+(r.on?' is-on':'')+(opt.radio?' fp-fo-radio':'')+(r.sub?' fp-fo-sub':''),r.h,r.fpf);
       if(r.ind)a.style.setProperty('--fp-ind',(r.ind*20)+'px');   // nested level in a brand tree
+      if(r.p&&!r.on)a.setAttribute('data-p',r.p);   // v182: category path, for the sub categories arrow
       a.appendChild(mk('span','fp-fo-box'));
       a.appendChild(mk('span','fp-fo-t',r.t));
       if(r.ct!==undefined&&r.ct!==null)a.appendChild(mk('span','fp-fb-ct',Number(r.ct).toLocaleString('en-CA')));
@@ -5255,6 +5334,7 @@ function ssBuildFilterSide(facets,host,hostEl,sortSpec,catPath,total,f){
       menu.appendChild(mb);
     }
     g.appendChild(menu);
+    if(name==='Category')fpKidsMark(g);   // v182
     return g;
   }
   function sw(label,on,ct,mod,fpfName){
@@ -5265,6 +5345,7 @@ function ssBuildFilterSide(facets,host,hostEl,sortSpec,catPath,total,f){
     return a;
   }
   var panel=mk('div');panel.id='fp-filter-panel';
+  var fpSideMoved=false,fpSideReady=false;   // v182
   // switches: the two most used filters, one click each
   var stockF=facet('ss_in_stock'),saleF=FP_FB_ONSALE?facet('ss_on_sale'):null;
   var stockSw=null;   // v172: placed at the bottom of the panel, after Price
@@ -5296,6 +5377,7 @@ function ssBuildFilterSide(facets,host,hostEl,sortSpec,catPath,total,f){
     var g=group('System',rows,{radio:true});
     if(g&&sysSlot.parentNode){
       sysSlot.parentNode.replaceChild(g,sysSlot);
+      fpSideBack();   // v182
       try{
         if(window.__fpSysShownFor!==sysBrand){
           window.__fpSysShownFor=sysBrand;
@@ -5352,7 +5434,7 @@ function ssBuildFilterSide(facets,host,hostEl,sortSpec,catPath,total,f){
   ((catF&&catF.values)||[]).slice().sort(fpAZ).forEach(function(v){   // v181: A to Z
     var val=v.value||v.label;
     if(v.active||FP_CAT_HIDE[val]||/ by category$/i.test(val))return;
-    catRows.push({t:v.label,ct:v.count,sub:f.cats.length>0,fpf:'add|Category|'+v.label,h:ssUrlWith(function(sp){sp.delete('fcat');sp.append('fcat',val);})});
+    catRows.push({t:v.label,ct:v.count,p:val,sub:f.cats.length>0,fpf:'add|Category|'+v.label,h:ssUrlWith(function(sp){sp.delete('fcat');sp.append('fcat',val);})});
   });
   var storeCat=function(){return group('Category',catRows,{keepOrder:true});};
   if(tree&&catPath){
@@ -5365,6 +5447,7 @@ function ssBuildFilterSide(facets,host,hostEl,sortSpec,catPath,total,f){
     var swapCat=function(g){
       if(!catSlot.parentNode)return;
       if(g)catSlot.parentNode.replaceChild(g,catSlot);else catSlot.parentNode.removeChild(catSlot);
+      fpSideBack();   // v182
     };
     ssBrandCatRows(catPath,f,tree,sysBrand).then(function(res){
       if(treeHasSys)sysInCat(res.systems).then(putSystems).catch(function(){putSystems(res.systems);});
@@ -5380,9 +5463,9 @@ function ssBuildFilterSide(facets,host,hostEl,sortSpec,catPath,total,f){
       fpTopCatRows(catPath,f).then(function(list){
         if(!topSlot.parentNode||!list||!list.length)return;
         var g=group('Category',list.slice().sort(fpAZ).map(function(v){   // v181: A to Z
-          return {t:v.label,ct:v.count,fpf:'add|Category|'+v.label,h:ssUrlWith(function(sp){sp.delete('fcat');sp.append('fcat',v.value);})};
+          return {t:v.label,ct:v.count,p:v.value,fpf:'add|Category|'+v.label,h:ssUrlWith(function(sp){sp.delete('fcat');sp.append('fcat',v.value);})};
         }),{keepOrder:true});
-        if(g)topSlot.parentNode.replaceChild(g,topSlot);
+        if(g){topSlot.parentNode.replaceChild(g,topSlot);fpSideBack();}   // v182
       }).catch(function(){});
     }
   }
@@ -5526,6 +5609,21 @@ function ssBuildFilterSide(facets,host,hostEl,sortSpec,catPath,total,f){
     while(nx){nx.classList.add('fp-fl-col');nx=nx.nextElementSibling;}
   }else host.classList.add('fp-fl-col');
   try{side.scrollTop=sideScroll;panel.scrollTop=keepScroll;}catch(e){}
+  // v182: lists that load late put the column back where it was
+  fpSideMoved=false;
+  try{
+    var fpMovedOnce=function(){fpSideMoved=true;};
+    side.addEventListener('wheel',fpMovedOnce,{once:true,passive:true});
+    side.addEventListener('touchmove',fpMovedOnce,{once:true,passive:true});
+  }catch(e){}
+  fpSideReady=true;
+  function fpSideBack(){
+    try{
+      if(!fpSideReady||fpSideMoved||!side||!side.contains(panel))return;
+      if(fpSideIsDesktop()){if(sideScroll>0&&side.scrollTop<sideScroll-2)side.scrollTop=sideScroll;}
+      else if(keepScroll>0&&panel.scrollTop<keepScroll-2)panel.scrollTop=keepScroll;
+    }catch(e){}
+  }
 }
 function ssBuildFilterBar(facets,hostEl,sortSpec,catPath,total){
   var fpOldBar=document.getElementById('fp-filter-bar');
