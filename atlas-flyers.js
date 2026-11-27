@@ -1,3 +1,4 @@
+/* v184 (27NOV2026): Milwaukee Attach & Save box. Deal items are now left out too: any product showing a crossed-out price (retail price above the selling price, e.g. Black Friday deals) is skipped, as well as products with a sale price. Nothing else changes. Built from v183 (commit 56527a11). */
 /* v183 (27NOV2026): product pages, Milwaukee Attach & Save box. The EXTRA 15% OFF and EXTRA 5% OFF rows were empty since the MILSAVE categories were hidden in BigCommerce (the theme drops products that do not list those categories). The rows are now filled by this script from the same store search: up to 10 in stock, buyable Milwaukee products per row (products with a sale price are left out, as the MILSAVE coupon does not apply to them), picked at random from the 50 best sellers of that list, shown as normal tiles. Categories stay hidden, nothing changes in BigCommerce. Built from v182 (commit 99f6ce07). */
 /* v182 (27NOV2026): filter column. (1) It keeps its place after a pick: with one brand picked the Category and System lists load a moment later and the column ended back at the top; the position is put back when they arrive. (2) Category rows that have sub categories show a small arrow after the name (read from the store category tree, kept for a day). (3) Signed-in store admins no longer get the tall gap under the menu that the BigCommerce admin bar added (shoppers never had it). Built from v181 (commit 3d290d5a). */
 /* v181 (27NOV2026): filter column. (1) Category rows are listed A to Z on every page (were listed by number of products); a picked category stays on top with its sub categories under it. (2) The System group now sits above the Brand list, so it is in view right after a brand is ticked (the open Brand list pushed it below). Built from v180 (commit 6fdb2829). */
@@ -6741,7 +6742,7 @@ if('MutationObserver' in window){
     STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
     if(!STORE_TOKEN)return null;
     var f='categoryEntityIds:['+cats.join(',')+']'+(brands.length?',brandEntityIds:['+brands.join(',')+']':'')+',hideOutOfStock:true';
-    var q='query{site{search{searchProducts(filters:{'+f+'},sort:'+FP_AS_SORT+'){products(first:'+FP_AS_MAX+'){edges{node{entityId name path brand{name} defaultImage{url(width:300)} prices{price{value} basePrice{value} salePrice{value}} availabilityV2{status} inventory{isInStock}}}}}}}}';
+    var q='query{site{search{searchProducts(filters:{'+f+'},sort:'+FP_AS_SORT+'){products(first:'+FP_AS_MAX+'){edges{node{entityId name path brand{name} defaultImage{url(width:300)} prices{price{value} basePrice{value} salePrice{value} retailPrice{value}} availabilityV2{status} inventory{isInStock}}}}}}}}';
     var r=await fetch(STORE+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+STORE_TOKEN},body:JSON.stringify({query:q})});
     var d=await r.json();
     var edges=(((((d||{}).data||{}).site||{}).search||{}).searchProducts||{}).products;
@@ -6749,7 +6750,7 @@ if('MutationObserver' in window){
     var list=edges.map(function(e){return e.node;}).filter(function(p){
       var st=String((p.availabilityV2||{}).status||'').toLowerCase();
       var pr=p.prices||{};
-      var onSale=!!(pr.salePrice&&pr.basePrice&&pr.salePrice.value<pr.basePrice.value);   // the coupon leaves sale items out, so the box does too
+      var onSale=!!(pr.salePrice&&pr.basePrice&&pr.salePrice.value<pr.basePrice.value)||!!(pr.retailPrice&&pr.price&&pr.retailPrice.value>pr.price.value);   // v184: sale price OR crossed-out price (deal items) are left out
       return p&&p.entityId&&!onSale&&(st==='available'||st==='preorder')&&(!p.inventory||p.inventory.isInStock!==false);
     });
     for(var i=list.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var x=list[i];list[i]=list[j];list[j]=x;}
