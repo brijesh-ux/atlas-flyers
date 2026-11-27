@@ -1,3 +1,4 @@
+/* v181 (27NOV2026): filter column. (1) Category rows are listed A to Z on every page (were listed by number of products); a picked category stays on top with its sub categories under it. (2) The System group now sits above the Brand list, so it is in view right after a brand is ticked (the open Brand list pushed it below). Built from v180 (commit 6fdb2829). */
 /* v180 (27NOV2026): System filter with several brands picked. It showed only when exactly one brand was picked; with 2 to 4 brands picked the System group now lists each picked brand's systems in one list, named with the brand (Milwaukee M18, DEWALT 20V MAX ...). Picking one narrows the page to that system. Taking a brand off also takes off a System of that brand. One brand and brand pages are unchanged. Built from v179 (commit 0fdc3a36). */
 /* v179 (26NOV2026): product tiles: the green savings ribbon (% Off / $ off) is hidden when the tile shows Out of Stock. In stock and Available to Order tiles unchanged. */
 /* v178 (26NOV2026): Cyber Sale landing page (/cyber-monday/). The page's raw HTML carries its own product list (#fp-cyber-data, already ranked, exclusions out); this script adds the filter column (Category, Brand, System, Price, Sort) and the tiles, loaded in batches while scrolling. Filters and counts are worked out from the page's list (fpPlAnswer); Searchspring is not called on that page. Tiles are read from BigCommerce as everywhere. No change on any other page. */
@@ -4132,6 +4133,8 @@ function ssCatStepBack(c,scope,sys){
 // v172: which children of Brands > <brand> count as a System
 var FP_SYS_RE=/\b\d{2,3}\s?V\b|\bsystem\b|\bM12\b|\bM18\b|MX FUEL|\bXGT\b|\bLXT\b|\bCXT\b|powershift/i;
 var FP_SYS_NOT=/system support/i;
+// v181: Category rows are listed A to Z (were listed by number of products)
+function fpAZ(a,b){return String((a&&(a.label||a.t))||'').localeCompare(String((b&&(b.label||b.t))||''),'en',{sensitivity:'base',numeric:true});}
 var FP_SYS_MULTI_MAX=4;   // v180: System list offered for 2 up to this many picked brands
 // v172: top level names that are not real categories (merchandising lists)
 var FP_CAT_HIDE={'Brands':1,'New Arrivals':1,'Best Selling Products':1};
@@ -4880,7 +4883,7 @@ async function ssBrandCatRows(catPath,f,tree,brand){
   }
   var rows=[];
   (function emit(level,list){
-    (list||[]).forEach(function(n){
+    (list||[]).slice().sort(fpAZ).forEach(function(n){   // v181: A to Z
       if(level===0&&sysNames.indexOf(fpBrandNorm(n.label))>-1)return;
       var isSel=sel===n.value,isUp=!!sel&&sel.indexOf(n.value+'>')===0;
       rows.push({t:n.label,ct:n.count,on:isSel||isUp,ind:level,fpf:(isSel?'remove':'add')+'|Category|'+n.label,h:ssUrlWith(function(sp){
@@ -5346,7 +5349,7 @@ function ssBuildFilterSide(facets,host,hostEl,sortSpec,catPath,total,f){
   var catRows=[];
   f.cats.forEach(function(c){catRows.push({t:leaf(c),on:true,fpf:'remove|Category|'+leaf(c),h:ssUrlWith(catBack(c))});});
   var catF=facet('categories_hierarchy');
-  ((catF&&catF.values)||[]).forEach(function(v){
+  ((catF&&catF.values)||[]).slice().sort(fpAZ).forEach(function(v){   // v181: A to Z
     var val=v.value||v.label;
     if(v.active||FP_CAT_HIDE[val]||/ by category$/i.test(val))return;
     catRows.push({t:v.label,ct:v.count,sub:f.cats.length>0,fpf:'add|Category|'+v.label,h:ssUrlWith(function(sp){sp.delete('fcat');sp.append('fcat',val);})});
@@ -5376,7 +5379,7 @@ function ssBuildFilterSide(facets,host,hostEl,sortSpec,catPath,total,f){
       panel.appendChild(topSlot);
       fpTopCatRows(catPath,f).then(function(list){
         if(!topSlot.parentNode||!list||!list.length)return;
-        var g=group('Category',list.map(function(v){
+        var g=group('Category',list.slice().sort(fpAZ).map(function(v){   // v181: A to Z
           return {t:v.label,ct:v.count,fpf:'add|Category|'+v.label,h:ssUrlWith(function(sp){sp.delete('fcat');sp.append('fcat',v.value);})};
         }),{keepOrder:true});
         if(g)topSlot.parentNode.replaceChild(g,topSlot);
@@ -5395,8 +5398,8 @@ function ssBuildFilterSide(facets,host,hostEl,sortSpec,catPath,total,f){
   });
   f.brands.forEach(function(b){if(!seenB[b])brandRows.push({t:b,on:true,fpf:'remove|Brand|'+b,h:ssUrlWith(brandOff(b))});});
   var bg=group('Brand',brandRows,{find:true});
+  panel.appendChild(sysSlot);   // v181: System comes right BEFORE Brand (was after: the open Brand list pushed it out of view)
   if(bg)panel.appendChild(bg);
-  panel.appendChild(sysSlot);   // v172: System comes right after Brand
   // v172: Voltage and Battery Ah. Each shows only when Searchspring sends its field for this list.
   FP_FB_SPECS.forEach(function(s){
     var sf=null;
