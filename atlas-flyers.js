@@ -1,3 +1,4 @@
+/* v183 (27NOV2026): product pages, Milwaukee Attach & Save box. The EXTRA 15% OFF and EXTRA 5% OFF rows were empty since the MILSAVE categories were hidden in BigCommerce (the theme drops products that do not list those categories). The rows are now filled by this script from the same store search: up to 10 in stock, buyable Milwaukee products per row (products with a sale price are left out, as the MILSAVE coupon does not apply to them), picked at random from the 50 best sellers of that list, shown as normal tiles. Categories stay hidden, nothing changes in BigCommerce. Built from v182 (commit 99f6ce07). */
 /* v182 (27NOV2026): filter column. (1) It keeps its place after a pick: with one brand picked the Category and System lists load a moment later and the column ended back at the top; the position is put back when they arrive. (2) Category rows that have sub categories show a small arrow after the name (read from the store category tree, kept for a day). (3) Signed-in store admins no longer get the tall gap under the menu that the BigCommerce admin bar added (shoppers never had it). Built from v181 (commit 3d290d5a). */
 /* v181 (27NOV2026): filter column. (1) Category rows are listed A to Z on every page (were listed by number of products); a picked category stays on top with its sub categories under it. (2) The System group now sits above the Brand list, so it is in view right after a brand is ticked (the open Brand list pushed it below). Built from v180 (commit 6fdb2829). */
 /* v180 (27NOV2026): System filter with several brands picked. It showed only when exactly one brand was picked; with 2 to 4 brands picked the System group now lists each picked brand's systems in one list, named with the brand (Milwaukee M18, DEWALT 20V MAX ...). Picking one narrows the page to that system. Taking a brand off also takes off a System of that brand. One brand and brand pages are unchanged. Built from v179 (commit 0fdc3a36). */
@@ -6727,6 +6728,90 @@ if('MutationObserver' in window){
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();
   [1500,4000,8000,12000,16000].forEach(function(ms){setTimeout(wire,ms);});
+})();
+
+// ============ v183: MILWAUKEE ATTACH & SAVE BOX (product pages) ============
+(function(){
+  var FP_AS_SEL=".attach-save-section[data-shortcode-params]",FP_AS_MAX=50,FP_AS_SORT="BEST_SELLING";
+  var cache={},busy={};
+  function esc2(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function nums(a){return (a||[]).map(function(x){return parseInt(x,10);}).filter(function(x){return x>0;});}
+  async function load(key,cats,brands){
+    if(cache[key])return cache[key];
+    STORE_TOKEN=STORE_TOKEN||window.BC_STOREFRONT_TOKEN||window.global_bct||'';
+    if(!STORE_TOKEN)return null;
+    var f='categoryEntityIds:['+cats.join(',')+']'+(brands.length?',brandEntityIds:['+brands.join(',')+']':'')+',hideOutOfStock:true';
+    var q='query{site{search{searchProducts(filters:{'+f+'},sort:'+FP_AS_SORT+'){products(first:'+FP_AS_MAX+'){edges{node{entityId name path brand{name} defaultImage{url(width:300)} prices{price{value} basePrice{value} salePrice{value}} availabilityV2{status} inventory{isInStock}}}}}}}}';
+    var r=await fetch(STORE+'/graphql',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+STORE_TOKEN},body:JSON.stringify({query:q})});
+    var d=await r.json();
+    var edges=(((((d||{}).data||{}).site||{}).search||{}).searchProducts||{}).products;
+    edges=edges&&edges.edges||[];
+    var list=edges.map(function(e){return e.node;}).filter(function(p){
+      var st=String((p.availabilityV2||{}).status||'').toLowerCase();
+      var pr=p.prices||{};
+      var onSale=!!(pr.salePrice&&pr.basePrice&&pr.salePrice.value<pr.basePrice.value);   // the coupon leaves sale items out, so the box does too
+      return p&&p.entityId&&!onSale&&(st==='available'||st==='preorder')&&(!p.inventory||p.inventory.isInStock!==false);
+    });
+    for(var i=list.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var x=list[i];list[i]=list[j];list[j]=x;}
+    cache[key]=list;
+    return list;
+  }
+  function cardHtml(p){
+    var img=p.defaultImage&&p.defaultImage.url||'';
+    var price=p.prices&&p.prices.price&&typeof p.prices.price.value==='number'?'$'+p.prices.price.value.toFixed(2):'';
+    var b=p.brand&&p.brand.name||'';
+    return '<article class="fp-rich fp-theme-card shortcode-card" data-entity-id="'+p.entityId+'">'
+      +'<div class="fp-rich-top">'+(b?'<span class="fp-rich-brand" data-fp-brand="'+esc2(b)+'">'+esc2(b)+'</span>':'<span></span>')+'<span></span></div>'
+      +'<a class="fp-rich-img-wrap" href="'+esc2(p.path||'#')+'">'+(img?'<img src="'+esc2(img)+'" alt="'+esc2(p.name)+'" loading="lazy">':'')+'</a>'
+      +'<a class="fp-rich-name" href="'+esc2(p.path||'#')+'">'+esc2(p.name)+'</a>'
+      +'<div class="fp-rich-prices"><span class="fp-rich-price">'+price+'</span></div>'
+      +'</article>';
+  }
+  async function fill(el){
+    try{
+      if(el.querySelector('.fp-rich'))return;                       // already has tiles
+      var prm;try{prm=JSON.parse(el.getAttribute('data-shortcode-params')||'{}');}catch(e){return;}
+      var cats=nums(prm.categoryIds),brands=nums(prm.brandIds);
+      if(!cats.length)return;
+      var key=cats.join(',')+'|'+brands.join(',');
+      if(busy[key])return;
+      busy[key]=1;
+      var list;try{list=await load(key,cats,brands);}finally{busy[key]=0;}
+      if(!list||!list.length)return;
+      if(el.querySelector('.fp-rich'))return;                       // the theme filled it meanwhile
+      var count=parseInt(prm.count,10)||10;
+      var here=(document.querySelector('.productView [name="product_id"]')||{}).value;
+      var html=list.filter(function(p){return String(p.entityId)!==String(here);}).slice(0,count).map(cardHtml).join('');
+      if(!html)return;
+      var grid=el.querySelector('.fp-rich-grid');
+      if(grid)grid.innerHTML=html;                                  // keep the theme's strip (arrows, auto scroll)
+      else el.innerHTML='<div class="fp-section fp-home-strip"><div class="fp-rich-grid" data-fp-autoscroll="1">'+html+'</div></div>';
+      if(typeof enrichThemeCards==='function')enrichThemeCards();
+      if(typeof setupScrollArrows==='function'){try{setupScrollArrows();}catch(e){}}
+      console.log('[Atlas Tiles] v183 filled an Attach & Save row ('+key+')');
+    }catch(e){console.warn('[Atlas Tiles] Attach & Save row skipped:',e&&e.message);}
+  }
+  function themeDone(el){
+    // the theme leaves its loader in the row until its own fetch ends; wait for it, then fill what is empty
+    return !el.querySelector('.loader-container');
+  }
+  function sweep(force){
+    [].slice.call(document.querySelectorAll(FP_AS_SEL)).forEach(function(el){
+      if(el.querySelector('.fp-rich'))return;
+      if(force||themeDone(el))fill(el);
+    });
+  }
+  function boot(){
+    if(!document.querySelector(FP_AS_SEL)&&!document.querySelector('.milwaukee-attach-save-template'))return;
+    [0,1500,4000,8000,12000,16000].forEach(function(ms,i,a){setTimeout(function(){sweep(i===a.length-1);},ms);});
+    try{
+      var box=document.querySelector('.milwaukee-attach-save-template')||document.body;
+      var mo=new MutationObserver(function(){sweep(false);});
+      mo.observe(box,{childList:true,subtree:true});
+      setTimeout(function(){try{mo.disconnect();}catch(e){}},30000);
+    }catch(e){}
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
 
 // ============ LEGACY SHORTCODE CAROUSELS -> STRIPS (transitional) ============
