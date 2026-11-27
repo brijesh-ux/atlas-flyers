@@ -1,3 +1,4 @@
+/* v180 (27NOV2026): System filter with several brands picked. It showed only when exactly one brand was picked; with 2 to 4 brands picked the System group now lists each picked brand's systems in one list, named with the brand (Milwaukee M18, DEWALT 20V MAX ...). Picking one narrows the page to that system. Taking a brand off also takes off a System of that brand. One brand and brand pages are unchanged. Built from v179 (commit 0fdc3a36). */
 /* v179 (26NOV2026): product tiles: the green savings ribbon (% Off / $ off) is hidden when the tile shows Out of Stock. In stock and Available to Order tiles unchanged. */
 /* v178 (26NOV2026): Cyber Sale landing page (/cyber-monday/). The page's raw HTML carries its own product list (#fp-cyber-data, already ranked, exclusions out); this script adds the filter column (Category, Brand, System, Price, Sort) and the tiles, loaded in batches while scrolling. Filters and counts are worked out from the page's list (fpPlAnswer); Searchspring is not called on that page. Tiles are read from BigCommerce as everywhere. No change on any other page. */
 /* v177 (26NOV2026): (1) Top menu: on desktop with a mouse, clicking Power Tools, Brands, Hand Tools, Accessories or Machinery opens that page (it only toggled the dropdown before); hover still opens the dropdown; touch screens and the phone menu are unchanged. (2) Category filter: the hammer builder part groups (Heads, Handles, Grips, Aluminum, Titanium) are left out; their BigCommerce categories stay visible because the builder reads them. Built from v176 (commit f79a8a70). */
@@ -4131,6 +4132,7 @@ function ssCatStepBack(c,scope,sys){
 // v172: which children of Brands > <brand> count as a System
 var FP_SYS_RE=/\b\d{2,3}\s?V\b|\bsystem\b|\bM12\b|\bM18\b|MX FUEL|\bXGT\b|\bLXT\b|\bCXT\b|powershift/i;
 var FP_SYS_NOT=/system support/i;
+var FP_SYS_MULTI_MAX=4;   // v180: System list offered for 2 up to this many picked brands
 // v172: top level names that are not real categories (merchandising lists)
 var FP_CAT_HIDE={'Brands':1,'New Arrivals':1,'Best Selling Products':1};
 ["Heads","Handles","Grips","Aluminum","Titanium"].forEach(function(nm){FP_CAT_HIDE[nm]=1;});   // v177: hammer builder part groups
@@ -5103,6 +5105,14 @@ function ssBuildFilterSide(facets,host,hostEl,sortSpec,catPath,total,f){
     sp.delete('fbrand');
     keep.forEach(function(x){sp.append('fbrand',x);});
     if(keep.length!==1){ssDropSys(sp);sp.delete('fbcat');}   // System and brand categories belong to one brand
+    else{
+      // v180: one brand left: a System from the brand just removed goes with it
+      var sv=sp.get('fsys');
+      if(sv){
+        var seg=fpBrandNorm(String(sv).split('>')[1]||''),bn=fpBrandNorm(b);
+        if(seg&&bn&&(seg===bn||seg.indexOf(bn+' ')===0||bn.indexOf(seg+' ')===0))ssDropSys(sp);
+      }
+    }
   };};
   var priceLabel='';
   if(f.price){
@@ -5310,6 +5320,26 @@ function ssBuildFilterSide(facets,host,hostEl,sortSpec,catPath,total,f){
     // asked for without any category picked inside the Brands tree, so every System stays on offer
     var fSys=Object.assign({},f,{cats:f.cats.filter(function(c){return String(c).indexOf('Brands>')!==0;})});
     ssSystemsFor(catPath,fSys,sysBrand).then(sysInCat).then(putSystems).catch(function(){});
+  }
+  // v180: several brands picked: one System list with every picked brand's systems, named with the brand
+  if(!sysBrand&&catPath&&f.brands.length>1&&f.brands.length<=FP_SYS_MULTI_MAX){
+    var fMulti=Object.assign({},f,{cats:f.cats.filter(function(c){return String(c).indexOf('Brands>')!==0;}),bcat:null,sys:null});
+    Promise.all(f.brands.map(function(b){
+      var tr=ssBrandTree(b);
+      var ask=(tr&&tr.sys&&tr.sys.length)
+        ?ssBrandCatRows(catPath,Object.assign({},fMulti,{brands:[b]}),tr,b).then(function(res){return (res&&res.systems)||[];})
+        :ssSystemsFor(catPath,fMulti,b);
+      return ask.then(function(list){
+        var bn=fpBrandNorm(b);
+        return (list||[]).map(function(v){
+          var has=fpBrandNorm(v.label).indexOf(bn)===0;   // some system names already start with the brand
+          return {value:v.value,label:has?v.label:(b+' '+v.label),count:v.count};
+        });
+      }).catch(function(){return [];});
+    })).then(function(lists){
+      var all=[].concat.apply([],lists).filter(function(v){return v.count>0||v.value===f.sys;});
+      if(all.length||f.sys)putSystems(all);
+    }).catch(function(){});
   }
   // Category. One brand in play and it has its own tree: that tree, with the same names as its brand page.
   // Otherwise the store tree. One pick at a time; the picked one is ticked with its sub categories under it.
